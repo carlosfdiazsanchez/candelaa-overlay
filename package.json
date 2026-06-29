@@ -1,6 +1,6 @@
 {
   "name": "candelaa-overlay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Overlay unificado para Albion Online (radar + jugadores + mercado + crafting)",
   "author": "Candelaa",
   "main": "main.js",
