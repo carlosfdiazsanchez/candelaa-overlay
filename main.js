@@ -12,6 +12,16 @@ const { spawn, execFile } = require('child_process');
 let win = null;
 let radarProc = null;
 
+// Una sola instancia: si ya hay una abierta, enfoca esa y cierra esta.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  });
+}
+
 // --- Radar engine (vendored, neutral-branded) managed as a child process ---
 // Dev usa vendor/radar; empaquetado usa resources/radar. Mismo binario en ambos.
 const OPENRADAR_CWD = app.isPackaged
@@ -35,17 +45,25 @@ function radarUp(cb) {
   req.on('timeout', () => { req.destroy(); cb(false); });
 }
 
+let radarStarting = false;
 function ensureRadar() {
   radarUp((up) => {
-    if (up) return; // ya hay un OpenRadar corriendo: no duplicar
+    if (up) return;            // algo sirve el WS en 5001: no duplicar
+    if (radarStarting) return; // ya estamos arrancándolo (aún no escucha)
+    radarStarting = true;
     const ip = localIPv4();
     const args = ip ? ['-ip', ip] : [];
     try {
       radarProc = spawn(OPENRADAR_EXE, args, { cwd: OPENRADAR_CWD, windowsHide: true, stdio: 'ignore' });
-      radarProc.on('error', (e) => console.error('[overlay] OpenRadar no pudo arrancar:', e.message));
-    } catch (e) { console.error('[overlay] spawn OpenRadar:', e.message); }
+      radarProc.on('error', (e) => { console.error('[overlay] radar no arrancó:', e.message); radarStarting = false; radarProc = null; });
+      radarProc.on('exit', () => { radarStarting = false; radarProc = null; }); // murió -> el watchdog lo revivirá
+    } catch (e) { console.error('[overlay] spawn radar:', e.message); radarStarting = false; }
+    // margen para que empiece a escuchar antes de permitir otro intento
+    setTimeout(() => { radarStarting = false; }, 12000);
   });
 }
+// Watchdog: revisa cada 8s y re-arranca el motor si se cayó o el puerto se liberó.
+function startRadarWatchdog() { setInterval(ensureRadar, 8000); }
 
 function stopRadar() {
   if (radarProc && radarProc.pid) {
@@ -95,8 +113,9 @@ function createWindow() {
   win.loadFile('index.html');
 }
 
-app.whenReady().then(() => {
-  ensureRadar();   // levanta OpenRadar por debajo si no está corriendo
+if (gotSingleInstanceLock) app.whenReady().then(() => {
+  ensureRadar();          // levanta el motor de radar si no está corriendo
+  startRadarWatchdog();   // y lo mantiene vivo (re-arranca si se cae)
   createWindow();
   // Atajo global para alternar el modo "pasar clics al juego" (funciona aunque
   // el overlay esté ignorando el ratón).
@@ -112,11 +131,18 @@ app.whenReady().then(() => {
       const send = (s) => { if (win && !win.isDestroyed()) win.webContents.send('update-status', s); };
       autoUpdater.on('update-available', (info) => send({ state: 'downloading', percent: 0, version: info && info.version }));
       autoUpdater.on('download-progress', (p) => send({ state: 'downloading', percent: Math.round(p.percent) }));
-      autoUpdater.on('update-downloaded', (info) => send({ state: 'ready', version: info && info.version }));
+      let updateReady = false;
+      autoUpdater.on('update-downloaded', (info) => { updateReady = true; send({ state: 'ready', version: info && info.version }); });
       autoUpdater.on('error', (err) => send({ state: 'error', message: String((err && err.message) || err) }));
+      // Chequeo periódico ALEATORIO mientras la app está abierta (90–240s):
+      // una versión nueva llega casi al momento sin martillear GitHub. Deja de
+      // chequear una vez descargada (ya solo falta reiniciar).
+      const scheduleUpdateCheck = () => {
+        const delay = (60 + Math.floor(Math.random() * 120)) * 1000;
+        setTimeout(() => { if (!updateReady) autoUpdater.checkForUpdates().catch(() => {}); scheduleUpdateCheck(); }, delay);
+      };
       autoUpdater.checkForUpdates().catch(() => {});
-      // Re-chequea cada 6 h por si la sesión queda abierta mucho tiempo.
-      setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+      scheduleUpdateCheck();
     } catch (e) { console.error('[overlay] autoUpdater:', e.message); }
   }
 });
