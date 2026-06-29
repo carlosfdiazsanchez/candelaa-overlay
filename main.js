@@ -12,12 +12,12 @@ const { spawn, execFile } = require('child_process');
 let win = null;
 let radarProc = null;
 
-// --- OpenRadar (radar engine) managed as a child process ---
-// En desarrollo usa la copia local; empaquetado usa la incluida en resources/openradar.
+// --- Radar engine (vendored, neutral-branded) managed as a child process ---
+// Dev usa vendor/radar; empaquetado usa resources/radar. Mismo binario en ambos.
 const OPENRADAR_CWD = app.isPackaged
-  ? path.join(process.resourcesPath, 'openradar')
-  : 'D:\\OpenRadar';
-const OPENRADAR_EXE = path.join(OPENRADAR_CWD, 'OpenRadar-windows-amd64.exe');
+  ? path.join(process.resourcesPath, 'radar')
+  : path.join(__dirname, 'vendor', 'radar');
+const OPENRADAR_EXE = path.join(OPENRADAR_CWD, 'candelaa-radar.exe');
 
 function localIPv4() {
   const ifs = os.networkInterfaces();
@@ -108,14 +108,22 @@ app.whenReady().then(() => {
     try {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.autoDownload = true;
-      autoUpdater.on('update-downloaded', () => {
-        if (win) win.webContents.send('update-ready');
-      });
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      autoUpdater.autoInstallOnAppQuit = true;
+      const send = (s) => { if (win && !win.isDestroyed()) win.webContents.send('update-status', s); };
+      autoUpdater.on('update-available', (info) => send({ state: 'downloading', percent: 0, version: info && info.version }));
+      autoUpdater.on('download-progress', (p) => send({ state: 'downloading', percent: Math.round(p.percent) }));
+      autoUpdater.on('update-downloaded', (info) => send({ state: 'ready', version: info && info.version }));
+      autoUpdater.on('error', (err) => send({ state: 'error', message: String((err && err.message) || err) }));
+      autoUpdater.checkForUpdates().catch(() => {});
       // Re-chequea cada 6 h por si la sesión queda abierta mucho tiempo.
-      setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 6 * 60 * 60 * 1000);
+      setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
     } catch (e) { console.error('[overlay] autoUpdater:', e.message); }
   }
+});
+
+// Instalación explícita del update descargado (botón "Reiniciar para actualizar").
+ipcMain.on('install-update', () => {
+  try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (e) { console.error('[overlay] quitAndInstall:', e.message); }
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); });

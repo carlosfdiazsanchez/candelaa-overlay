@@ -1,0 +1,12 @@
+{
+  "captureInterfaces": [
+    {
+      "name": "\\Device\\NPF_{F78CA10D-547D-4355-B210-E6238D6913C9}",
+      "description": "Intel(R) Ethernet Controller (3) I225-V"
+    }
+  ],
+  "logging": {
+    "serverLogsEnabled": false,
+    "pcapRecording": false
+  }
+}

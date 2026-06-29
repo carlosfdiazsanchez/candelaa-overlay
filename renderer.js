@@ -17,9 +17,21 @@
   if (verEl && window.overlay.getVersion) {
     window.overlay.getVersion().then((v) => { verEl.textContent = 'v' + v; }).catch(() => {});
   }
-  if (window.overlay.onUpdateReady) {
-    window.overlay.onUpdateReady(() => {
-      if (verEl) { verEl.textContent = '⬇ update listo · reinicia'; verEl.classList.add('upd'); }
+  // indicador de auto-update: descarga con % y botón para reiniciar e instalar
+  const updEl = document.getElementById('app-upd');
+  if (updEl && window.overlay.onUpdateStatus) {
+    updEl.addEventListener('click', () => { if (updEl.classList.contains('ready')) window.overlay.installUpdate(); });
+    window.overlay.onUpdateStatus((s) => {
+      if (!s) return;
+      if (s.state === 'downloading') {
+        updEl.hidden = false; updEl.className = 'upd-box dl';
+        updEl.textContent = `⬇ Actualizando ${s.percent || 0}%`;
+      } else if (s.state === 'ready') {
+        updEl.hidden = false; updEl.className = 'upd-box ready';
+        updEl.textContent = `✓ Reiniciar para actualizar${s.version ? ' a v' + s.version : ''}`;
+      } else if (s.state === 'error') {
+        updEl.hidden = true;
+      }
     });
   }
 

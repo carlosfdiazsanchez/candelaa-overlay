@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('overlay', {
   craftPrices: (ids, location) => ipcRenderer.invoke('craft-prices', ids, location),
   scanPrices: (ids, locations) => ipcRenderer.invoke('scan-prices', ids, locations),
   getVersion: () => ipcRenderer.invoke('get-version'),
-  onUpdateReady: (cb) => ipcRenderer.on('update-ready', () => cb()),
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, s) => cb(s)),
+  installUpdate: () => ipcRenderer.send('install-update'),
 });

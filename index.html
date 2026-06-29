@@ -42,7 +42,11 @@
     background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;}
   #bar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.3px;}
   #bar .ver{font-weight:500;font-size:10px;opacity:.5;letter-spacing:0;}
-  #bar .ver.upd{opacity:1;color:#7ee787;cursor:default;}
+  #bar .upd-box{font:inherit;font-size:11px;font-weight:600;border:none;border-radius:6px;padding:4px 10px;cursor:default;white-space:nowrap;}
+  #bar .upd-box.dl{background:rgba(88,166,255,.18);color:#79c0ff;}
+  #bar .upd-box.ready{background:#2ea043;color:#fff;cursor:pointer;animation:updpulse 1.6s ease-in-out infinite;}
+  #bar .upd-box.ready:hover{background:#3fb950;}
+  @keyframes updpulse{0%,100%{box-shadow:0 0 0 0 rgba(46,160,67,.5);}50%{box-shadow:0 0 0 5px rgba(46,160,67,0);}}
   #bar .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
   .sep{width:1px;height:22px;background:var(--border-strong);}
   .toggles{display:flex;gap:4px;}
@@ -213,6 +217,7 @@
   <div class="ctl"><span>Opacidad</span><input type="range" id="op" min="0" max="100" value="100"></div>
   <div class="sep"></div>
   <button class="tg" id="passthrough" aria-pressed="false" title="Pasar clics al juego — atraviesa el overlay (Ctrl+Alt+O)">🎮 Clic al juego</button>
+  <button class="upd-box" id="app-upd" hidden></button>
   <button class="tg" id="quit" title="Cerrar overlay">✕</button>
 </div>
 
