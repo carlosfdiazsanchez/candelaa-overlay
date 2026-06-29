@@ -1,8 +1,8 @@
 {
-  "name": "albion-overlay",
+  "name": "candelaa-overlay",
   "version": "0.1.0",
   "description": "Overlay unificado para Albion Online (radar + jugadores + mercado + crafting)",
-  "author": "Albion Overlay",
+  "author": "Candelaa",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,14 +11,15 @@
   },
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
   },
   "build": {
-    "appId": "com.albion.overlay",
-    "productName": "Albion Overlay",
+    "appId": "com.candelaa.overlay",
+    "productName": "Candelaa Overlay",
     "files": [
       "main.js",
       "preload.js",
@@ -43,7 +44,8 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -51,11 +53,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Albion Overlay"
+      "shortcutName": "Candelaa Overlay"
     },
     "publish": {
       "provider": "github",
-      "owner": "REPLACE_WITH_GH_USER",
+      "owner": "carlosfdiazsanchez",
       "repo": "albion-overlay"
     }
   }

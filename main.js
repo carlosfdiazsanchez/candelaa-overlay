@@ -69,6 +69,7 @@ function createWindow() {
 
   win = new BrowserWindow({
     x, y, width, height,
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     transparent: true,
     frame: false,
     resizable: false,
