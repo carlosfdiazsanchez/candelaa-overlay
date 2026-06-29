@@ -56,7 +56,8 @@
     "publish": {
       "provider": "github",
       "owner": "carlosfdiazsanchez",
-      "repo": "candelaa-overlay"
+      "repo": "candelaa-overlay",
+      "releaseType": "release"
     }
   }
 }
