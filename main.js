@@ -183,24 +183,16 @@ ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
   catch (_) { return {}; }
 });
-ipcMain.handle('craft-prices', (_e, ids, locations) => {
-  const idStr = (ids || []).slice(0, 120).map(encodeURIComponent).join(',');
-  if (!idStr) return [];
-  const loc = Array.isArray(locations) ? locations.map(encodeURIComponent).join(',') : encodeURIComponent(locations || 'Caerleon');
-  return fetchPrices(idStr, loc);
+// Crafteo: precios por el backend (gateado por token).
+ipcMain.handle('craft-prices', async (_e, ids, locations) => {
+  const r = await apiCall('/api/craft-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations } });
+  return (r.data && r.data.rows) || [];
 });
 
-// Escáner: consulta MUCHOS ids paginando de 100 en 100 (secuencial, evita rate-limit)
+// Escáner: precios por el backend (paginado en servidor, gateado por token).
 ipcMain.handle('scan-prices', async (_e, ids, locations) => {
-  const loc = (Array.isArray(locations) ? locations : [locations]).map(encodeURIComponent).join(',');
-  const out = [];
-  const list = ids || [];
-  for (let i = 0; i < list.length; i += 100) {
-    const chunk = list.slice(i, i + 100).map(encodeURIComponent).join(',');
-    const rows = await fetchPrices(chunk, loc);
-    if (Array.isArray(rows)) out.push(...rows);
-  }
-  return out;
+  const r = await apiCall('/api/scan-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations } });
+  return (r.data && r.data.rows) || [];
 });
 
 // --- Candelaa backend: token auth + admin -------------------------------
