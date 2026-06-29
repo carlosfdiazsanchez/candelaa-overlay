@@ -173,7 +173,11 @@ function fetchPrices(idStr, locations) {
     }).on('error', () => resolve([])).on('timeout', function () { this.destroy(); resolve([]); });
   });
 }
-ipcMain.handle('market-prices', (_e, itemId) => fetchPrices(encodeURIComponent(itemId), CITIES.join(',')));
+// Mercado: ahora va por el backend (gateado por token), no directo a la API pública.
+ipcMain.handle('market-prices', async (_e, itemId) => {
+  const r = await apiCall('/api/market', { method: 'POST', token: readStoredToken(), body: { itemId } });
+  return (r.data && r.data.rows) || [];
+});
 
 ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
