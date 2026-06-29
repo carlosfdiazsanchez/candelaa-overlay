@@ -143,6 +143,8 @@ ipcMain.on('set-display', (_e, displayId) => {
 
 ipcMain.on('quit', () => app.quit());
 
+ipcMain.handle('get-version', () => app.getVersion());
+
 // --- Mercado (Albion Online Data Project, Europa) ---
 const fs = require('fs');
 const https = require('https');

@@ -41,6 +41,8 @@
   #bar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:14px;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;}
   #bar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.3px;}
+  #bar .ver{font-weight:500;font-size:10px;opacity:.5;letter-spacing:0;}
+  #bar .ver.upd{opacity:1;color:#7ee787;cursor:default;}
   #bar .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
   .sep{width:1px;height:22px;background:var(--border-strong);}
   .toggles{display:flex;gap:4px;}
@@ -199,7 +201,7 @@
 </head>
 <body>
 <div id="bar">
-  <div class="brand"><span class="dot"></span>Candelaa&nbsp;Overlay</div>
+  <div class="brand"><span class="dot"></span>Candelaa&nbsp;Overlay<span class="ver" id="app-ver"></span></div>
   <div class="sep"></div>
   <div class="toggles" id="toggles">
     <button class="tg" aria-pressed="true" data-p="radar">Radar</button>

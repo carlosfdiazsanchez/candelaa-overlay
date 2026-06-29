@@ -12,6 +12,17 @@
     if (ignore !== lastIgnore) { lastIgnore = ignore; window.overlay.setIgnore(ignore); }
   }
 
+  // versión de la app en la barra (sirve para verificar el auto-update)
+  const verEl = document.getElementById('app-ver');
+  if (verEl && window.overlay.getVersion) {
+    window.overlay.getVersion().then((v) => { verEl.textContent = 'v' + v; }).catch(() => {});
+  }
+  if (window.overlay.onUpdateReady) {
+    window.overlay.onUpdateReady(() => {
+      if (verEl) { verEl.textContent = '⬇ update listo · reinicia'; verEl.classList.add('upd'); }
+    });
+  }
+
   // (el radar lo dibuja radar-feed.js con datos reales)
 
   // ---- layout persistence ----
