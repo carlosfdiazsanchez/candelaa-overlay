@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Albion Overlay</title>
+<style>
+  :root{
+    --panel-alpha:0.72;
+    --panel:rgba(22,23,27,var(--panel-alpha));
+    --panel-solid:#16171b;
+    --elev:rgba(255,255,255,0.04);
+    --elev-2:rgba(255,255,255,0.07);
+    --border:rgba(255,255,255,0.07);
+    --border-strong:rgba(255,255,255,0.13);
+    --text:#f2f3f5; --dim:#9aa0ab; --faint:#6b7079;
+    --accent:#5aa9c4; --hostile:#ed4245; --ally:#3ba55d; --faction:#faa61a; --mob:#d9822b; --chest:#e7c14d;
+    --radius:8px; --shadow:0 8px 32px rgba(0,0,0,0.42);
+    --ui:"Segoe UI",system-ui,sans-serif; --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  /* fondo TRANSPARENTE: aquí se ve el juego real por detrás */
+  body{font-family:var(--ui);color:var(--text);background:transparent;overflow:hidden;-webkit-user-select:none;user-select:none;}
+
+  .panel{position:absolute;z-index:5;width:320px;background:var(--panel);border:1px solid var(--border);
+    border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  .panel__head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);}
+  .panel__grip{color:var(--faint);font-size:12px;letter-spacing:2px;line-height:1;cursor:grab;}
+  .panel__title{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--dim);}
+  .panel__spacer{flex:1;} .panel__count{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  .icon-btn{appearance:none;border:0;background:transparent;color:var(--faint);width:22px;height:22px;border-radius:5px;
+    cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;transition:background .12s,color .12s;}
+  .icon-btn:hover{background:var(--elev-2);color:var(--text);}
+  .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .panel__body{padding:12px;display:block;}
+  .panel.collapsed .panel__body{display:none;}
+  .panel.collapsed{width:220px;}
+  #p-item{width:470px;}
+  #p-item.collapsed{width:220px;} .panel.collapsed .panel__head{border-bottom:0;}
+
+  #bar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:14px;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;}
+  #bar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.3px;}
+  #bar .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+  .sep{width:1px;height:22px;background:var(--border-strong);}
+  .toggles{display:flex;gap:4px;}
+  .tg{appearance:none;border:1px solid transparent;background:var(--elev);color:var(--dim);font:inherit;font-size:12px;
+    padding:4px 10px;border-radius:6px;cursor:pointer;transition:all .12s;}
+  .tg[aria-pressed="true"]{background:rgba(90,169,196,.16);border-color:rgba(90,169,196,.4);color:#cdeaf2;}
+  .tg:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .ctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);}
+  .ctl select,.ctl input[type=range]{accent-color:var(--accent);}
+  .ctl select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 6px;font:inherit;font-size:12px;}
+
+  #radar{display:block;width:100%;aspect-ratio:1;height:auto;border-radius:6px;background:rgba(8,12,16,.5);}
+  .cfg-toggle{width:100%;margin-top:9px;background:var(--elev);border:1px solid var(--border);color:var(--dim);font:inherit;font-size:11px;padding:5px;border-radius:6px;cursor:pointer;letter-spacing:.3px;}
+  .cfg-toggle:hover{background:var(--elev-2);color:var(--text);}
+  .radar-cfg.collapsed{display:none;}
+  .radar-cfg{display:flex;flex-direction:column;gap:7px;margin-top:8px;}
+  .cfg-row{display:flex;align-items:center;gap:8px;}
+  .cfg-lbl{width:46px;flex:0 0 auto;color:var(--faint);text-transform:uppercase;letter-spacing:.3px;font-size:10px;}
+  .cfg-row input[type=range]{flex:1;accent-color:var(--accent);}
+  .cfg-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);cursor:pointer;}
+  .cfg-check input{accent-color:var(--accent);margin:0;}
+  .minitoggles{display:flex;gap:3px;flex-wrap:wrap;}
+  .minitoggles button{width:23px;height:23px;border-radius:5px;border:1px solid var(--border);background:var(--elev);color:var(--dim);font-family:var(--mono);font-size:11px;cursor:pointer;padding:0;}
+  .minitoggles button[aria-pressed="true"]{background:rgba(90,169,196,.18);border-color:rgba(90,169,196,.45);color:#cdeaf2;}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11.5px;color:var(--dim);}
+  .legend label{display:flex;align-items:center;gap:7px;cursor:pointer;}
+  .legend input{accent-color:var(--accent);margin:0;}
+  .swatch{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+
+  .plist{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;}
+  .pcard{background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:9px 10px;cursor:pointer;transition:border-color .12s,background .12s,box-shadow .12s;}
+  .pcard:hover{border-color:var(--border-strong);}
+  .pcard.selected{border-color:rgba(90,169,196,.7);background:rgba(90,169,196,.12);box-shadow:0 0 0 1px rgba(90,169,196,.45),0 0 14px rgba(90,169,196,.22);}
+  .prow{display:flex;align-items:center;gap:8px;}
+  .pname{font-weight:700;font-size:15px;} .pguild{font-size:12.5px;color:var(--dim);}
+  .chip{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-left:auto;}
+  .chip.h{background:rgba(237,66,69,.16);color:#ff9a9c;} .chip.a{background:rgba(59,165,93,.16);color:#86e0a3;}
+  .chip.p{background:rgba(255,255,255,.07);color:var(--dim);}
+  .hp{height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin:8px 0 9px;overflow:hidden;}
+  .hp>i{display:block;height:100%;background:linear-gradient(90deg,#3ba55d,#5fc88a);}
+  .gear{display:flex;gap:4px;}
+  .slot{flex:1;aspect-ratio:1;border-radius:5px;background:rgba(255,255,255,.05);border:1px solid var(--border);
+    display:grid;place-items:center;font-size:16px;position:relative;}
+  .slot .t{position:absolute;bottom:1px;right:1px;font-family:var(--mono);font-size:10px;font-weight:700;color:#cdeaf2;background:rgba(0,0,0,.55);padding:0 2px;border-radius:3px;line-height:1.3;}
+  .pmeta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--faint);font-family:var(--mono);}
+  .pmeta .ip{font-size:14px;font-weight:700;color:#dfe3ea;}
+  .phide{margin-left:auto;appearance:none;border:0;background:transparent;color:var(--faint);width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:12px;line-height:1;flex:0 0 auto;}
+  .phide:hover{background:rgba(237,66,69,.18);color:#ff9a9c;}
+  .hidden-bar{font-size:11px;color:var(--faint);padding:1px 2px 8px;display:flex;gap:6px;align-items:center;}
+  .hidden-bar button{appearance:none;border:0;background:transparent;color:var(--accent);cursor:pointer;font:inherit;font-size:11px;text-decoration:underline;padding:0;}
+  .ally-add{display:flex;gap:6px;margin-bottom:8px;}
+  .ally-add input{flex:1;min-width:0;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px;}
+  .ally-add input::placeholder{color:var(--faint);}
+  .ally-add button{flex:0 0 auto;width:30px;background:var(--elev);border:1px solid var(--border);color:var(--dim);border-radius:6px;cursor:pointer;font-size:15px;}
+  .ally-add button:hover{background:var(--elev-2);color:var(--text);}
+
+  .search{width:100%;background:var(--panel-solid);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);font:inherit;font-size:12.5px;padding:7px 9px;margin-bottom:9px;}
+  .search::placeholder{color:var(--faint);}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{text-align:right;font-weight:600;color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:0 0 6px;}
+  th:first-child,td:first-child{text-align:left;}
+  td{padding:5px 0;border-top:1px solid var(--border);font-variant-numeric:tabular-nums;font-family:var(--mono);text-align:right;}
+  td.name{font-family:var(--ui);}
+  .silver{color:#e7c14d;} .up{color:var(--ally);} .down{color:var(--hostile);} td.faint{color:var(--faint);}
+  td.best-buy{color:#86e0a3;font-weight:700;background:rgba(59,165,93,.16);border-radius:4px;}
+  td.best-sell{color:#ffd27a;font-weight:700;background:rgba(231,193,77,.16);border-radius:4px;}
+  .best-hint{font-size:10px;color:var(--faint);margin-top:7px;text-align:center;}
+  .flip{border-top:1px solid var(--border);margin-top:10px;padding-top:9px;display:flex;flex-direction:column;gap:6px;}
+  .flip-title{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);}
+  .flip input[type=number]{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
+  .flip .cfg-lbl{width:66px;}
+  .flip-result{font-size:12px;color:var(--dim);margin-top:4px;}
+  .flip-break{font-size:10.5px;color:var(--faint);margin-top:2px;}
+  .flip-note{font-size:10px;color:var(--faint);}
+  .flip-gain{font-size:15px;font-weight:700;margin-top:3px;}
+  .tabs{display:flex;gap:2px;margin:9px 0;border-bottom:1px solid var(--border);}
+  .tab-btn{appearance:none;border:0;background:transparent;color:var(--dim);font:inherit;font-size:12px;font-weight:600;padding:6px 13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+  [hidden]{display:none !important;}
+  .craft-bonus{font-size:12px;color:#cdeaf2;background:rgba(90,169,196,.12);border:1px solid rgba(90,169,196,.3);border-radius:6px;padding:7px 9px;margin-bottom:9px;}
+  .craft-bonus b{color:#fff;}
+  .market-results{max-height:170px;overflow-y:auto;margin-bottom:8px;}
+  .market-results::-webkit-scrollbar{width:8px;} .market-results::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  .mres{padding:4px 8px;border-radius:5px;cursor:pointer;font-size:12.5px;display:flex;align-items:center;gap:8px;}
+  .mres:hover{background:var(--elev-2);}
+  .ires-icon{width:34px;height:34px;flex:0 0 auto;object-fit:contain;}
+  .ires-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mid{font-family:var(--mono);font-size:11px;color:var(--faint);flex:0 0 auto;}
+  .mempty{color:var(--faint);font-size:11.5px;padding:8px 4px;text-align:center;}
+
+  .craft-cfg{display:flex;flex-direction:column;gap:6px;margin:9px 0;}
+  .craft-cfg input[type=number],.craft-cfg select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
+  .craft-cfg .cfg-lbl{width:64px;}
+  .craft-mats{font-size:11.5px;color:var(--dim);margin-bottom:8px;line-height:1.5;}
+  .craft-total{font-size:12.5px;margin-top:8px;padding:7px 9px;border-radius:6px;background:var(--elev);border:1px solid var(--border);}
+  .craft-total b{font-size:14px;}
+  .cr-mini-row{display:flex;gap:4px;margin-bottom:9px;}
+  .cr-mini{flex:1;appearance:none;border:1px solid var(--border);background:var(--elev);border-radius:6px;padding:5px 2px;cursor:pointer;font:inherit;font-size:10px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .cr-mini span{font-family:var(--mono);font-size:11px;font-weight:700;}
+  .cr-mini.sel-row{border-color:rgba(90,169,196,.55);}
+  .cr-mini.best-row{border-color:rgba(59,165,93,.5);background:rgba(59,165,93,.1);}
+  .cr-recipe{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
+  .cr-sub{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);}
+  .cr-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0;}
+  .cr-name{flex:1 1 100%;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cr-city{flex:1 1 auto;min-width:0;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 6px;font:inherit;font-size:11px;}
+  .cr-price{width:84px;flex:0 0 auto;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;}
+  .cr-subtot{width:72px;flex:0 0 auto;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;}
+  .cr-prod{margin-top:6px;padding-top:8px;border-top:1px solid var(--border);}
+  .cr-prod .cr-name{flex:1 1 auto;color:#ffd27a;}
+  #tab-compare input[type=number]{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;text-align:right;}
+  .cmp-note{font-size:10.5px;color:var(--faint);margin:7px 0 10px;line-height:1.5;}
+  .cmp-line{font-size:12.5px;margin:5px 0;}
+  .cmp-verdict{font-size:14px;font-weight:700;margin:9px 0;padding:8px 10px;border-radius:6px;background:var(--elev);border:1px solid var(--border);}
+  #tab-scan select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
+  .scan-btn{width:100%;background:rgba(90,169,196,.18);border:1px solid rgba(90,169,196,.45);color:#cdeaf2;font:inherit;font-size:13px;font-weight:600;padding:8px;border-radius:7px;cursor:pointer;margin:6px 0;}
+  .scan-btn:hover{background:rgba(90,169,196,.28);}
+  .enchtag{font-family:var(--mono);font-size:10px;color:var(--accent);}
+  tr.best-row td{background:rgba(59,165,93,.14);}
+  tr.best-row td.name{color:#86e0a3;font-weight:700;}
+  .craft-item{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .craft-item .slot{width:38px;height:38px;flex:0 0 auto;font-size:18px;}
+  .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--border);}
+  .kv:first-of-type{border-top:0;} .kv .v{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .profit{margin-top:10px;padding:9px 11px;border-radius:6px;background:rgba(59,165,93,.12);border:1px solid rgba(59,165,93,.3);display:flex;justify-content:space-between;align-items:center;}
+  .profit .lab{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#86e0a3;}
+  .profit .big{font-family:var(--mono);font-size:18px;font-weight:700;color:#7fe0a0;}
+  .roi{font-family:var(--mono);font-size:12px;color:#86e0a3;}
+
+  .conn{width:8px;height:8px;border-radius:50%;background:#6b7079;flex:0 0 auto;margin-left:8px;transition:background .2s;}
+  .conn.ok{background:#3ba55d;box-shadow:0 0 6px #3ba55d;}
+  .conn.bad{background:#ed4245;}
+  .pl-empty{color:var(--faint);font-size:12px;text-align:center;padding:18px 6px;line-height:1.5;}
+  .chip.f{background:rgba(250,166,26,.16);color:#ffd27a;}
+  .mount{margin-left:6px;font-size:11px;opacity:.8;}
+
+  /* asas de arrastre */
+  .panel__head{cursor:grab;} .panel__head:active{cursor:grabbing;}
+  #bar .brand{cursor:grab;} #bar .brand:active{cursor:grabbing;}
+  .dragging{opacity:.96;}
+
+  /* scrollbar con la estética del overlay */
+  .plist::-webkit-scrollbar{width:8px;}
+  .plist::-webkit-scrollbar-track{background:transparent;margin:2px;}
+  .plist::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  .plist::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box;}
+  .plist{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+
+  #radar-alert{position:fixed;inset:0;pointer-events:none;z-index:99999;box-shadow:inset 0 0 100px 26px rgba(237,66,69,.7);opacity:0;}
+  .cfg-test-btn{width:100%;background:var(--elev);border:1px solid var(--border);color:var(--dim);font:inherit;font-size:11px;padding:5px;border-radius:6px;cursor:pointer;}
+  .cfg-test-btn:hover{background:var(--elev-2);color:var(--text);}
+
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div id="bar">
+  <div class="brand"><span class="dot"></span>Albion&nbsp;Overlay</div>
+  <div class="sep"></div>
+  <div class="toggles" id="toggles">
+    <button class="tg" aria-pressed="true" data-p="radar">Radar</button>
+    <button class="tg" aria-pressed="true" data-p="players">Jugadores</button>
+    <button class="tg" aria-pressed="true" data-p="item">Item</button>
+  </div>
+  <div class="sep"></div>
+  <div class="ctl"><span>Monitor</span><select id="mon"></select></div>
+  <div class="ctl"><span>Opacidad</span><input type="range" id="op" min="0" max="100" value="100"></div>
+  <div class="sep"></div>
+  <button class="tg" id="passthrough" aria-pressed="false" title="Pasar clics al juego — atraviesa el overlay (Ctrl+Alt+O)">🎮 Clic al juego</button>
+  <button class="tg" id="quit" title="Cerrar overlay">✕</button>
+</div>
+
+<div class="panel" id="p-radar" style="top:78px;left:20px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Radar</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="radar-zone">—</span>
+    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__body">
+    <canvas id="radar" width="296" height="296"></canvas>
+    <button class="cfg-toggle" id="rad-cfg-toggle" aria-expanded="true">Configuración ▾</button>
+    <div class="radar-cfg" id="radar-cfg">
+      <div class="legend" id="radar-layers">
+        <label><input type="checkbox" data-layer="resources"><span class="swatch" style="background:#3ba55d"></span>Recursos</label>
+        <label><input type="checkbox" data-layer="mobs"><span class="swatch" style="background:#d9822b"></span>Mobs</label>
+        <label><input type="checkbox" data-layer="players"><span class="swatch" style="background:#ed4245"></span>Jugadores</label>
+        <label><input type="checkbox" data-layer="zones"><span class="swatch" style="background:#5aa9c4"></span>Zonas</label>
+        <label><input type="checkbox" data-layer="mists"><span class="swatch" style="background:#b06cf6"></span>Mists</label>
+        <label><input type="checkbox" data-layer="chests"><span class="swatch" style="background:#e7c14d"></span>Cofres</label>
+      </div>
+      <div class="cfg-row"><span class="cfg-lbl">Zoom</span><input type="range" id="rad-zoom" min="0.3" max="3" step="0.1"></div>
+      <div class="cfg-row"><span class="cfg-lbl">Iconos</span><input type="range" id="rad-icon" min="0.5" max="2" step="0.1"></div>
+      <div class="cfg-row"><label class="cfg-check"><input type="checkbox" id="rad-showmap"> Mapa de fondo</label></div>
+      <div class="cfg-row"><label class="cfg-check"><input type="checkbox" id="rad-alert-flash"> Alerta enemigo (parpadeo)</label></div>
+      <div class="cfg-row"><label class="cfg-check"><input type="checkbox" id="rad-alert-sound"> Sonido de alerta</label></div>
+      <div class="cfg-row"><button class="cfg-test-btn" id="rad-alert-test">🔔 Probar alerta</button></div>
+      <div class="cfg-row"><span class="cfg-lbl">Material</span><div class="minitoggles" id="rad-mats">
+        <button data-mat="log" title="Madera">🪵</button><button data-mat="rock" title="Piedra">🪨</button><button data-mat="fiber" title="Fibra">🧵</button><button data-mat="hide" title="Piel">🦌</button><button data-mat="ore" title="Mineral">⛏️</button></div></div>
+      <div class="cfg-row"><span class="cfg-lbl">Tier</span><div class="minitoggles" id="rad-tiers">
+        <button data-tier="1">1</button><button data-tier="2">2</button><button data-tier="3">3</button><button data-tier="4">4</button><button data-tier="5">5</button><button data-tier="6">6</button><button data-tier="7">7</button><button data-tier="8">8</button></div></div>
+      <div class="cfg-row"><span class="cfg-lbl">Ench.</span><div class="minitoggles" id="rad-ench">
+        <button data-ench="0">0</button><button data-ench="1">1</button><button data-ench="2">2</button><button data-ench="3">3</button><button data-ench="4">4</button></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-players" style="bottom:20px;left:20px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Jugadores cercanos</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="pl-count">0</span>
+    <span class="conn" id="pl-conn" title="Conexión con OpenRadar"></span>
+    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__body">
+    <div class="ally-add"><input id="ally-input" placeholder="ocultar aliado por nombre…" autocomplete="off"><button id="ally-btn" title="Ocultar este nombre">+</button></div>
+    <div class="plist" id="plist">
+      <div class="pl-empty" id="pl-empty">Conectando con OpenRadar…</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-item" style="top:78px;right:20px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Item</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="item-sub">Mercado · Crafteo</span>
+    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__body">
+    <input class="search" id="item-search" placeholder="Buscar item… (capa, arco, estofado)" autocomplete="off">
+    <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
+      <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
+    <div class="market-results" id="item-results"></div>
+    <div class="tabs" id="item-tabs">
+      <button class="tab-btn active" data-tab="market">Mercado</button>
+      <button class="tab-btn" data-tab="craft">Crafteo</button>
+      <button class="tab-btn" data-tab="compare">Comparar</button>
+      <button class="tab-btn" data-tab="scan">Escáner</button>
+    </div>
+    <div id="tab-market"></div>
+    <div id="tab-craft" hidden>
+      <div class="craft-bonus" id="craft-bonus"></div>
+      <div class="craft-cfg">
+        <div class="cfg-row"><span class="cfg-lbl">Cantidad</span><input type="number" id="craft-qty" value="1" min="1"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Retorno</span><select id="craft-return">
+          <option value="15.2">Sin foco (15%)</option>
+          <option value="23.1" selected>Sin foco + ciudad (23%)</option>
+          <option value="35.9">Con foco (36%)</option>
+          <option value="43.5">Con foco + ciudad (44%)</option></select></div>
+        <div class="cfg-row"><span class="cfg-lbl">Tax %</span><input type="number" id="craft-tax" value="4" min="0" max="100" step="0.5"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Fee/craft</span><input type="number" id="craft-fee" value="0" min="0"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Ciudad def.</span><select id="craft-city">
+          <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+        <label class="cfg-check"><input type="checkbox" id="craft-mat-order"> Comprar mats con orden (+2,5%)</label>
+        <label class="cfg-check"><input type="checkbox" id="craft-sell-order" checked> Vender producto con orden (+2,5%)</label>
+      </div>
+      <div id="craft-out"></div>
+    </div>
+    <div id="tab-compare" hidden>
+      <div class="cfg-row"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="precio que te dan"></div>
+      <div class="cmp-note">Compara ese precio (p. ej. del Black Market) con lo que cuesta craftearlo. Usa la config de Crafteo (retorno, ciudad, fee…).</div>
+      <div id="cmp-result"></div>
+    </div>
+    <div id="tab-scan" hidden>
+      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Ench</span><select id="scan-ench"><option selected>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Retorno</span><select id="scan-return">
+        <option value="15.2">Sin foco (15%)</option><option value="23.1" selected>Sin foco + ciudad (23%)</option><option value="35.9">Con foco (36%)</option><option value="43.5">Con foco + ciudad (44%)</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Comprar mats en</span><select id="scan-city"><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option></select></div>
+      <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
+      <div class="cmp-note">Compara craftear vs vender al Black Market (gear: armas, armaduras, capas, bolsas). Valida siempre en el juego.</div>
+      <div id="scan-result"></div>
+    </div>
+  </div>
+</div>
+
+<div id="radar-alert"></div>
+<script src="renderer.js"></script>
+<script src="players-feed.js"></script>
+<script src="radar-feed.js"></script>
+<script src="item-feed.js"></script>
+</body>
+</html>

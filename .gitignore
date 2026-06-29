@@ -1,0 +1,9 @@
+node_modules/
+.venv/
+dist/
+build.log
+*.log
+tools-build.ps1
+party-sniff.log
+run.err.log
+.DS_Store
