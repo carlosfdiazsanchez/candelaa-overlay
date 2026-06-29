@@ -198,3 +198,66 @@ ipcMain.handle('scan-prices', async (_e, ids, locations) => {
   }
   return out;
 });
+
+// --- Candelaa backend: token auth + admin -------------------------------
+const API_BASE = process.env.CANDELAA_API || 'https://api.candelaa.dently.es';
+const tokenFile = () => path.join(app.getPath('userData'), 'token.json');
+function readStoredToken() { try { return JSON.parse(fs.readFileSync(tokenFile(), 'utf8')).token || null; } catch (_) { return null; } }
+function writeStoredToken(t) { try { fs.writeFileSync(tokenFile(), JSON.stringify({ token: t })); } catch (_) {} }
+function clearStoredToken() { try { fs.unlinkSync(tokenFile()); } catch (_) {} }
+
+async function apiCall(pathname, { method = 'GET', token, body } = {}) {
+  const headers = {};
+  if (token) headers['x-candelaa-token'] = token;
+  let payload;
+  if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+  const res = await fetch(API_BASE + pathname, { method, headers, body: payload, signal: AbortSignal.timeout(15000) });
+  let data = null; try { data = await res.json(); } catch (_) {}
+  return { status: res.status, ok: res.ok, data };
+}
+
+ipcMain.handle('get-token', () => readStoredToken());
+ipcMain.handle('clear-token', () => { clearStoredToken(); return true; });
+
+// Verifica el token (el dado o el guardado). Si vale, lo persiste.
+ipcMain.handle('auth-verify', async (_e, token) => {
+  const t = (token || readStoredToken() || '').trim();
+  if (!t) return { valid: false, reason: 'no_token' };
+  try {
+    const r = await apiCall('/auth/verify', { method: 'POST', token: t });
+    if (r.ok && r.data && r.data.valid) { writeStoredToken(t); return { valid: true, name: r.data.name, is_admin: !!r.data.is_admin }; }
+    return { valid: false, reason: (r.data && r.data.error) || ('http_' + r.status) };
+  } catch (e) { return { valid: false, reason: 'network', message: e.message }; }
+});
+
+// admin (usa el token guardado, el backend exige is_admin)
+ipcMain.handle('admin-list', async () => (await apiCall('/admin/tokens', { token: readStoredToken() })).data);
+ipcMain.handle('admin-issue', async (_e, name, note) => (await apiCall('/admin/tokens', { method: 'POST', token: readStoredToken(), body: { name, note } })).data);
+ipcMain.handle('admin-action', async (_e, target, action) => {
+  const token = readStoredToken();
+  if (action === 'delete') return (await apiCall('/admin/tokens/' + encodeURIComponent(target), { method: 'DELETE', token })).data;
+  return (await apiCall('/admin/tokens/' + encodeURIComponent(target) + '/' + action, { method: 'POST', token })).data;
+});
+
+// --- Npcap: detectar y (vía gratis) descargar + lanzar instalador oficial ---
+ipcMain.handle('npcap-status', () => {
+  try { return fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'Npcap')); } catch (_) { return false; }
+});
+ipcMain.handle('npcap-install', async () => {
+  const url = 'https://npcap.com/dist/npcap-1.84.exe';
+  const tmp = path.join(app.getPath('temp'), 'npcap-installer.exe');
+  const download = (u, depth = 0) => new Promise((resolve, reject) => {
+    if (depth > 5) return reject(new Error('too_many_redirects'));
+    https.get(u, { timeout: 30000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) { res.resume(); return resolve(download(res.headers.location, depth + 1)); }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('http_' + res.statusCode)); }
+      const file = fs.createWriteStream(tmp);
+      res.pipe(file); file.on('finish', () => file.close(() => resolve(tmp)));
+    }).on('error', reject).on('timeout', function () { this.destroy(); reject(new Error('timeout')); });
+  });
+  try {
+    const exe = await download(url);
+    spawn(exe, [], { detached: true, stdio: 'ignore' }).unref(); // su propio UAC
+    return { launched: true };
+  } catch (e) { return { launched: false, error: e.message, url }; }
+});

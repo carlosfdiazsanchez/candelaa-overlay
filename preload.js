@@ -15,4 +15,15 @@ contextBridge.exposeInMainWorld('overlay', {
   getVersion: () => ipcRenderer.invoke('get-version'),
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, s) => cb(s)),
   installUpdate: () => ipcRenderer.send('install-update'),
+  // auth / token
+  getToken: () => ipcRenderer.invoke('get-token'),
+  authVerify: (token) => ipcRenderer.invoke('auth-verify', token),
+  clearToken: () => ipcRenderer.invoke('clear-token'),
+  // admin
+  adminList: () => ipcRenderer.invoke('admin-list'),
+  adminIssue: (name, note) => ipcRenderer.invoke('admin-issue', name, note),
+  adminAction: (token, action) => ipcRenderer.invoke('admin-action', token, action),
+  // npcap
+  npcapStatus: () => ipcRenderer.invoke('npcap-status'),
+  npcapInstall: () => ipcRenderer.invoke('npcap-install'),
 });

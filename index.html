@@ -47,6 +47,38 @@
   #bar .upd-box.ready{background:#2ea043;color:#fff;cursor:pointer;animation:updpulse 1.6s ease-in-out infinite;}
   #bar .upd-box.ready:hover{background:#3fb950;}
   @keyframes updpulse{0%,100%{box-shadow:0 0 0 0 rgba(46,160,67,.5);}50%{box-shadow:0 0 0 5px rgba(46,160,67,0);}}
+  #bar .auth-user{font-size:11px;opacity:.7;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* pantalla de acceso por token */
+  #auth-gate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(10,11,13,0.82);backdrop-filter:blur(2px);}
+  .gate-card{width:340px;background:var(--panel-solid,#16171b);border:1px solid var(--border-strong,rgba(255,255,255,.12));border-radius:14px;padding:26px 24px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.6);}
+  .gate-logo{font-size:40px;line-height:1;}
+  .gate-title{font-weight:800;font-size:18px;margin-top:8px;letter-spacing:.3px;}
+  .gate-msg{font-size:12px;opacity:.7;margin:10px 0 14px;}
+  #gate-input{width:100%;box-sizing:border-box;background:#0e0f12;color:var(--text,#f2f3f5);border:1px solid var(--border-strong,rgba(255,255,255,.14));border-radius:8px;padding:9px 11px;font:inherit;font-size:13px;text-align:center;letter-spacing:1px;text-transform:uppercase;}
+  #gate-input:focus{outline:none;border-color:#e8623a;}
+  #gate-btn{width:100%;margin-top:10px;background:#e8623a;color:#fff;border:none;border-radius:8px;padding:10px;font:inherit;font-weight:700;cursor:pointer;}
+  #gate-btn:hover{background:#f2754f;} #gate-btn:disabled{opacity:.6;cursor:default;}
+  .gate-err{color:#ff7b72;font-size:11px;min-height:14px;margin-top:10px;}
+  /* aviso npcap */
+  #npcap-notice{position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:9000;background:rgba(40,30,10,.95);border:1px solid #b5891f;color:#ffd98a;font-size:12px;padding:7px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;}
+  #npcap-notice button{background:#b5891f;color:#1a1a1a;border:none;border-radius:6px;padding:4px 9px;font:inherit;font-weight:700;cursor:pointer;}
+  #npcap-state{opacity:.85;}
+  /* panel admin */
+  .admin-issue{display:flex;gap:6px;margin-bottom:8px;}
+  .admin-issue input{flex:1;min-width:0;background:var(--panel-solid,#16171b);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px;}
+  .admin-issue button{flex:0 0 auto;background:#e8623a;color:#fff;border:none;border-radius:6px;padding:5px 10px;font:inherit;font-weight:700;cursor:pointer;}
+  #admin-new{font-size:11px;margin-bottom:8px;}
+  #admin-new .newtok{background:rgba(46,160,67,.15);border:1px solid #2ea043;border-radius:6px;padding:7px 9px;color:#7ee787;word-break:break-all;}
+  .alist{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;}
+  .arow{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:11px;}
+  .arow .atop{display:flex;align-items:center;gap:6px;}
+  .arow .aname{font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .arow .atok{opacity:.6;font-size:10px;word-break:break-all;}
+  .arow .abadge{font-size:9px;padding:1px 5px;border-radius:4px;}
+  .abadge.active{background:rgba(46,160,67,.2);color:#7ee787;} .abadge.revoked{background:rgba(248,81,73,.2);color:#ff7b72;} .abadge.blocked{background:rgba(210,153,34,.2);color:#e3b341;}
+  .arow .aacts{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+  .arow .aacts button{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font:inherit;font-size:10px;cursor:pointer;}
+  .arow .aacts button:hover{background:rgba(255,255,255,.14);}
   #bar .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
   .sep{width:1px;height:22px;background:var(--border-strong);}
   .toggles{display:flex;gap:4px;}
@@ -217,9 +249,27 @@
   <div class="ctl"><span>Opacidad</span><input type="range" id="op" min="0" max="100" value="100"></div>
   <div class="sep"></div>
   <button class="tg" id="passthrough" aria-pressed="false" title="Pasar clics al juego — atraviesa el overlay (Ctrl+Alt+O)">🎮 Clic al juego</button>
+  <span class="auth-user" id="auth-user" title="Usuario del token"></span>
+  <button class="tg" id="btn-admin" title="Gestionar tokens (admin)" hidden>🛡️ Tokens</button>
+  <button class="tg" id="btn-token" title="Cambiar token de acceso">🔑</button>
   <button class="upd-box" id="app-upd" hidden></button>
   <button class="tg" id="quit" title="Cerrar overlay">✕</button>
 </div>
+
+<!-- Pantalla de acceso por token (bloquea todo hasta validar) -->
+<div id="auth-gate" hidden>
+  <div class="gate-card">
+    <div class="gate-logo">🔥</div>
+    <div class="gate-title">Candelaa&nbsp;Overlay</div>
+    <div class="gate-msg" id="gate-msg">Introduce tu token de acceso</div>
+    <input id="gate-input" type="text" placeholder="CDL-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false">
+    <button id="gate-btn">Entrar</button>
+    <div class="gate-err" id="gate-err"></div>
+  </div>
+</div>
+
+<!-- Aviso de Npcap faltante -->
+<div id="npcap-notice" hidden>⚠️ Falta <b>Npcap</b> (necesario para el radar) <button id="npcap-btn">Instalar ahora</button><span id="npcap-state"></span></div>
 
 <div class="panel" id="p-radar" style="top:78px;left:20px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Radar</span>
@@ -250,6 +300,17 @@
       <div class="cfg-row"><span class="cfg-lbl">Ench.</span><div class="minitoggles" id="rad-ench">
         <button data-ench="0">0</button><button data-ench="1">1</button><button data-ench="2">2</button><button data-ench="3">3</button><button data-ench="4">4</button></div></div>
     </div>
+  </div>
+</div>
+
+<div class="panel" id="p-admin" hidden style="top:78px;left:340px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Tokens (admin)</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="admin-count">0</span>
+    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__body">
+    <div class="admin-issue"><input id="admin-name" placeholder="nombre del usuario…" autocomplete="off"><button id="admin-add">+ Emitir</button></div>
+    <div id="admin-new"></div>
+    <div class="alist" id="alist"><div class="pl-empty">Cargando tokens…</div></div>
   </div>
 </div>
 

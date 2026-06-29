@@ -7,6 +7,8 @@
   let passthrough = false;   // "clic al juego": los paneles se atraviesan
   let lastIgnore = null;     // último estado enviado a setIgnoreMouseEvents
   let dragging = false;      // arrastrando un panel/barra
+  let gateActive = false;    // pantalla de token visible (captura todo el input)
+  const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
   function applyIgnore(ignore) {
     if (ignore !== lastIgnore) { lastIgnore = ignore; window.overlay.setIgnore(ignore); }
@@ -153,7 +155,8 @@
   // En vacío -> deja pasar los clics al juego.
   function evalAt(target) {
     if (dragging) return;
-    const interactive = target.closest('#bar') || (!passthrough && target.closest('.panel'));
+    if (gateActive) { applyIgnore(false); return; }   // pantalla de token: captura todo
+    const interactive = target.closest('#bar') || target.closest('#npcap-notice') || (!passthrough && target.closest('.panel'));
     applyIgnore(!interactive);
   }
   document.addEventListener('mousemove', (e) => evalAt(e.target), true);
@@ -166,4 +169,131 @@
   window.overlay.onTogglePassthrough(togglePassthrough);
 
   { const st = loadState(); if (st.passthrough) { passthrough = true; applyPassthrough(); } }
+
+  // ================= ACCESO POR TOKEN =================
+  const gate = document.getElementById('auth-gate');
+  const gateInput = document.getElementById('gate-input');
+  const gateBtn = document.getElementById('gate-btn');
+  const gateErr = document.getElementById('gate-err');
+  const gateMsg = document.getElementById('gate-msg');
+  const authUserEl = document.getElementById('auth-user');
+  const btnAdmin = document.getElementById('btn-admin');
+  const pAdmin = document.getElementById('p-admin');
+  let isAdmin = false;
+
+  function showGate(msg) {
+    gateActive = true; gate.hidden = false;
+    if (msg) gateMsg.textContent = msg;
+    gateErr.textContent = ''; lastIgnore = null; applyIgnore(false);
+    setTimeout(() => { try { gateInput.focus(); } catch (_) {} }, 60);
+  }
+  function hideGate() { gateActive = false; gate.hidden = true; lastIgnore = null; }
+  function setAuthUI(name) {
+    authUserEl.textContent = name ? ('👤 ' + name) : '';
+    btnAdmin.hidden = !isAdmin;
+    if (!isAdmin) { pAdmin.style.display = 'none'; pAdmin.dataset.open = '0'; }
+  }
+  const reasonText = (r) => ({
+    token_invalid: 'Token no válido.', token_revoked: 'Tu token ha sido revocado.',
+    token_blocked: 'Tu token está bloqueado.', no_token: 'Introduce tu token.',
+    network: 'No se pudo conectar con el servidor.',
+  }[r] || ('Error: ' + r));
+  async function verify(token) { try { return await window.overlay.authVerify(token); } catch (_) { return { valid: false, reason: 'network' }; } }
+
+  async function gateSubmit() {
+    const t = (gateInput.value || '').trim();
+    if (!t) { gateErr.textContent = 'Introduce tu token.'; return; }
+    gateBtn.disabled = true; gateErr.textContent = 'Verificando…';
+    const r = await verify(t);
+    gateBtn.disabled = false;
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); hideGate(); gateInput.value = ''; }
+    else { gateErr.textContent = reasonText(r.reason); }
+  }
+  gateBtn.addEventListener('click', gateSubmit);
+  gateInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateSubmit(); });
+
+  // botón "cambiar token" de la barra
+  document.getElementById('btn-token').addEventListener('click', async () => {
+    await window.overlay.clearToken(); isAdmin = false; setAuthUI('');
+    showGate('Introduce tu token de acceso');
+  });
+
+  // arranque: SIEMPRE comprueba el token guardado
+  showGate('Comprobando acceso…');
+  (async function bootAuth() {
+    const stored = await window.overlay.getToken();
+    if (!stored) { showGate('Introduce tu token de acceso'); return; }
+    const r = await verify(stored);
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); hideGate(); }
+    else if (r.reason === 'network') { showGate('Sin conexión con el servidor. Reintenta con tu token.'); }
+    else { showGate(reasonText(r.reason) + ' Introduce uno válido.'); }
+  })();
+
+  // re-verificación periódica: si revocas el token, se bloquea en ~10 min
+  setInterval(async () => {
+    if (gateActive) return;
+    const r = await verify(await window.overlay.getToken());
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); }
+    else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); showGate('Sesión cerrada: ' + reasonText(r.reason)); }
+  }, 10 * 60 * 1000);
+
+  // ================= PANEL ADMIN (solo is_admin) =================
+  makeDraggable(pAdmin, pAdmin.querySelector('.panel__head'));
+  const alist = document.getElementById('alist');
+  const adminCount = document.getElementById('admin-count');
+  const ACT_LABEL = { revoke: 'Revocar', block: 'Bloquear', activate: 'Reactivar', delete: 'Borrar' };
+
+  async function renderAdmin() {
+    alist.innerHTML = '<div class="pl-empty">Cargando…</div>';
+    const res = await window.overlay.adminList();
+    const tokens = (res && res.tokens) || [];
+    adminCount.textContent = String(tokens.length);
+    if (!tokens.length) { alist.innerHTML = '<div class="pl-empty">Sin tokens emitidos.</div>'; return; }
+    alist.innerHTML = tokens.map((t) => {
+      const acts = [];
+      if (!t.is_admin) {
+        if (t.status === 'active') { acts.push('revoke', 'block'); } else { acts.push('activate'); }
+        acts.push('delete');
+      }
+      const btns = acts.map((a) => `<button data-tok="${esc(t.token)}" data-act="${a}">${ACT_LABEL[a]}</button>`).join('');
+      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span><span class="abadge ${t.status}">${t.status}</span></div><div class="atok">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
+    }).join('');
+  }
+  btnAdmin.addEventListener('click', () => {
+    pAdmin.hidden = false;
+    const open = pAdmin.dataset.open === '1';
+    if (open) { pAdmin.style.display = 'none'; pAdmin.dataset.open = '0'; }
+    else { pAdmin.style.display = ''; pAdmin.dataset.open = '1'; renderAdmin(); }
+  });
+  document.getElementById('admin-add').addEventListener('click', async () => {
+    const inp = document.getElementById('admin-name');
+    const name = (inp.value || '').trim(); if (!name) return;
+    const r = await window.overlay.adminIssue(name); inp.value = '';
+    if (r && r.token) document.getElementById('admin-new').innerHTML = `<div class="newtok">Token para <b>${esc(r.name)}</b>:<br>${esc(r.token)}<br><small>Cópialo y pásaselo a esa persona.</small></div>`;
+    renderAdmin();
+  });
+  alist.addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const { tok, act } = b.dataset;
+    if (act === 'delete' && !window.confirm('¿Borrar este token? No se puede deshacer.')) return;
+    await window.overlay.adminAction(tok, act);
+    renderAdmin();
+  });
+
+  // ================= NPCAP (auto-descarga, vía gratis) =================
+  (async function npcapCheck() {
+    const notice = document.getElementById('npcap-notice');
+    const btn = document.getElementById('npcap-btn');
+    const state = document.getElementById('npcap-state');
+    try {
+      if (await window.overlay.npcapStatus()) { notice.hidden = true; return; }
+      notice.hidden = false;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; state.textContent = ' descargando…';
+        const r = await window.overlay.npcapInstall();
+        if (r && r.launched) state.textContent = ' instalador abierto: acepta el UAC y dale a Siguiente';
+        else { state.textContent = ' falló; instala manual desde npcap.com'; btn.disabled = false; }
+      });
+    } catch (_) {}
+  })();
 })();
