@@ -233,6 +233,60 @@
   .plist::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box;}
   .plist{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
 
+  /* copiar nombre al portapapeles */
+  .copyable{cursor:copy;}
+  .copyable:hover{text-decoration:underline dotted;text-underline-offset:2px;}
+  #copy-toast{position:fixed;left:50%;bottom:46px;transform:translateX(-50%) translateY(8px);
+    z-index:100000;background:rgba(20,26,33,.96);border:1px solid rgba(90,169,196,.5);color:#cdeaf2;
+    font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;}
+  #copy-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* pestaña Registro (ledger) */
+  .led-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;}
+  .led-kpi{background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:7px 9px;}
+  .led-kpi .k{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);font-weight:600;}
+  .led-kpi .v{font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums;}
+  .led-lot{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--elev);overflow:hidden;}
+  .led-lot.loss{border-color:rgba(237,66,69,.55);box-shadow:inset 0 0 0 1px rgba(237,66,69,.25);}
+  .led-lot.done{opacity:.6;}
+  .led-head{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;}
+  .led-head .nm{flex:1;min-width:0;font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .led-head .pl{font-family:var(--mono);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .led-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:2px 6px;border-radius:999px;flex:0 0 auto;}
+  .led-badge.open{background:rgba(90,169,196,.16);color:#9fd2e0;}
+  .led-badge.partial{background:rgba(255,210,122,.16);color:#ffd27a;}
+  .led-badge.sold{background:rgba(59,165,93,.16);color:#86e0a3;}
+  .led-badge.warn{background:rgba(237,66,69,.18);color:#ff9a9c;}
+  .led-body{padding:0 10px 10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px;}
+  .led-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;}
+  .led-f{display:flex;flex-direction:column;gap:3px;}
+  .led-f .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);font-weight:600;}
+  .led-f input,.led-f select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;font-variant-numeric:tabular-nums;}
+  .led-res{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;font-size:11px;}
+  .led-res .r{background:var(--panel-solid);border:1px solid var(--border);border-radius:6px;padding:5px 7px;}
+  .led-res .r .k{font-size:8.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--faint);}
+  .led-res .r .v{font-family:var(--mono);font-size:12px;font-weight:700;margin-top:1px;font-variant-numeric:tabular-nums;}
+  .led-mats{display:flex;flex-direction:column;gap:4px;}
+  .led-mat{display:flex;align-items:center;gap:5px;}
+  .led-mat .mn{flex:1;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .led-mat input{width:62px;flex:0 0 auto;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:5px;padding:3px 5px;font:inherit;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;}
+  .led-mat .x{flex:0 0 auto;cursor:pointer;color:var(--faint);width:18px;text-align:center;border-radius:4px;}
+  .led-mat .x:hover{background:rgba(237,66,69,.18);color:#ff9a9c;}
+  .led-row-btns{display:flex;gap:6px;flex-wrap:wrap;}
+  .led-mini{appearance:none;border:1px solid var(--border);background:var(--panel-solid);color:var(--dim);border-radius:6px;padding:4px 9px;font:inherit;font-size:11px;cursor:pointer;}
+  .led-mini:hover{color:var(--text);border-color:var(--border-strong);}
+  .led-mini.del:hover{border-color:rgba(237,66,69,.5);color:#ff9a9c;}
+  .led-batch{font-size:10.5px;color:var(--faint);}
+  .led-batch b{color:#9fd2e0;}
+  .led-actions{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;}
+  .led-btn{appearance:none;border:1px solid rgba(90,169,196,.45);background:rgba(90,169,196,.18);color:#cdeaf2;font:inherit;font-size:12px;font-weight:600;padding:7px 11px;border-radius:7px;cursor:pointer;}
+  .led-btn:hover{background:rgba(90,169,196,.28);}
+  .led-btn.ghost{background:var(--elev);border-color:var(--border);color:var(--dim);}
+  .led-btn.ghost:hover{background:var(--elev-2);color:var(--text);}
+  .cr-reg{width:100%;margin-top:8px;appearance:none;border:1px solid rgba(59,165,93,.45);background:rgba(59,165,93,.14);color:#86e0a3;font:inherit;font-size:12px;font-weight:600;padding:7px;border-radius:7px;cursor:pointer;}
+  .cr-reg:hover{background:rgba(59,165,93,.22);}
+
   #radar-alert{position:fixed;inset:0;pointer-events:none;z-index:99999;box-shadow:inset 0 0 100px 26px rgba(237,66,69,.7);opacity:0;}
   .cfg-test-btn{width:100%;background:var(--elev);border:1px solid var(--border);color:var(--dim);font:inherit;font-size:11px;padding:5px;border-radius:6px;cursor:pointer;}
   .cfg-test-btn:hover{background:var(--elev-2);color:var(--text);}
@@ -346,6 +400,7 @@
       <button class="tab-btn" data-tab="craft">Crafteo</button>
       <button class="tab-btn" data-tab="compare">Comparar</button>
       <button class="tab-btn" data-tab="scan">Escáner</button>
+      <button class="tab-btn" data-tab="ledger">Registro</button>
     </div>
     <div id="tab-market"></div>
     <div id="tab-craft" hidden>
@@ -379,6 +434,16 @@
       <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
       <div class="cmp-note">Mejores items para craftear y vender, ordenados por <b>€/día</b> (ganancia × volumen). Prueba encantamientos 0-3 y muestra el mejor por item. Retorno asumido ~23% (sin foco + ciudad); afina el dato exacto en Crafteo. Valida siempre en el juego.</div>
       <div id="scan-result"></div>
+    </div>
+    <div id="tab-ledger" hidden>
+      <div id="led-summary"></div>
+      <div id="led-list"></div>
+      <div class="led-actions">
+        <button class="led-btn" id="led-add">+ Nuevo lote manual</button>
+        <button class="led-btn ghost" id="led-export" title="Descarga un JSON con todo el registro">Exportar</button>
+        <button class="led-btn ghost" id="led-clear-sold" title="Quita los lotes totalmente vendidos">Limpiar vendidos</button>
+      </div>
+      <div class="cmp-note">Registro real de tus lotes: lo que gastaste en materiales + tasa de crafteo, las unidades que de verdad salieron (incluye el retorno) y lo que vendiste. El P&amp;L suma en el resumen de arriba. Mercado negro = venta inmediata (solo impuesto); Mercado = orden (impuesto + 2,5% setup).</div>
     </div>
   </div>
 </div>

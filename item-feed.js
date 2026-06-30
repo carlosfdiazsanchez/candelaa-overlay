@@ -13,7 +13,7 @@
 
   let items = [], nameById = {}, recipes = {};
   let currentBase = null, currentName = '', currentEnch = 0;
-  let marketData = null, craftPriceMap = {}, craftVolMap = {};
+  let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {};
 
   const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -29,6 +29,35 @@
   const roiTxt = (n) => (n == null || isNaN(n) ? '—' : Math.round(n) + '%');
   // cantidad exacta de unidades (separador de miles, sin abreviar): 3.200
   const fmtInt = (n) => (n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-ES'));
+
+  // ---------- copiar nombre al portapapeles (click en cualquier nombre) ----------
+  let toastEl = null, toastT = null;
+  function toast(msg) {
+    if (!toastEl) { toastEl = document.createElement('div'); toastEl.id = 'copy-toast'; document.body.appendChild(toastEl); }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1400);
+  }
+  function copyText(txt) {
+    if (!txt) return;
+    const done = () => toast('📋 Copiado: ' + txt);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fallback); }
+      else fallback();
+    } catch (e) { fallback(); }
+    function fallback() {
+      const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (_) { }
+      document.body.removeChild(ta);
+    }
+  }
+  // delegado: cualquier elemento con [data-copy] dentro del panel Item copia su nombre al click
+  document.getElementById('p-item').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-copy]'); if (!t) return;
+    e.stopPropagation();
+    copyText(t.getAttribute('data-copy'));
+  });
 
   Promise.all([window.overlay.itemsIndex(), window.overlay.recipesIndex()]).then(([it, rc]) => {
     items = it || []; recipes = rc || {};
@@ -98,10 +127,11 @@
   document.querySelectorAll('#item-tabs .tab-btn').forEach((b) => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#item-tabs .tab-btn').forEach((x) => x.classList.toggle('active', x === b));
-      ['market', 'craft', 'compare', 'scan'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
+      ['market', 'craft', 'compare', 'scan', 'ledger'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
       const enchSel = document.getElementById('item-ench');
-      if (enchSel) enchSel.style.display = (b.dataset.tab === 'craft' || b.dataset.tab === 'scan') ? 'none' : '';
+      if (enchSel) enchSel.style.display = (b.dataset.tab === 'craft' || b.dataset.tab === 'scan' || b.dataset.tab === 'ledger') ? 'none' : '';
       if (b.dataset.tab === 'compare') renderCompare();
+      if (b.dataset.tab === 'ledger') renderLedger();
     });
   });
 
@@ -109,7 +139,13 @@
   async function loadMarket() {
     const queryId = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
     tabMarket.innerHTML = '<div class="mempty">Cargando precios…</div>';
-    marketData = await window.overlay.marketPrices(queryId);
+    const [prices, vol] = await Promise.all([
+      window.overlay.marketPrices(queryId),
+      window.overlay.history([queryId], ALL_CITIES, 21),
+    ]);
+    marketData = prices;
+    marketVolMap = {};
+    (vol || []).forEach((r) => { marketVolMap[cityKey(r.city)] = r.daily || 0; });
     renderMarket();
   }
   function renderMarket() {
@@ -121,7 +157,7 @@
     const ago = (ds) => { if (!ds) return ''; const m = Math.round((Date.now() - new Date(ds + 'Z').getTime()) / 60000); return m < 0 ? '' : (m < 60 ? m + 'm' : (m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd')); };
     // Black Market al final (es venta inmediata al NPC, no sitio para comprar)
     rows.sort((a, b) => (a.city === 'Black Market' ? 1 : 0) - (b.city === 'Black Market' ? 1 : 0));
-    tabMarket.innerHTML = '<table><thead><tr><th>Ciudad</th><th>Venta</th><th>Rápida</th><th>Act.</th></tr></thead><tbody>'
+    tabMarket.innerHTML = '<table><thead><tr><th>Ciudad</th><th>Venta</th><th>Rápida</th><th>Vol/día</th><th>Act.</th></tr></thead><tbody>'
       + rows.map((r) => {
         const isBM = r.city === 'Black Market';
         const sp = r.sell_price_min;
@@ -130,9 +166,11 @@
         else if (!isBM && sp > 0 && sp === maxSell) { cls = 'best-sell'; mark = '💰 '; }
         const sellCell = (!isBM && sp > 0) ? `<td class="${cls}">${mark}${fmt(sp)}</td>` : '<td class="faint">—</td>';
         const fast = r.buy_price_max > 0 ? `<td class="${isBM ? 'best-sell' : 'faint'}">${isBM ? '🏴 ' : ''}${fmt(r.buy_price_max)}</td>` : '<td class="faint">—</td>';
-        return `<tr><td class="name">${isBM ? 'Black Mkt' : esc(r.city)}</td>${sellCell}${fast}<td class="faint">${ago(r.sell_price_min_date || r.buy_price_max_date)}</td></tr>`;
+        const vd = marketVolMap[cityKey(r.city)] || 0;
+        const volCell = vd > 0 ? `<td title="Unidades/día que mueve este mercado (estimado, datos de la comunidad)">${fmtInt(vd)}</td>` : '<td class="faint">—</td>';
+        return `<tr><td class="name">${isBM ? 'Black Mkt' : esc(r.city)}</td>${sellCell}${fast}${volCell}<td class="faint">${ago(r.sell_price_min_date || r.buy_price_max_date)}</td></tr>`;
       }).join('')
-      + '</tbody></table><div class="best-hint">🛒 comprar · 💰 vender (orden) · 🏴 Black Market compra al instante</div>'
+      + '</tbody></table><div class="best-hint">🛒 comprar · 💰 vender (orden) · 🏴 Black Market compra al instante · Vol/día = lo que absorbe cada mercado</div>'
       + flipHtml(minSell || 0, maxSell || 0);
     bindFlip();
   }
@@ -273,8 +311,9 @@
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
       const enchTag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
       const ret = returnable(m.nameId) ? 1 : 0;
+      const mnm = nameById[m.nameId] || m.nameId;
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}">`
-        + `<span class="cr-name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${enchTag}</span>`
+        + `<span class="cr-name copyable" data-copy="${esc(mnm)}" title="Clic para copiar el nombre">${m.c}× ${esc(mnm)}${enchTag}</span>`
         + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
         + `<select class="cr-city" title="Ciudad de compra de este material">${opts}</select>`
         + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" value="${Math.round(det)}">`
@@ -295,7 +334,8 @@
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Receta E${e} · elige ciudad y precio por material</div>${matRows}</div>`
       + `<div class="cr-row cr-prod"><span class="cr-name">Vender en ${prodLabel}</span><input class="cr-price" id="cr-prod-price" type="number" data-instant="${bs.instant ? 1 : 0}" value="${Math.round(bs.gross)}"></div>`
       + volLine
-      + '<div id="craft-result" class="craft-total"></div>';
+      + '<div id="craft-result" class="craft-total"></div>'
+      + '<button class="cr-reg" id="cr-register" title="Guarda esta receta y precios como un lote en el Registro para seguir su P&L real">➕ Registrar este lote en el Registro</button>';
     calcResult();
   }
 
@@ -357,7 +397,8 @@
       if (!info.price) missing = true;
       const sub = info.price * m.c; if (returnable(m.nameId)) ret += sub; else non += sub;
       const tag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
-      return `<tr><td class="name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${tag}</td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
+      const mnm = nameById[m.nameId] || m.nameId;
+      return `<tr><td class="name"><span class="copyable" data-copy="${esc(mnm)}" title="Clic para copiar el nombre">${m.c}× ${esc(mnm)}${tag}</span></td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
     }).join('');
     let netMat = ret * (1 - returnR) + non;
     if (matOrder) netMat *= 1.025;
@@ -444,7 +485,7 @@
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellMode === 'bm' ? '🏴 Black Market' : esc(r.city);
-        return `<tr><td class="name">${esc(nm)}${r.e > 0 ? ' <span class="enchtag">.' + r.e + '</span>' : ''}<br><span class="faint" style="font-size:10px">${where} · ROI ${roiTxt(r.roi)} · inv/día ${fmt(r.netCost * r.vol)}</span></td>`
+        return `<tr><td class="name"><span class="copyable" data-copy="${esc(nm)}" title="Clic para copiar el nombre">${esc(nm)}</span>${r.e > 0 ? ' <span class="enchtag">.' + r.e + '</span>' : ''}<br><span class="faint" style="font-size:10px">${where} · ROI ${roiTxt(r.roi)} · inv/día ${fmt(r.netCost * r.vol)}</span></td>`
           + `<td class="silver">${fmt(r.netCost)}</td><td class="silver">${fmt(r.price)}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
           + `<td class="${r.vol > 0 ? '' : 'faint'}">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
@@ -472,4 +513,186 @@
   ['craft-tax', 'craft-fee', 'craft-qty'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { if (currentBase) calcResult(); }); });
   ['craft-return', 'craft-mat-order', 'craft-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) calcResult(); }); });
   document.getElementById('craft-city').addEventListener('change', () => { if (currentBase) renderCraft(); });
+
+  // ================= REGISTRO (ciclo de vida y P&L real) =================
+  const LED_KEY = 'candelaa-ledger-v1';
+  const LED_TAX = 0.04, LED_SETUP = 0.025, LED_BATCH = 0.2; // premium 4% + setup 2,5%; tandas ~20% del vol/día
+  let ledger = [];
+  try { const raw = localStorage.getItem(LED_KEY); if (raw) ledger = JSON.parse(raw) || []; } catch (e) { ledger = []; }
+  const ledgerSave = () => { try { localStorage.setItem(LED_KEY, JSON.stringify(ledger)); } catch (e) { } };
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const lotRetention = (ch) => (ch === 'market' ? LED_TAX + LED_SETUP : LED_TAX);
+
+  function computeLot(lot) {
+    const mats = Array.isArray(lot.mats) ? lot.mats : [];
+    const matCost = mats.reduce((s, m) => s + (+m.qty || 0) * (+m.price || 0), 0);
+    const fee = +lot.fee || 0, byprod = +lot.byprod || 0;
+    const produced = +lot.produced || 0, sell = +lot.sell || 0;
+    let sold = +lot.sold || 0; sold = Math.min(Math.max(sold, 0), produced);
+    const remaining = produced - sold;
+    const costTotal = matCost + fee - byprod;
+    const costPerUnit = produced > 0 ? costTotal / produced : null;
+    const unitNet = sell * (1 - lotRetention(lot.channel));
+    const unitProfit = costPerUnit == null ? null : unitNet - costPerUnit;
+    const profitRealized = unitProfit == null ? 0 : unitProfit * sold;
+    const profitPending = unitProfit == null ? 0 : unitProfit * remaining;
+    const profitTotal = profitRealized + profitPending;
+    const netRemaining = unitNet * remaining;
+    const roi = costTotal > 0 ? (profitTotal / costTotal) * 100 : null;
+    const pctSold = produced > 0 ? (sold / produced) * 100 : 0;
+    const status = (produced > 0 && sold >= produced) ? 'sold' : (sold > 0 ? 'partial' : 'open');
+    const loss = (unitProfit != null && unitProfit < 0);
+    const volday = +lot.volday || 0;
+    const perBatch = volday > 0 ? Math.max(1, Math.round(volday * LED_BATCH)) : 0;
+    const batches = (volday > 0 && remaining > 0) ? Math.max(1, Math.ceil(remaining / perBatch)) : 0;
+    return { matCost, costTotal, costPerUnit, unitProfit, profitRealized, profitPending, profitTotal, netRemaining, roi, pctSold, status, loss, remaining, produced, sold, perBatch, batches };
+  }
+
+  const pcCls = (v) => (v == null ? '' : (v >= 0 ? 'up' : 'down'));
+  const signed = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + fmt(v));
+  function ledBadge(c) {
+    if (c.loss) return '<span class="led-badge warn">⚠ pérdida</span>';
+    const t = { open: 'abierto', partial: 'parcial ' + Math.round(c.pctSold) + '%', sold: 'vendido' };
+    return `<span class="led-badge ${c.status}">${t[c.status]}</span>`;
+  }
+  const batchInner = (c) => (c.batches > 0
+    ? `Soltar en <b>${c.batches} ${c.batches === 1 ? 'tanda' : 'tandas'}</b> · ≈${fmtInt(c.perBatch)}/tanda (te quedan ${fmtInt(c.remaining)})`
+    : '');
+  const ledResCells = (c) => `<div class="r"><div class="k">Coste/u</div><div class="v">${c.costPerUnit == null ? '—' : fmt(c.costPerUnit)}</div></div>`
+    + `<div class="r"><div class="k">Bº/u</div><div class="v ${pcCls(c.unitProfit)}">${signed(c.unitProfit)}</div></div>`
+    + `<div class="r"><div class="k">ROI</div><div class="v ${pcCls(c.roi)}">${roiTxt(c.roi)}</div></div>`;
+
+  function ledInp(lbl, f, v, i) { return `<label class="led-f"><span class="lbl">${lbl}</span><input data-lf="${f}" data-i="${i}" type="number" min="0" step="any" value="${v == null || v === '' ? '' : v}"></label>`; }
+  function ledTxt(lbl, f, v, i) { return `<label class="led-f"><span class="lbl">${lbl}</span><input data-lf="${f}" data-i="${i}" type="text" value="${esc(v || '')}"></label>`; }
+  function ledSel(lbl, f, v, i) {
+    const opts = [['bm', 'Mercado negro'], ['market', 'Mercado normal']].map(([val, t]) => `<option value="${val}"${(v || 'bm') === val ? ' selected' : ''}>${t}</option>`).join('');
+    return `<label class="led-f"><span class="lbl">${lbl}</span><select data-lf="${f}" data-i="${i}">${opts}</select></label>`;
+  }
+
+  function ledLotHtml(lot, i) {
+    const c = computeLot(lot);
+    const cls = 'led-lot' + (c.status === 'sold' ? ' done' : '') + (c.loss ? ' loss' : '');
+    const head = `<div class="led-head" data-act="toggle" data-i="${i}">`
+      + `<span class="nm">${esc(lot.name || '(sin nombre)')}</span>`
+      + `<span data-badge>${ledBadge(c)}</span>`
+      + `<span class="pl ${c.profitTotal >= 0 ? 'up' : 'down'}">${signed(c.profitTotal)}</span>`
+      + `</div>`;
+    if (!lot.exp) return `<div class="${cls}" data-i="${i}">${head}</div>`;
+    const mats = (Array.isArray(lot.mats) ? lot.mats : []).map((m, j) =>
+      `<div class="led-mat" data-j="${j}">`
+      + `<input class="mn" data-mf="name" data-i="${i}" data-j="${j}" value="${esc(m.name || '')}" placeholder="material">`
+      + `<input data-mf="qty" data-i="${i}" data-j="${j}" type="number" min="0" step="any" value="${m.qty == null || m.qty === '' ? '' : m.qty}" title="cantidad total">`
+      + `<input data-mf="price" data-i="${i}" data-j="${j}" type="number" min="0" step="any" value="${m.price == null || m.price === '' ? '' : m.price}" title="precio/u">`
+      + `<span class="x" data-act="delmat" data-i="${i}" data-j="${j}" title="quitar material">✕</span>`
+      + `</div>`).join('');
+    const body = `<div class="led-body">`
+      + ledTxt('Nombre / producto', 'name', lot.name, i)
+      + `<div class="led-mats">${mats}<button class="led-mini" data-act="addmat" data-i="${i}">+ material</button></div>`
+      + `<div class="led-grid">`
+      + ledSel('Canal de venta', 'channel', lot.channel, i)
+      + ledTxt('Fecha', 'date', lot.date, i)
+      + ledInp('Tasa estación (total)', 'fee', lot.fee, i)
+      + ledInp('Crédito devolución', 'byprod', lot.byprod, i)
+      + ledInp('Unidades producidas', 'produced', lot.produced, i)
+      + ledInp('Vendidas', 'sold', lot.sold, i)
+      + ledInp('Precio venta/u', 'sell', lot.sell, i)
+      + ledInp('Vol/día (BM)', 'volday', lot.volday, i)
+      + `</div>`
+      + `<div class="led-res">${ledResCells(c)}</div>`
+      + `<div class="led-batch" data-batch>${batchInner(c)}</div>`
+      + `<div class="led-row-btns">`
+      + `<button class="led-mini" data-act="sold" data-i="${i}">✓ Vender todo</button>`
+      + `<button class="led-mini del" data-act="del" data-i="${i}">🗑 Borrar lote</button>`
+      + `</div>`
+      + `</div>`;
+    return `<div class="${cls}" data-i="${i}">${head}${body}</div>`;
+  }
+
+  function renderLedSummary() {
+    const el = document.getElementById('led-summary'); if (!el) return;
+    const rows = ledger.map(computeLot);
+    const cap = rows.reduce((s, c) => s + (c.costTotal || 0), 0);
+    const real = rows.reduce((s, c) => s + (c.profitRealized || 0), 0);
+    const pend = rows.reduce((s, c) => s + (c.profitPending || 0), 0);
+    const proj = real + pend;
+    const roi = cap > 0 ? (proj / cap) * 100 : null;
+    el.innerHTML = '<div class="led-sum">'
+      + `<div class="led-kpi"><div class="k">Invertido</div><div class="v">${fmt(cap)}</div></div>`
+      + `<div class="led-kpi"><div class="k">Bº cobrado</div><div class="v ${pcCls(real)}">${signed(real)}</div></div>`
+      + `<div class="led-kpi"><div class="k">Bº pendiente</div><div class="v ${pcCls(pend)}">${signed(pend)}</div></div>`
+      + `<div class="led-kpi"><div class="k">Bº proyectado</div><div class="v ${pcCls(proj)}">${signed(proj)}</div></div>`
+      + `<div class="led-kpi"><div class="k">ROI proyect.</div><div class="v ${pcCls(roi)}">${roiTxt(roi)}</div></div>`
+      + `<div class="led-kpi"><div class="k">Lotes</div><div class="v">${ledger.length}</div></div>`
+      + '</div>';
+  }
+  function renderLedList() {
+    const host = document.getElementById('led-list'); if (!host) return;
+    host.innerHTML = ledger.length
+      ? ledger.map((lot, i) => ledLotHtml(lot, i)).join('')
+      : '<div class="mempty">Sin lotes todavía. Pulsa “+ Nuevo lote manual”, o “➕ Registrar este lote” desde la pestaña Crafteo.</div>';
+  }
+  function renderLedger() { renderLedSummary(); renderLedList(); }
+
+  function refreshLotDisplay(i) {
+    const lotEl = document.querySelector(`#led-list .led-lot[data-i="${i}"]`); if (!lotEl) return;
+    const c = computeLot(ledger[i]);
+    lotEl.classList.toggle('done', c.status === 'sold');
+    lotEl.classList.toggle('loss', !!c.loss);
+    const head = lotEl.querySelector('.led-head');
+    if (head) {
+      const nm = head.querySelector('.nm'); if (nm) nm.textContent = ledger[i].name || '(sin nombre)';
+      const bd = head.querySelector('[data-badge]'); if (bd) bd.innerHTML = ledBadge(c);
+      const pl = head.querySelector('.pl'); if (pl) { pl.className = 'pl ' + (c.profitTotal >= 0 ? 'up' : 'down'); pl.textContent = signed(c.profitTotal); }
+    }
+    const res = lotEl.querySelector('.led-res'); if (res) res.innerHTML = ledResCells(c);
+    const bt = lotEl.querySelector('[data-batch]'); if (bt) bt.innerHTML = batchInner(c);
+    renderLedSummary();
+  }
+
+  const ledList = document.getElementById('led-list');
+  if (ledList) {
+    const onEdit = (e) => {
+      const t = e.target;
+      if (t.matches && t.matches('[data-lf]')) { ledger[+t.dataset.i][t.dataset.lf] = t.value; refreshLotDisplay(+t.dataset.i); ledgerSave(); }
+      else if (t.matches && t.matches('[data-mf]')) { ledger[+t.dataset.i].mats[+t.dataset.j][t.dataset.mf] = t.value; refreshLotDisplay(+t.dataset.i); ledgerSave(); }
+    };
+    ledList.addEventListener('input', onEdit);
+    ledList.addEventListener('change', onEdit);
+    ledList.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-act]'); if (!a) return;
+      const act = a.dataset.act, i = +a.dataset.i;
+      if (act === 'toggle') { ledger[i].exp = !ledger[i].exp; ledgerSave(); renderLedList(); }
+      else if (act === 'addmat') { if (!Array.isArray(ledger[i].mats)) ledger[i].mats = []; ledger[i].mats.push({ name: '', qty: '', price: '' }); ledgerSave(); renderLedList(); }
+      else if (act === 'delmat') { ledger[i].mats.splice(+a.dataset.j, 1); ledgerSave(); renderLedList(); }
+      else if (act === 'del') { ledger.splice(i, 1); ledgerSave(); renderLedger(); }
+      else if (act === 'sold') { ledger[i].sold = +ledger[i].produced || 0; ledgerSave(); renderLedList(); renderLedSummary(); }
+    });
+  }
+  { const b = document.getElementById('led-add'); if (b) b.addEventListener('click', () => { ledger.unshift({ name: '', channel: 'bm', date: todayStr(), mats: [{ name: '', qty: '', price: '' }], fee: '', byprod: '', produced: '', sold: 0, sell: '', volday: '', exp: true }); ledgerSave(); renderLedger(); }); }
+  { const b = document.getElementById('led-clear-sold'); if (b) b.addEventListener('click', () => { const n = ledger.length; ledger = ledger.filter((l) => computeLot(l).status !== 'sold'); if (ledger.length !== n) { ledgerSave(); renderLedger(); } }); }
+  { const b = document.getElementById('led-export'); if (b) b.addEventListener('click', () => { const blob = new Blob([JSON.stringify(ledger, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'candelaa-registro.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }); }
+
+  // registrar el lote actual desde la pestaña Crafteo (snapshot de receta + precios)
+  function addLotFromCraft() {
+    if (!currentBase || !recipes[currentBase]) return;
+    const craftQty = +document.getElementById('craft-qty').value || 1;
+    const feePer = +document.getElementById('craft-fee').value || 0;
+    const mats = [];
+    document.querySelectorAll('#cr-mats .cr-row').forEach((row) => {
+      const nameEl = row.querySelector('.cr-name'); const priceEl = row.querySelector('.cr-price');
+      const per = +(priceEl && priceEl.dataset.c) || +row.dataset.c || 0;
+      mats.push({ name: nameEl ? (nameEl.dataset.copy || nameEl.textContent.replace(/^\d+×\s*/, '')) : '', qty: per * craftQty, price: priceEl ? (+priceEl.value || 0) : 0 });
+    });
+    const prod = document.getElementById('cr-prod-price');
+    const sell = prod ? (+prod.value || 0) : 0;
+    const channel = (prod && prod.dataset.instant === '1') ? 'bm' : 'market';
+    let volday = 0; const vmap = craftVolMap[prodEnch(currentBase, currentEnch)] || {};
+    const vvals = Object.values(vmap).filter((x) => x > 0); if (vvals.length) volday = Math.max(...vvals);
+    const name = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
+    ledger.unshift({ name, channel, date: todayStr(), mats, fee: feePer * craftQty, byprod: '', produced: craftQty, sold: 0, sell, volday, exp: true });
+    ledgerSave();
+    const lt = document.querySelector('#item-tabs .tab-btn[data-tab="ledger"]'); if (lt) lt.click();
+    toast('✓ Lote añadido al Registro');
+  }
+  craftOut.addEventListener('click', (ev) => { if (ev.target.closest('#cr-register')) addLotFromCraft(); });
 })();
