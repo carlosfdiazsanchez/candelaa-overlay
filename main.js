@@ -11,6 +11,7 @@ const { spawn, execFile } = require('child_process');
 
 let win = null;
 let radarProc = null;
+let uploaderProc = null;
 
 // Una sola instancia: si ya hay una abierta, enfoca esa y cierra esta.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -72,6 +73,33 @@ function stopRadar() {
   }
 }
 
+// --- Data uploader (vendored albiondata-client) managed as a child process ---
+// Aporta los precios/historias que el usuario ve al pozo público de AODP, que
+// alimenta el feed NATS que consume nuestro backend (y a toda la comunidad).
+// Captura pasiva por Npcap (ya instalado para el radar). Sube al ingest público por defecto.
+const UPLOADER_CWD = app.isPackaged
+  ? path.join(process.resourcesPath, 'uploader')
+  : path.join(__dirname, 'vendor', 'uploader');
+const UPLOADER_EXE = path.join(UPLOADER_CWD, 'albiondata-client.exe');
+
+function ensureUploader() {
+  if (uploaderProc) return;                  // ya corriendo
+  if (!fs.existsSync(UPLOADER_EXE)) return;   // no bundleado en este build
+  try {
+    // cwd a userData (escribible) para su log; -minimize para no molestar.
+    uploaderProc = spawn(UPLOADER_EXE, ['-minimize'], { cwd: app.getPath('userData'), windowsHide: true, stdio: 'ignore' });
+    uploaderProc.on('error', (e) => { console.error('[overlay] uploader no arrancó:', e.message); uploaderProc = null; });
+    uploaderProc.on('exit', () => { uploaderProc = null; }); // el watchdog lo revivirá
+  } catch (e) { console.error('[overlay] spawn uploader:', e.message); uploaderProc = null; }
+}
+function startUploaderWatchdog() { setInterval(ensureUploader, 10000); }
+function stopUploader() {
+  if (uploaderProc && uploaderProc.pid) {
+    try { execFile('taskkill', ['/pid', String(uploaderProc.pid), '/t', '/f']); } catch (_) {}
+    uploaderProc = null;
+  }
+}
+
 function targetDisplay(displayId) {
   const displays = screen.getAllDisplays();
   if (displayId != null) {
@@ -116,6 +144,8 @@ function createWindow() {
 if (gotSingleInstanceLock) app.whenReady().then(() => {
   ensureRadar();          // levanta el motor de radar si no está corriendo
   startRadarWatchdog();   // y lo mantiene vivo (re-arranca si se cae)
+  ensureUploader();       // arranca el uploader de datos (aporta al pozo de AODP)
+  startUploaderWatchdog();
   createWindow();
   // Atajo global para alternar el modo "pasar clics al juego" (funciona aunque
   // el overlay esté ignorando el ratón).
@@ -152,7 +182,7 @@ ipcMain.on('install-update', () => {
   try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (e) { console.error('[overlay] quitAndInstall:', e.message); }
 });
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); stopUploader(); });
 
 app.on('window-all-closed', () => app.quit());
 
