@@ -189,6 +189,10 @@
   .cr-price{width:84px;flex:0 0 auto;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;}
   .cr-subtot{width:72px;flex:0 0 auto;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;}
   .cr-buy{flex:0 0 auto;font-size:11px;font-weight:700;color:#86e0a3;font-variant-numeric:tabular-nums;background:rgba(59,165,93,.16);border-radius:4px;padding:2px 6px;white-space:nowrap;}
+  .cr-vol{font-size:11px;color:var(--faint);margin-top:5px;line-height:1.6;}
+  .cr-vol b{color:var(--text);font-variant-numeric:tabular-nums;}
+  .cr-vol-best b{color:#86e0a3;}
+  .cr-vol-best{color:#cdeaf2;}
   .cr-prod{margin-top:6px;padding-top:8px;border-top:1px solid var(--border);}
   .cr-prod .cr-name{flex:1 1 auto;color:#ffd27a;}
   #tab-compare input[type=number]{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;text-align:right;}
@@ -368,13 +372,15 @@
       <div id="cmp-result"></div>
     </div>
     <div id="tab-scan" hidden>
+      <div class="cfg-row"><span class="cfg-lbl">Categoría</span><select id="scan-cat"><option value="gear" selected>Equipo</option><option value="consum">Consumibles</option><option value="all">Todo</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell"><option value="bm" selected>Black Market (inmediato)</option><option value="market">Mercado (orden, mejor ciudad)</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Ench</span><select id="scan-ench"><option selected>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Retorno</span><select id="scan-return">
         <option value="15.2">Sin foco (15%)</option><option value="23.1" selected>Sin foco + ciudad (23%)</option><option value="35.9">Con foco (36%)</option><option value="43.5">Con foco + ciudad (44%)</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar mats en</span><select id="scan-city"><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option></select></div>
       <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
-      <div class="cmp-note">Compara craftear vs vender al Black Market (gear: armas, armaduras, capas, bolsas). Valida siempre en el juego.</div>
+      <div class="cmp-note">Mejores items para craftear y vender, ordenados por <b>€/día</b> (ganancia × volumen). Elige categoría y salida de venta. Valida siempre en el juego.</div>
       <div id="scan-result"></div>
     </div>
   </div>

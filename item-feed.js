@@ -13,7 +13,7 @@
 
   let items = [], nameById = {}, recipes = {};
   let currentBase = null, currentName = '', currentEnch = 0;
-  let marketData = null, craftPriceMap = {};
+  let marketData = null, craftPriceMap = {}, craftVolMap = {};
 
   const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -172,6 +172,16 @@
   const REFINABLE = /(PLANKS|METALBAR|LEATHER|CLOTH|STONEBLOCK)/;
   const ench = (id, e) => (e > 0 && REFINABLE.test(id) ? id + '@' + e : id);
   const prodEnch = (id, e) => (e > 0 ? id + '@' + e : id);
+  // materiales de la receta para un encantamiento dado.
+  // consumibles (pociones/comida) traen receta explícita por nivel (@1/@2/@3,
+  // con extracto/salsa); el resto se deriva encantando los materiales refinables.
+  const recipeRows = (baseId, e) => {
+    const exact = e > 0 && recipes[baseId + '@' + e];
+    if (exact && exact.r) return exact.r.map((m) => ({ nameId: m.id, priceId: m.id, c: m.c }));
+    const rec = recipes[baseId];
+    if (!rec) return [];
+    return rec.r.map((m) => ({ nameId: m.id, priceId: ench(m.id, e), c: m.c }));
+  };
 
   const ALL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien', 'Black Market'];
   const CRAFT_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien']; // mats: sin Black Market
@@ -182,10 +192,16 @@
     craftBonus.innerHTML = b ? `Craftear en: <b>${b.city}</b> (+15% retorno a ${esc(b.what)})` : 'Sin ciudad con bono específico (artefacto/genérico).';
     craftOut.innerHTML = '<div class="mempty">Cargando precios…</div>';
     const ids = new Set();
-    for (let e = 0; e <= 4; e++) { ids.add(prodEnch(currentBase, e)); rec.r.forEach((m) => { ids.add(ench(m.id, e)); ids.add(m.id); }); }
-    const rows = await window.overlay.craftPrices([...ids], ALL_CITIES);
+    for (let e = 0; e <= 4; e++) { ids.add(prodEnch(currentBase, e)); recipeRows(currentBase, e).forEach((m) => { ids.add(m.priceId); ids.add(m.nameId); }); }
+    const prodIds = []; for (let e = 0; e <= 4; e++) prodIds.push(prodEnch(currentBase, e));
+    const [rows, vol] = await Promise.all([
+      window.overlay.craftPrices([...ids], ALL_CITIES),
+      window.overlay.history(prodIds, ALL_CITIES, 21),
+    ]);
     craftPriceMap = {};
     (rows || []).forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[r.city] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
+    craftVolMap = {};
+    (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
     renderCraft();
     renderCompare();
   }
@@ -218,7 +234,7 @@
     let best = -Infinity, bestE = -1; const calc = [];
     for (let e = 0; e <= 4; e++) {
       let ret = 0, non = 0, ok = true;
-      rec.r.forEach((m) => { const u = craftCityPrice(ench(m.id, e)); if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.id)) ret += c; else non += c; });
+      recipeRows(currentBase, e).forEach((m) => { const u = craftCityPrice(m.priceId); if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.nameId)) ret += c; else non += c; });
       let netMat = ret * (1 - returnR) + non;
       if (matOrder) netMat *= 1.025;
       const netCost = netMat + fee;
@@ -238,8 +254,8 @@
     const e = currentEnch;
     const defaultCity = document.getElementById('craft-city').value;
     const craftQty = +document.getElementById('craft-qty').value || 1;
-    const matRows = rec.r.map((m) => {
-      const id = ench(m.id, e);
+    const matRows = recipeRows(currentBase, e).map((m) => {
+      const id = m.priceId;
       const cm = craftPriceMap[id] || {};
       const perCity = CRAFT_CITIES.map((c) => ({ c, p: (cm[c] && cm[c].sell) || 0 }));
       const withPrice = perCity.filter((x) => x.p > 0);
@@ -249,10 +265,10 @@
       const chosenCity = chosen ? chosen.c : defaultCity;
       const det = chosen ? chosen.p : 0;
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
-      const enchTag = (e > 0 && REFINABLE.test(m.id)) ? '.' + e : '';
-      const ret = REFINABLE.test(m.id) ? 1 : 0;
+      const enchTag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
+      const ret = REFINABLE.test(m.nameId) ? 1 : 0;
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}">`
-        + `<span class="cr-name">${m.c}× ${esc(nameById[m.id] || m.id)}${enchTag}</span>`
+        + `<span class="cr-name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${enchTag}</span>`
         + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
         + `<select class="cr-city" title="Ciudad de compra de este material">${opts}</select>`
         + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" value="${Math.round(det)}">`
@@ -261,10 +277,18 @@
     }).join('');
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodLabel = bs.city ? `${bs.city === 'Black Market' ? 'Black Market 🏴' : esc(bs.city)} ${bs.instant ? '(inmediato)' : '(orden)'}` : 'sin datos';
+    const cityShort = (c) => (c === 'Black Market' ? '🏴 BM' : (c === 'FortSterling' ? 'F.Sterling' : esc(c)));
+    const vmap = craftVolMap[prodEnch(currentBase, e)] || {};
+    const vsorted = Object.entries(vmap).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
+    const sellCk = cityKey(bs.city || '');
+    const volLine = vsorted.length
+      ? `<div class="cr-vol" title="Unidades/día que absorbe cada mercado (estimado, datos de la comunidad)">Absorbe/día: ${vsorted.map((x) => `<span class="${x[0] === sellCk ? 'cr-vol-best' : ''}">${cityShort(x[0])} <b>${fmtInt(x[1])}</b></span>`).join(' · ')}</div>`
+      : '<div class="cr-vol faint">Volumen/día: sin datos</div>';
 
     craftOut.innerHTML = `<div class="cr-mini-row">${mini}</div>`
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Receta E${e} · elige ciudad y precio por material</div>${matRows}</div>`
       + `<div class="cr-row cr-prod"><span class="cr-name">Vender en ${prodLabel}</span><input class="cr-price" id="cr-prod-price" type="number" data-instant="${bs.instant ? 1 : 0}" value="${Math.round(bs.gross)}"></div>`
+      + volLine
       + '<div id="craft-result" class="craft-total"></div>';
     calcResult();
   }
@@ -322,13 +346,12 @@
       return best;
     };
     let ret = 0, non = 0, missing = false;
-    const rowsHtml = rec.r.map((m) => {
-      const id = ench(m.id, e);
-      const info = priceInfo(id);
+    const rowsHtml = recipeRows(currentBase, e).map((m) => {
+      const info = priceInfo(m.priceId);
       if (!info.price) missing = true;
-      const sub = info.price * m.c; if (REFINABLE.test(m.id)) ret += sub; else non += sub;
-      const tag = (e > 0 && REFINABLE.test(m.id)) ? '.' + e : '';
-      return `<tr><td class="name">${m.c}× ${esc(nameById[m.id] || m.id)}${tag}</td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
+      const sub = info.price * m.c; if (REFINABLE.test(m.nameId)) ret += sub; else non += sub;
+      const tag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
+      return `<tr><td class="name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${tag}</td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
     }).join('');
     let netMat = ret * (1 - returnR) + non;
     if (matOrder) netMat *= 1.025;
@@ -351,41 +374,67 @@
   }
   { const co = document.getElementById('cmp-offer'); if (co) co.addEventListener('input', renderCompare); }
 
-  // ================= ESCÁNER (craftear vs Black Market) =================
+  // ================= ESCÁNER (craftear y vender) =================
   const GEAR = /_(HEAD|ARMOR|SHOES)_|_2H_|_MAIN_|_OFF_|_CAPE|_BAG/;
+  const CONSUMABLE = /_(POTION|MEAL)_/;
+  const SELL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien'];
+  const SELL_NET = 0.935; // venta por orden: 4% impuesto premium + 2,5% setup de orden
+  const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
   async function runScan() {
     const out = document.getElementById('scan-result');
     const tier = document.getElementById('scan-tier').value;
     const e = +document.getElementById('scan-ench').value;
     const returnR = (+document.getElementById('scan-return').value || 0) / 100;
     const city = document.getElementById('scan-city').value;
-    const targets = Object.keys(recipes).filter((id) => id.startsWith('T' + tier + '_') && GEAR.test(id));
-    if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier.</div>'; return; }
+    const sellMode = (document.getElementById('scan-sell') || {}).value || 'bm';
+    const cat = (document.getElementById('scan-cat') || {}).value || 'gear';
+    const catRe = cat === 'consum' ? CONSUMABLE : (cat === 'all' ? null : GEAR);
+    const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && id.startsWith('T' + tier + '_') && (!catRe || catRe.test(id)) && recipes[id] && recipes[id].r);
+    if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier/categoría.</div>'; return; }
     out.innerHTML = `<div class="mempty">Escaneando ${targets.length} items… (unos segundos)</div>`;
-    const matIds = new Set(); targets.forEach((id) => recipes[id].r.forEach((m) => matIds.add(ench(m.id, e))));
+    const matIds = new Set(); targets.forEach((id) => recipeRows(id, e).forEach((m) => matIds.add(m.priceId)));
     const prodIds = targets.map((id) => prodEnch(id, e));
-    const [matRows, prodRows] = await Promise.all([
+    const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
+    const [matRows, prodRows, volRows] = await Promise.all([
       window.overlay.scanPrices([...matIds], [city]),
-      window.overlay.scanPrices(prodIds, ['Black Market']),
+      window.overlay.scanPrices(prodIds, sellLocs),
+      window.overlay.history(prodIds, sellLocs, 21),
     ]);
     const matP = {}; (matRows || []).forEach((r) => { matP[r.item_id] = r.sell_price_min || 0; });
-    const bmP = {}; (prodRows || []).forEach((r) => { bmP[r.item_id] = r.buy_price_max || 0; });
+    const sellP = {}; (prodRows || []).forEach((r) => { (sellP[r.item_id] = sellP[r.item_id] || {})[cityKey(r.city)] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0); });
+    const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
     const res = targets.map((id) => {
       let ret = 0, non = 0, ok = true;
-      recipes[id].r.forEach((m) => { const u = matP[ench(m.id, e)] || 0; if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.id)) ret += c; else non += c; });
+      recipeRows(id, e).forEach((m) => { const u = matP[m.priceId] || 0; if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.nameId)) ret += c; else non += c; });
       const netCost = ret * (1 - returnR) + non;   // retorno solo a refinados
-      const bm = bmP[prodEnch(id, e)] || 0;
-      const gain = (bm && ok) ? bm * 0.96 - netCost : null;   // BM neto (4% impuesto) − coste
-      const roi = (gain != null && netCost > 0) ? (gain / netCost) * 100 : null;
-      return { id, netCost, bm, gain, roi };
-    }).filter((r) => r.gain != null && r.bm > 0 && r.netCost > 0).sort((a, b) => b.gain - a.gain).slice(0, 20);
-    if (!res.length) { out.innerHTML = '<div class="mempty">Sin oportunidades con datos completos. Prueba otro tier/ench.</div>'; return; }
-    out.innerHTML = '<table><thead><tr><th>Item</th><th>Coste</th><th>BM</th><th>Gana</th><th>ROI</th></tr></thead><tbody>'
+      const pid = prodEnch(id, e);
+      const prices = sellP[pid] || {}, vols = volM[pid] || {};
+      let bestCity = null, bestGain = null, bestVol = 0, bestPrice = 0, bestEurDay = -Infinity;
+      sellLocs.forEach((ckRaw) => {
+        const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
+        const net = sellMode === 'bm' ? price * 0.96 : price * SELL_NET;
+        const gain = net - netCost; const vol = vols[ck] || 0; const eurDay = gain * vol;
+        if (eurDay > bestEurDay) { bestEurDay = eurDay; bestCity = ck; bestGain = gain; bestVol = vol; bestPrice = price; }
+      });
+      const roi = (bestGain != null && netCost > 0) ? (bestGain / netCost) * 100 : null;
+      return { id, netCost, price: bestPrice, city: bestCity, gain: bestGain, vol: bestVol, eurDay: bestEurDay === -Infinity ? null : bestEurDay, roi, ok };
+    }).filter((r) => r.ok && r.city && r.gain != null && r.netCost > 0)
+      .sort((a, b) => (b.eurDay == null ? -Infinity : b.eurDay) - (a.eurDay == null ? -Infinity : a.eurDay))
+      .slice(0, 25);
+    if (!res.length) { out.innerHTML = '<div class="mempty">Sin oportunidades con datos completos. Prueba otro tier/ench/categoría.</div>'; return; }
+    const sellHdr = sellMode === 'bm' ? 'BM' : 'Venta';
+    out.innerHTML = '<table><thead><tr><th>Item</th><th>Coste</th><th>' + sellHdr + '</th><th>Gana</th><th>Vol/día</th><th>€/día</th></tr></thead><tbody>'
       + res.map((r) => {
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
-        return `<tr><td class="name">${esc(nm)} <span class="enchtag">.${e}</span></td><td class="silver">${fmt(r.netCost)}</td><td class="silver">${fmt(r.bm)}</td><td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td><td class="${pc}">${roiTxt(r.roi)}</td></tr>`;
-      }).join('') + '</tbody></table><div class="best-hint">BM = lo que paga el Black Market (inmediato). Sin fee de estación. Valida en el juego.</div>';
+        const where = sellMode === 'bm' ? '🏴 Black Market' : esc(r.city);
+        return `<tr><td class="name">${esc(nm)}${e > 0 ? ' <span class="enchtag">.' + e + '</span>' : ''}<br><span class="faint" style="font-size:10px">${where} · ROI ${roiTxt(r.roi)}</span></td>`
+          + `<td class="silver">${fmt(r.netCost)}</td><td class="silver">${fmt(r.price)}</td>`
+          + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
+          + `<td class="${r.vol > 0 ? '' : 'faint'}">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
+          + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td></tr>`;
+      }).join('') + '</tbody></table>'
+      + `<div class="best-hint">€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
   }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
 

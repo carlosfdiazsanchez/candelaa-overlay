@@ -221,6 +221,12 @@ ipcMain.handle('scan-prices', async (_e, ids, locations) => {
   return (r.data && r.data.rows) || [];
 });
 
+// Volumen diario (history) por el backend, gateado por token.
+ipcMain.handle('history', async (_e, ids, locations, days) => {
+  const r = await apiCall('/api/history', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, days } });
+  return (r.data && r.data.rows) || [];
+});
+
 // --- Candelaa backend: token auth + admin -------------------------------
 const API_BASE = process.env.CANDELAA_API || 'https://api.candelaa.dently.es';
 const tokenFile = () => path.join(app.getPath('userData'), 'token.json');
