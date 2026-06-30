@@ -429,7 +429,32 @@
   const SCAN_ENCHANTS = [0, 1, 2, 3]; // el escáner prueba estos y muestra el mejor por item
   const SCAN_RETURN = 0.23; // retorno por defecto (sin foco + ciudad); se afina por item en Crafteo
   const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
-  let scanCache = null;
+  const scanStore = {};   // cache por configuración (cat|sell|tier|city) -> datos crudos
+  let scanCache = null;    // configuración mostrada ahora mismo
+  const scanKey = () => [
+    (document.getElementById('scan-cat') || {}).value || 'gear',
+    (document.getElementById('scan-sell') || {}).value || 'bm',
+    document.getElementById('scan-tier').value,
+    document.getElementById('scan-city').value,
+  ].join('|');
+  // barra de progreso: el backend escanea en un lote (no hay progreso por item),
+  // así que es un indicador de actividad que avanza y se completa al llegar los datos.
+  let scanProgT = null;
+  function startScanProgress() {
+    let p = 6;
+    const apply = () => {
+      const f = document.getElementById('scan-bar-fill'); if (f) f.style.width = p + '%';
+      const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = Math.round(p) + '%';
+    };
+    apply();
+    clearInterval(scanProgT);
+    scanProgT = setInterval(() => { p += Math.max(0.7, (93 - p) * 0.09); if (p > 93) p = 93; apply(); }, 170);
+    return () => {
+      clearInterval(scanProgT); scanProgT = null;
+      const f = document.getElementById('scan-bar-fill'); if (f) f.style.width = '100%';
+      const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = '100%';
+    };
+  }
   async function runScan() {
     const out = document.getElementById('scan-result');
     const tier = document.getElementById('scan-tier').value;
@@ -439,23 +464,34 @@
     const catRe = cat === 'consum' ? CONSUMABLE : (cat === 'all' ? null : GEAR);
     const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && id.startsWith('T' + tier + '_') && (!catRe || catRe.test(id)) && recipes[id] && recipes[id].r);
     if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier/categoría.</div>'; return; }
-    out.innerHTML = `<div class="mempty">Escaneando ${targets.length} items… (unos segundos)</div>`;
+    out.innerHTML = `<div class="scan-prog"><div class="lbl"><span>Escaneando ${targets.length} items…</span><b id="scan-prog-pct">0%</b></div><div class="scan-bar"><i id="scan-bar-fill"></i></div></div>`;
+    const btn = document.getElementById('scan-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Escaneando…'; }
+    const stopProg = startScanProgress();
     const matIds = new Set(), prodSet = new Set();
     targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => { recipeRows(id, e).forEach((m) => matIds.add(m.priceId)); prodSet.add(prodEnch(id, e)); }));
     const prodIds = [...prodSet];
     const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
-    const [matRows, prodRows, volRows] = await Promise.all([
-      window.overlay.scanPrices([...matIds], [city]),
-      window.overlay.scanPrices(prodIds, sellLocs),
-      window.overlay.history(prodIds, sellLocs, 21),
-    ]);
-    const matP = {}; (matRows || []).forEach((r) => { matP[r.item_id] = r.sell_price_min || 0; });
-    const sellP = {}; (prodRows || []).forEach((r) => { (sellP[r.item_id] = sellP[r.item_id] || {})[cityKey(r.city)] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0); });
-    const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
-    scanCache = { targets, matP, sellP, volM, sellMode, sellLocs };
-    renderScanResults();
+    try {
+      const [matRows, prodRows, volRows] = await Promise.all([
+        window.overlay.scanPrices([...matIds], [city]),
+        window.overlay.scanPrices(prodIds, sellLocs),
+        window.overlay.history(prodIds, sellLocs, 21),
+      ]);
+      const matP = {}; (matRows || []).forEach((r) => { matP[r.item_id] = r.sell_price_min || 0; });
+      const sellP = {}; (prodRows || []).forEach((r) => { (sellP[r.item_id] = sellP[r.item_id] || {})[cityKey(r.city)] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0); });
+      const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
+      scanStore[scanKey()] = { targets, matP, sellP, volM, sellMode, sellLocs };
+      scanCache = scanStore[scanKey()];
+      stopProg();
+      renderScanResults(false);
+    } catch (err) {
+      stopProg();
+      out.innerHTML = '<div class="mempty">Error al escanear (¿límite de la API o sin conexión?). Inténtalo de nuevo en un momento.</div>';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔍 Buscar oportunidades'; }
+    }
   }
-  function renderScanResults() {
+  function renderScanResults(fromCache) {
     const out = document.getElementById('scan-result'); if (!out || !scanCache) return;
     const { targets, matP, sellP, volM, sellMode, sellLocs } = scanCache;
     const res = targets.map((id) => {
@@ -491,8 +527,21 @@
           + `<td class="${r.vol > 0 ? '' : 'faint'}">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
           + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td></tr>`;
       }).join('') + '</tbody></table>'
-      + `<div class="best-hint">€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
+      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">resultado cacheado</b> · pulsa 🔍 Buscar para actualizar · ' : ''}€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
   }
+  // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
+  // si no, pedir pulsar Buscar. Solo el botón consulta la API.
+  function onScanFilterChange() {
+    const out = document.getElementById('scan-result'); if (!out) return;
+    const cached = scanStore[scanKey()];
+    if (cached) { scanCache = cached; renderScanResults(true); }
+    else {
+      scanCache = null;
+      const tier = document.getElementById('scan-tier').value;
+      out.innerHTML = `<div class="mempty">T${tier} sin cachear todavía — pulsa 🔍 Buscar para escanearlo.</div>`;
+    }
+  }
+  ['scan-tier', 'scan-city', 'scan-cat', 'scan-sell'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
 
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)

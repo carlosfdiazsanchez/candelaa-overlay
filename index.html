@@ -202,6 +202,12 @@
   #tab-scan select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
   .scan-btn{width:100%;background:rgba(90,169,196,.18);border:1px solid rgba(90,169,196,.45);color:#cdeaf2;font:inherit;font-size:13px;font-weight:600;padding:8px;border-radius:7px;cursor:pointer;margin:6px 0;}
   .scan-btn:hover{background:rgba(90,169,196,.28);}
+  .scan-btn:disabled{opacity:.55;cursor:default;}
+  .scan-prog{margin:10px 0;}
+  .scan-prog .lbl{font-size:11px;color:var(--faint);margin-bottom:6px;display:flex;justify-content:space-between;}
+  .scan-prog .lbl b{color:#cdeaf2;font-variant-numeric:tabular-nums;}
+  .scan-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;}
+  .scan-bar>i{display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,#3ba55d,#5fc88a);transition:width .22s ease;}
   .enchtag{font-family:var(--mono);font-size:10px;color:var(--accent);}
   tr.best-row td{background:rgba(59,165,93,.14);}
   tr.best-row td.name{color:#86e0a3;font-weight:700;}
