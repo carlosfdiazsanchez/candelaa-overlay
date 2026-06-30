@@ -27,6 +27,8 @@
     return String(Math.round(n));
   };
   const roiTxt = (n) => (n == null || isNaN(n) ? '—' : Math.round(n) + '%');
+  // cantidad exacta de unidades (separador de miles, sin abreviar): 3.200
+  const fmtInt = (n) => (n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-ES'));
 
   Promise.all([window.overlay.itemsIndex(), window.overlay.recipesIndex()]).then(([it, rc]) => {
     items = it || []; recipes = rc || {};
@@ -235,6 +237,7 @@
     // selector de ciudad (con su precio) + precio editable + subtotal
     const e = currentEnch;
     const defaultCity = document.getElementById('craft-city').value;
+    const craftQty = +document.getElementById('craft-qty').value || 1;
     const matRows = rec.r.map((m) => {
       const id = ench(m.id, e);
       const cm = craftPriceMap[id] || {};
@@ -250,6 +253,7 @@
       const ret = REFINABLE.test(m.id) ? 1 : 0;
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}">`
         + `<span class="cr-name">${m.c}× ${esc(nameById[m.id] || m.id)}${enchTag}</span>`
+        + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
         + `<select class="cr-city" title="Ciudad de compra de este material">${opts}</select>`
         + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" value="${Math.round(det)}">`
         + `<span class="cr-subtot silver" title="Subtotal (precio × cantidad)">${fmt(det * m.c)}</span>`
@@ -280,6 +284,7 @@
       const sub = (+inp.value || 0) * (+inp.dataset.c || 0);
       if (inp.dataset.ret === '1') ret += sub; else non += sub;
       const st = row.querySelector('.cr-subtot'); if (st) st.textContent = fmt(sub);
+      const buy = row.querySelector('.cr-buy'); if (buy) buy.textContent = '🛒 ' + fmtInt((+inp.dataset.c || 0) * qty);
     });
     let netMat = ret * (1 - returnR) + non;
     if (matOrder) netMat *= 1.025;
