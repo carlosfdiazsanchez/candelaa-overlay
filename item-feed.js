@@ -111,6 +111,7 @@
     currentBase = r.dataset.id; currentName = nameById[currentBase] || currentBase;
     results.innerHTML = ''; search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
     { const co = document.getElementById('cmp-offer'); if (co) co.value = ''; }
+    cmpCityChoice = {};
     loadMarket(); loadCraft();
   });
 
@@ -371,6 +372,7 @@
   }
 
   // ================= COMPARAR (oferta vs craftear) =================
+  let cmpCityChoice = {};   // ciudad elegida por material (priceId -> city) en la pestaña Comparar
   function renderCompare() {
     const out = document.getElementById('cmp-result'); if (!out) return;
     if (!currentBase) { out.innerHTML = '<div class="mempty">Busca un item primero.</div>'; return; }
@@ -383,22 +385,31 @@
     const qty = +document.getElementById('craft-qty').value || 1;
     const matOrder = !!(document.getElementById('craft-mat-order') || {}).checked;
     const craftCity = document.getElementById('craft-city').value;
-    // precio del material + de qué ciudad sale (sin mezclar encantamientos)
-    const priceInfo = (id) => {
-      const c = craftPriceMap[id]; if (!c) return { price: 0, city: null };
-      if (c[craftCity] && c[craftCity].sell) return { price: c[craftCity].sell, city: craftCity };
-      let best = { price: 0, city: null };
-      Object.entries(c).forEach(([ct, v]) => { if (ct !== 'Black Market' && v.sell > 0 && (best.price === 0 || v.sell < best.price)) best = { price: v.sell, city: ct }; });
-      return best;
+    // ciudad por material: elegible por el usuario; por defecto la global (si tiene precio) o la más barata
+    const pickCity = (id) => {
+      const c = craftPriceMap[id] || {};
+      if (cmpCityChoice[id] != null) return cmpCityChoice[id];        // elección manual del usuario
+      let best = null, bestP = 0;                                     // por defecto: la más barata para comprar
+      Object.entries(c).forEach(([ct, v]) => { if (ct !== 'Black Market' && v.sell > 0 && (bestP === 0 || v.sell < bestP)) { bestP = v.sell; best = ct; } });
+      return best || craftCity;
     };
+    const cityOptions = (id, chosen) => CRAFT_CITIES.map((c) => {
+      const p = (craftPriceMap[id] && craftPriceMap[id][c] && craftPriceMap[id][c].sell) || 0;
+      return `<option value="${esc(c)}"${c === chosen ? ' selected' : ''}>${esc(c)} ${p ? '· ' + fmt(p) : '· s/p'}</option>`;
+    }).join('');
     let ret = 0, non = 0, missing = false;
     const rowsHtml = recipeRows(currentBase, e).map((m) => {
-      const info = priceInfo(m.priceId);
-      if (!info.price) missing = true;
-      const sub = info.price * m.c; if (returnable(m.nameId)) ret += sub; else non += sub;
+      const city = pickCity(m.priceId);
+      const cm = craftPriceMap[m.priceId] || {};
+      const price = (cm[city] && cm[city].sell) || 0;
+      if (!price) missing = true;
+      const sub = price * m.c; if (returnable(m.nameId)) ret += sub; else non += sub;
       const tag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
       const mnm = nameById[m.nameId] || m.nameId;
-      return `<tr><td class="name"><span class="copyable" data-copy="${esc(mnm)}" title="Clic para copiar el nombre">${m.c}× ${esc(mnm)}${tag}</span></td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
+      return `<tr><td class="name"><span class="copyable" data-copy="${esc(mnm)}" title="Clic para copiar el nombre">${m.c}× ${esc(mnm)}${tag}</span></td>`
+        + `<td class="${price ? 'silver' : 'down'}">${price ? fmt(price) : '⚠️'}</td>`
+        + `<td><select class="cmp-city" data-mid="${esc(m.priceId)}" title="Ciudad de compra de este material">${cityOptions(m.priceId, city)}</select></td>`
+        + `<td class="silver">${fmt(sub)}</td></tr>`;
     }).join('');
     let netMat = ret * (1 - returnR) + non;
     if (matOrder) netMat *= 1.025;
@@ -420,6 +431,7 @@
       + `<div class="cmp-line">Para <b>${qty}</b> uds → inviertes <b class="silver">${fmt(costeCraft * qty)}</b> · beneficio <b class="${pc}">${gain >= 0 ? '+' : ''}${fmt(gain * qty)}</b></div>`;
   }
   { const co = document.getElementById('cmp-offer'); if (co) co.addEventListener('input', renderCompare); }
+  { const cr = document.getElementById('cmp-result'); if (cr) cr.addEventListener('change', (e) => { const s = e.target.closest('.cmp-city'); if (!s) return; cmpCityChoice[s.dataset.mid] = s.value; renderCompare(); }); }
 
   // ================= ESCÁNER (craftear y vender) =================
   const GEAR = /_(HEAD|ARMOR|SHOES)_|_2H_|_MAIN_|_OFF_|_CAPE|_BAG/;
@@ -516,7 +528,7 @@
       .slice(0, 25);
     if (!res.length) { out.innerHTML = '<div class="mempty">Sin oportunidades con datos completos. Prueba otro tier/ench/categoría.</div>'; return; }
     const sellHdr = sellMode === 'bm' ? 'BM' : 'Venta';
-    out.innerHTML = '<table><thead><tr><th>Item</th><th>Coste</th><th>' + sellHdr + '</th><th>Gana</th><th>Vol/día</th><th>€/día</th></tr></thead><tbody>'
+    out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item</th><th>Coste</th><th>' + sellHdr + '</th><th>Gana</th><th>Vol/día</th><th>€/día</th></tr></thead><tbody>'
       + res.map((r) => {
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
@@ -526,7 +538,7 @@
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
           + `<td class="${r.vol > 0 ? '' : 'faint'}">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
           + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td></tr>`;
-      }).join('') + '</tbody></table>'
+      }).join('') + '</tbody></table></div>'
       + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">resultado cacheado</b> · pulsa 🔍 Buscar para actualizar · ' : ''}€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
   }
   // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
