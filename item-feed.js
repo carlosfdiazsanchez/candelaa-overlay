@@ -327,7 +327,7 @@
     const roi = netCost > 0 ? (profit / netCost) * 100 : 0;
     const pc = profit >= 0 ? 'up' : 'down';
     result.innerHTML = `1 ud → coste <span class="silver">${fmt(netCost)}</span> · venta neta <span class="silver">${fmt(ventaNeta)}</span> · <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit)}</b> (ROI ${roiTxt(roi)})`
-      + `<div style="margin-top:5px">Para <b>${qty}</b> uds: <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`;
+      + `<div style="margin-top:5px">Para <b>${qty}</b> uds → inviertes <b class="silver">${fmt(netCost * qty)}</b> · recuperas <b class="silver">${fmt(ventaNeta * qty)}</b> · beneficio <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`;
   }
 
   // ================= COMPARAR (oferta vs craftear) =================
@@ -376,7 +376,7 @@
       + `<div class="cmp-line">Materiales <b class="silver">${fmt(ret + non)}</b>${matOrder ? ' (orden +2,5%)' : ''} · retorno ${Math.round(returnR * 100)}% (no a artefactos/extracto) → coste neto <b class="silver">${fmt(costeCraft)}</b></div>`
       + `<div class="cmp-line">Te ofrecen <b>${fmt(offer)}</b> → neto <b class="silver">${fmt(offerNet)}</b></div>`
       + `<div class="cmp-verdict ${pc}">${gain >= 0 ? '✅ Rentable craftear' : '❌ No rentable'} · ${gain >= 0 ? '+' : ''}${fmt(gain)}/ud (ROI ${roiTxt(roi)})</div>`
-      + `<div class="cmp-line">Para <b>${qty}</b> uds: <b class="${pc}">${gain >= 0 ? '+' : ''}${fmt(gain * qty)}</b></div>`;
+      + `<div class="cmp-line">Para <b>${qty}</b> uds → inviertes <b class="silver">${fmt(costeCraft * qty)}</b> · beneficio <b class="${pc}">${gain >= 0 ? '+' : ''}${fmt(gain * qty)}</b></div>`;
   }
   { const co = document.getElementById('cmp-offer'); if (co) co.addEventListener('input', renderCompare); }
 
@@ -385,12 +385,13 @@
   const CONSUMABLE = /_(POTION|MEAL)_/;
   const SELL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien'];
   const SELL_NET = 0.935; // venta por orden: 4% impuesto premium + 2,5% setup de orden
+  const SCAN_ENCHANTS = [0, 1, 2, 3]; // el escáner prueba estos y muestra el mejor por item
+  const SCAN_RETURN = 0.23; // retorno por defecto (sin foco + ciudad); se afina por item en Crafteo
   const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
   let scanCache = null;
   async function runScan() {
     const out = document.getElementById('scan-result');
     const tier = document.getElementById('scan-tier').value;
-    const e = +document.getElementById('scan-ench').value;
     const city = document.getElementById('scan-city').value;
     const sellMode = (document.getElementById('scan-sell') || {}).value || 'bm';
     const cat = (document.getElementById('scan-cat') || {}).value || 'gear';
@@ -398,8 +399,9 @@
     const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && id.startsWith('T' + tier + '_') && (!catRe || catRe.test(id)) && recipes[id] && recipes[id].r);
     if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier/categoría.</div>'; return; }
     out.innerHTML = `<div class="mempty">Escaneando ${targets.length} items… (unos segundos)</div>`;
-    const matIds = new Set(); targets.forEach((id) => recipeRows(id, e).forEach((m) => matIds.add(m.priceId)));
-    const prodIds = targets.map((id) => prodEnch(id, e));
+    const matIds = new Set(), prodSet = new Set();
+    targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => { recipeRows(id, e).forEach((m) => matIds.add(m.priceId)); prodSet.add(prodEnch(id, e)); }));
+    const prodIds = [...prodSet];
     const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
     const [matRows, prodRows, volRows] = await Promise.all([
       window.overlay.scanPrices([...matIds], [city]),
@@ -409,30 +411,31 @@
     const matP = {}; (matRows || []).forEach((r) => { matP[r.item_id] = r.sell_price_min || 0; });
     const sellP = {}; (prodRows || []).forEach((r) => { (sellP[r.item_id] = sellP[r.item_id] || {})[cityKey(r.city)] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0); });
     const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
-    scanCache = { targets, matP, sellP, volM, e, sellMode, sellLocs };
+    scanCache = { targets, matP, sellP, volM, sellMode, sellLocs };
     renderScanResults();
   }
   function renderScanResults() {
     const out = document.getElementById('scan-result'); if (!out || !scanCache) return;
-    const { targets, matP, sellP, volM, e, sellMode, sellLocs } = scanCache;
-    const returnR = (+document.getElementById('scan-return').value || 0) / 100;
+    const { targets, matP, sellP, volM, sellMode, sellLocs } = scanCache;
     const res = targets.map((id) => {
-      let ret = 0, non = 0, ok = true;
-      recipeRows(id, e).forEach((m) => { const u = matP[m.priceId] || 0; if (!u) ok = false; const c = u * m.c; if (returnable(m.nameId)) ret += c; else non += c; });
-      const netCost = ret * (1 - returnR) + non;
-      const pid = prodEnch(id, e);
-      const prices = sellP[pid] || {}, vols = volM[pid] || {};
-      let bestCity = null, bestGain = null, bestVol = 0, bestPrice = 0, bestEurDay = -Infinity;
-      sellLocs.forEach((ckRaw) => {
-        const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
-        const net = sellMode === 'bm' ? price * 0.96 : price * SELL_NET;
-        const gain = net - netCost; const vol = vols[ck] || 0; const eurDay = gain * vol;
-        if (eurDay > bestEurDay) { bestEurDay = eurDay; bestCity = ck; bestGain = gain; bestVol = vol; bestPrice = price; }
+      let best = null;
+      SCAN_ENCHANTS.forEach((e) => {
+        let ret = 0, non = 0, ok = true;
+        recipeRows(id, e).forEach((m) => { const u = matP[m.priceId] || 0; if (!u) ok = false; const c = u * m.c; if (returnable(m.nameId)) ret += c; else non += c; });
+        if (!ok) return;
+        const netCost = ret * (1 - SCAN_RETURN) + non; if (netCost <= 0) return;
+        const pid = prodEnch(id, e);
+        const prices = sellP[pid] || {}, vols = volM[pid] || {};
+        sellLocs.forEach((ckRaw) => {
+          const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
+          const net = sellMode === 'bm' ? price * 0.96 : price * SELL_NET;
+          const gain = net - netCost; const vol = vols[ck] || 0; const eurDay = gain * vol;
+          if (!best || eurDay > best.eurDay) best = { id, e, netCost, price, city: ck, gain, vol, eurDay, roi: (gain / netCost) * 100 };
+        });
       });
-      const roi = (bestGain != null && netCost > 0) ? (bestGain / netCost) * 100 : null;
-      return { id, netCost, price: bestPrice, city: bestCity, gain: bestGain, vol: bestVol, eurDay: bestEurDay === -Infinity ? null : bestEurDay, roi, ok };
-    }).filter((r) => r.ok && r.city && r.gain != null && r.netCost > 0)
-      .sort((a, b) => (b.eurDay == null ? -Infinity : b.eurDay) - (a.eurDay == null ? -Infinity : a.eurDay))
+      return best;
+    }).filter(Boolean)
+      .sort((a, b) => b.eurDay - a.eurDay)
       .slice(0, 25);
     if (!res.length) { out.innerHTML = '<div class="mempty">Sin oportunidades con datos completos. Prueba otro tier/ench/categoría.</div>'; return; }
     const sellHdr = sellMode === 'bm' ? 'BM' : 'Venta';
@@ -441,7 +444,7 @@
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellMode === 'bm' ? '🏴 Black Market' : esc(r.city);
-        return `<tr><td class="name">${esc(nm)}${e > 0 ? ' <span class="enchtag">.' + e + '</span>' : ''}<br><span class="faint" style="font-size:10px">${where} · ROI ${roiTxt(r.roi)}</span></td>`
+        return `<tr><td class="name">${esc(nm)}${r.e > 0 ? ' <span class="enchtag">.' + r.e + '</span>' : ''}<br><span class="faint" style="font-size:10px">${where} · ROI ${roiTxt(r.roi)} · inv/día ${fmt(r.netCost * r.vol)}</span></td>`
           + `<td class="silver">${fmt(r.netCost)}</td><td class="silver">${fmt(r.price)}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
           + `<td class="${r.vol > 0 ? '' : 'faint'}">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
@@ -450,7 +453,6 @@
       + `<div class="best-hint">€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
   }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
-  { const sr = document.getElementById('scan-return'); if (sr) sr.addEventListener('change', () => { if (scanCache) renderScanResults(); }); }
 
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
   craftOut.addEventListener('input', (ev) => { if (ev.target.classList && ev.target.classList.contains('cr-price')) calcResult(); });
