@@ -99,6 +99,8 @@
     b.addEventListener('click', () => {
       document.querySelectorAll('#item-tabs .tab-btn').forEach((x) => x.classList.toggle('active', x === b));
       ['market', 'craft', 'compare', 'scan'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
+      const enchSel = document.getElementById('item-ench');
+      if (enchSel) enchSel.style.display = (b.dataset.tab === 'craft' || b.dataset.tab === 'scan') ? 'none' : '';
       if (b.dataset.tab === 'compare') renderCompare();
     });
   });
@@ -170,6 +172,10 @@
 
   // ================= CRAFTEO =================
   const REFINABLE = /(PLANKS|METALBAR|LEATHER|CLOTH|STONEBLOCK)/;
+  // el retorno de recursos aplica a TODOS los materiales menos artefactos y
+  // los aditivos de encantamiento (extracto de alquimia / salsa de pescado).
+  const NO_RETURN = /ARTEFACT|QUESTITEM|_TOKEN|_FACTION_|ALCHEMY_EXTRACT|FISHSAUCE/;
+  const returnable = (id) => !NO_RETURN.test(id);
   const ench = (id, e) => (e > 0 && REFINABLE.test(id) ? id + '@' + e : id);
   const prodEnch = (id, e) => (e > 0 ? id + '@' + e : id);
   // materiales de la receta para un encantamiento dado.
@@ -234,7 +240,7 @@
     let best = -Infinity, bestE = -1; const calc = [];
     for (let e = 0; e <= 4; e++) {
       let ret = 0, non = 0, ok = true;
-      recipeRows(currentBase, e).forEach((m) => { const u = craftCityPrice(m.priceId); if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.nameId)) ret += c; else non += c; });
+      recipeRows(currentBase, e).forEach((m) => { const u = craftCityPrice(m.priceId); if (!u) ok = false; const c = u * m.c; if (returnable(m.nameId)) ret += c; else non += c; });
       let netMat = ret * (1 - returnR) + non;
       if (matOrder) netMat *= 1.025;
       const netCost = netMat + fee;
@@ -266,7 +272,7 @@
       const det = chosen ? chosen.p : 0;
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
       const enchTag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
-      const ret = REFINABLE.test(m.nameId) ? 1 : 0;
+      const ret = returnable(m.nameId) ? 1 : 0;
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}">`
         + `<span class="cr-name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${enchTag}</span>`
         + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
@@ -349,7 +355,7 @@
     const rowsHtml = recipeRows(currentBase, e).map((m) => {
       const info = priceInfo(m.priceId);
       if (!info.price) missing = true;
-      const sub = info.price * m.c; if (REFINABLE.test(m.nameId)) ret += sub; else non += sub;
+      const sub = info.price * m.c; if (returnable(m.nameId)) ret += sub; else non += sub;
       const tag = (e > 0 && REFINABLE.test(m.nameId)) ? '.' + e : '';
       return `<tr><td class="name">${m.c}× ${esc(nameById[m.nameId] || m.nameId)}${tag}</td><td class="${info.price ? 'silver' : 'down'}">${info.price ? fmt(info.price) : '⚠️'}</td><td class="faint">${info.city ? esc(info.city) : '—'}</td><td class="silver">${fmt(sub)}</td></tr>`;
     }).join('');
@@ -367,7 +373,7 @@
     out.innerHTML = `<div class="cr-sub">Receta E${e} · precio de venta por ciudad</div>`
       + `<table><thead><tr><th>Material</th><th>P.unit</th><th>Ciudad</th><th>Subtot.</th></tr></thead><tbody>${rowsHtml}</tbody></table>`
       + (missing ? '<div class="cmp-line down">⚠️ Falta el precio de algún material en E' + e + ' → el coste real es MAYOR. No te fíes del resultado.</div>' : '')
-      + `<div class="cmp-line">Materiales <b class="silver">${fmt(ret + non)}</b>${matOrder ? ' (orden +2,5%)' : ''} · retorno ${Math.round(returnR * 100)}% solo a refinados → coste neto <b class="silver">${fmt(costeCraft)}</b></div>`
+      + `<div class="cmp-line">Materiales <b class="silver">${fmt(ret + non)}</b>${matOrder ? ' (orden +2,5%)' : ''} · retorno ${Math.round(returnR * 100)}% (no a artefactos/extracto) → coste neto <b class="silver">${fmt(costeCraft)}</b></div>`
       + `<div class="cmp-line">Te ofrecen <b>${fmt(offer)}</b> → neto <b class="silver">${fmt(offerNet)}</b></div>`
       + `<div class="cmp-verdict ${pc}">${gain >= 0 ? '✅ Rentable craftear' : '❌ No rentable'} · ${gain >= 0 ? '+' : ''}${fmt(gain)}/ud (ROI ${roiTxt(roi)})</div>`
       + `<div class="cmp-line">Para <b>${qty}</b> uds: <b class="${pc}">${gain >= 0 ? '+' : ''}${fmt(gain * qty)}</b></div>`;
@@ -380,11 +386,11 @@
   const SELL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien'];
   const SELL_NET = 0.935; // venta por orden: 4% impuesto premium + 2,5% setup de orden
   const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
+  let scanCache = null;
   async function runScan() {
     const out = document.getElementById('scan-result');
     const tier = document.getElementById('scan-tier').value;
     const e = +document.getElementById('scan-ench').value;
-    const returnR = (+document.getElementById('scan-return').value || 0) / 100;
     const city = document.getElementById('scan-city').value;
     const sellMode = (document.getElementById('scan-sell') || {}).value || 'bm';
     const cat = (document.getElementById('scan-cat') || {}).value || 'gear';
@@ -403,10 +409,17 @@
     const matP = {}; (matRows || []).forEach((r) => { matP[r.item_id] = r.sell_price_min || 0; });
     const sellP = {}; (prodRows || []).forEach((r) => { (sellP[r.item_id] = sellP[r.item_id] || {})[cityKey(r.city)] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0); });
     const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
+    scanCache = { targets, matP, sellP, volM, e, sellMode, sellLocs };
+    renderScanResults();
+  }
+  function renderScanResults() {
+    const out = document.getElementById('scan-result'); if (!out || !scanCache) return;
+    const { targets, matP, sellP, volM, e, sellMode, sellLocs } = scanCache;
+    const returnR = (+document.getElementById('scan-return').value || 0) / 100;
     const res = targets.map((id) => {
       let ret = 0, non = 0, ok = true;
-      recipeRows(id, e).forEach((m) => { const u = matP[m.priceId] || 0; if (!u) ok = false; const c = u * m.c; if (REFINABLE.test(m.nameId)) ret += c; else non += c; });
-      const netCost = ret * (1 - returnR) + non;   // retorno solo a refinados
+      recipeRows(id, e).forEach((m) => { const u = matP[m.priceId] || 0; if (!u) ok = false; const c = u * m.c; if (returnable(m.nameId)) ret += c; else non += c; });
+      const netCost = ret * (1 - returnR) + non;
       const pid = prodEnch(id, e);
       const prices = sellP[pid] || {}, vols = volM[pid] || {};
       let bestCity = null, bestGain = null, bestVol = 0, bestPrice = 0, bestEurDay = -Infinity;
@@ -437,6 +450,7 @@
       + `<div class="best-hint">€/día = ganancia/ud × volumen diario. Volumen estimado de datos de la comunidad → valida en juego. ${sellMode === 'bm' ? 'BM = pago inmediato del Black Market, sin fee de estación.' : 'Venta por orden en la mejor ciudad por €/día.'}</div>`;
   }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
+  { const sr = document.getElementById('scan-return'); if (sr) sr.addEventListener('change', () => { if (scanCache) renderScanResults(); }); }
 
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
   craftOut.addEventListener('input', (ev) => { if (ev.target.classList && ev.target.classList.contains('cr-price')) calcResult(); });
