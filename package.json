@@ -10,8 +10,8 @@
     "publish": "electron-builder --win --publish always"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
+    "electron": "^39.8.5",
+    "electron-builder": "^26.15.3",
     "png-to-ico": "^3.0.1",
     "rcedit": "^5.0.2"
   },
