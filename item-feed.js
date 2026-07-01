@@ -245,15 +245,19 @@
     const b = cityBonus(currentBase);
     craftBonus.innerHTML = b ? `Craftear en: <b>${b.city}</b> (+15% retorno a ${esc(b.what)})` : 'Sin ciudad con bono específico (artefacto/genérico).';
     craftOut.innerHTML = '<div class="mempty">Cargando precios…</div>';
-    const ids = new Set();
-    for (let e = 0; e <= 4; e++) { ids.add(prodEnch(currentBase, e)); recipeRows(currentBase, e).forEach((m) => { ids.add(m.priceId); ids.add(m.nameId); }); }
+    // materiales y productos por separado: los materiales son recursos (sin calidad),
+    // el producto usa la calidad que crafteas (Normal por defecto), no el máx de todas.
+    const matSet = new Set();
+    for (let e = 0; e <= 4; e++) { recipeRows(currentBase, e).forEach((m) => { matSet.add(m.priceId); matSet.add(m.nameId); }); }
     const prodIds = []; for (let e = 0; e <= 4; e++) prodIds.push(prodEnch(currentBase, e));
-    const [rows, vol] = await Promise.all([
-      window.overlay.craftPrices([...ids], ALL_CITIES, currentQuality),
+    const prodQ = currentQuality || 1;
+    const [matRows, prodRows, vol] = await Promise.all([
+      window.overlay.craftPrices([...matSet], ALL_CITIES, 0),
+      window.overlay.craftPrices(prodIds, ALL_CITIES, prodQ),
       window.overlay.history(prodIds, ALL_CITIES, 21),
     ]);
     craftPriceMap = {};
-    (rows || []).forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[r.city] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
+    [...(matRows || []), ...(prodRows || [])].forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[r.city] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = r.daily || 0; });
     renderCraft();
@@ -449,7 +453,9 @@
     targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => prodSet.add(prodEnch(id, e))));
     const prodIds = [...prodSet];
     const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
-    const q = currentQuality;
+    // rentabilidad: usa la calidad que DE VERDAD crafteas/flipeas. "Todas" (0) = Normal (1),
+    // no el máximo de todas (una orden de obra maestra inflaría el precio y daría pérdidas).
+    const q = currentQuality || 1;
     try {
       if (strat === 'flip') {
         // Flip: comprar el ITEM ya hecho en la ciudad y revenderlo (BM/mercado)
