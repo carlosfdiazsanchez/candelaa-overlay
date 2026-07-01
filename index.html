@@ -35,8 +35,37 @@
   .panel__body{padding:12px;display:block;}
   .panel.collapsed .panel__body{display:none;}
   .panel.collapsed{width:220px;}
-  #p-item{width:470px;}
-  #p-item.collapsed{width:220px;} .panel.collapsed .panel__head{border-bottom:0;}
+  #p-item{width:680px;}
+  #p-item.collapsed{width:260px;} .panel.collapsed .panel__head{border-bottom:0;}
+  /* Panel Mercado agrandado (uso fuera del juego): fuentes y espaciado mayores */
+  #p-item .panel__title{font-size:17px;}
+  #p-item .search{font-size:16px;padding:10px 13px;}
+  #p-item .tabs{gap:3px;margin:12px 0;}
+  #p-item .tab-btn{font-size:15px;padding:9px 18px;}
+  #p-item table{font-size:15px;}
+  #p-item th{font-size:12px;padding-bottom:8px;}
+  #p-item td{padding:8px 6px;}
+  #p-item .cfg-lbl{font-size:12px;width:auto;min-width:78px;}
+  #p-item .cfg-row{gap:10px;margin:2px 0;}
+  #p-item input,#p-item select{font-size:15px;padding:6px 9px;}
+  #p-item .cfg-check{font-size:13.5px;}
+  #p-item .minitoggles button{width:auto;min-width:26px;height:28px;font-size:12.5px;padding:0 9px;}
+  #p-item .mres{font-size:15px;padding:6px 9px;gap:10px;}
+  #p-item .ires-icon{width:40px;height:40px;}
+  #p-item .mempty{font-size:13.5px;}
+  #p-item .flip-title,#p-item .cr-sub,#p-item .best-hint{font-size:12px;}
+  #p-item .flip-result,#p-item .cmp-line,#p-item .craft-total{font-size:14.5px;}
+  #p-item .flip-gain,#p-item .cmp-verdict,#p-item .profit .big{font-size:19px;}
+  #p-item .cr-name{font-size:14px;} #p-item .cr-price{width:104px;font-size:14px;}
+  #p-item .cr-city{font-size:13px;} #p-item .cr-subtot,#p-item .cr-buy{font-size:14px;}
+  #p-item .cr-mini{font-size:11.5px;padding:7px 2px;} #p-item .cr-mini span{font-size:13px;}
+  #p-item .cmp-note{font-size:12.5px;}
+  #p-item .cmp-city{font-size:13px;max-width:150px;}
+  #p-item .scan-scroll{max-height:460px;}
+  #p-item .scan-prog .lbl{font-size:12.5px;}
+  #p-item .led-kpi .v{font-size:16px;} #p-item .led-kpi .k{font-size:10px;}
+  #p-item .led-head .nm{font-size:14px;} #p-item .led-f .lbl{font-size:10px;}
+  #p-item .market-results{max-height:230px;}
 
   #bar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:14px;
     background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;}
@@ -313,7 +342,7 @@
   <div class="toggles" id="toggles">
     <button class="tg" aria-pressed="true" data-p="radar">Radar</button>
     <button class="tg" aria-pressed="true" data-p="players">Jugadores</button>
-    <button class="tg" aria-pressed="true" data-p="item">Item</button>
+    <button class="tg" aria-pressed="true" data-p="item">Mercado</button>
   </div>
   <div class="sep"></div>
   <div class="ctl"><span>Monitor</span><select id="mon"></select></div>
@@ -399,18 +428,19 @@
 </div>
 
 <div class="panel" id="p-item" style="top:78px;right:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Item</span>
-    <span class="panel__spacer"></span><span class="panel__count" id="item-sub">Mercado · Crafteo</span>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Mercado</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="item-sub">Precios · Crafteo · Escáner · Registro</span>
     <button class="icon-btn collapse" title="Minimizar">▁</button></div>
   <div class="panel__body">
     <input class="search" id="item-search" placeholder="Buscar item… (capa, arco, estofado)" autocomplete="off">
     <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
       <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
+    <div class="cfg-row" id="item-quality"><span class="cfg-lbl">Calidad</span><div class="minitoggles">
+      <button data-q="0" aria-pressed="true">Todas</button><button data-q="1">Normal</button><button data-q="2">Bueno</button><button data-q="3">Excep.</button><button data-q="4">Excel.</button><button data-q="5">Obra M.</button></div></div>
     <div class="market-results" id="item-results"></div>
     <div class="tabs" id="item-tabs">
-      <button class="tab-btn active" data-tab="market">Mercado</button>
+      <button class="tab-btn active" data-tab="market">Precios</button>
       <button class="tab-btn" data-tab="craft">Crafteo</button>
-      <button class="tab-btn" data-tab="compare">Comparar</button>
       <button class="tab-btn" data-tab="scan">Escáner</button>
       <button class="tab-btn" data-tab="ledger">Registro</button>
     </div>
@@ -430,18 +460,15 @@
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
         <label class="cfg-check"><input type="checkbox" id="craft-mat-order"> Comprar mats con orden (+2,5%)</label>
         <label class="cfg-check"><input type="checkbox" id="craft-sell-order" checked> Vender producto con orden (+2,5%)</label>
+        <div class="cfg-row"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="opcional: precio que te dan (BM…) para comparar"></div>
       </div>
       <div id="craft-out"></div>
     </div>
-    <div id="tab-compare" hidden>
-      <div class="cfg-row"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="precio que te dan"></div>
-      <div class="cmp-note">Compara ese precio (p. ej. del Black Market) con lo que cuesta craftearlo. Usa la config de Crafteo (retorno, ciudad, fee…).</div>
-      <div id="cmp-result"></div>
-    </div>
     <div id="tab-scan" hidden>
       <div class="cfg-row"><span class="cfg-lbl">Categoría</span><select id="scan-cat"><option value="gear" selected>Equipo</option><option value="consum">Consumibles</option><option value="all">Todo</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Estrategia</span><select id="scan-strat"><option value="craft" selected>Craftear (comprar mats)</option><option value="flip">Flipear (comprar item hecho)</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell"><option value="bm" selected>Black Market (inmediato)</option><option value="market">Mercado (orden, mejor ciudad)</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all">Todos (T4-T8)</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar mats en</span><select id="scan-city"><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option></select></div>
       <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
       <div class="cmp-note">Mejores items para craftear y vender, ordenados por <b>€/día</b> (ganancia × volumen). Prueba encantamientos 0-3 y muestra el mejor por item. Retorno asumido ~23% (sin foco + ciudad); afina el dato exacto en Crafteo. Valida siempre en el juego.</div>

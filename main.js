@@ -230,8 +230,8 @@ function fetchPrices(idStr, locations) {
   });
 }
 // Mercado: ahora va por el backend (gateado por token), no directo a la API pública.
-ipcMain.handle('market-prices', async (_e, itemId) => {
-  const r = await apiCall('/api/market', { method: 'POST', token: readStoredToken(), body: { itemId } });
+ipcMain.handle('market-prices', async (_e, itemId, quality) => {
+  const r = await apiCall('/api/market', { method: 'POST', token: readStoredToken(), body: { itemId, quality } });
   return (r.data && r.data.rows) || [];
 });
 
@@ -240,14 +240,14 @@ ipcMain.handle('recipes-index', () => {
   catch (_) { return {}; }
 });
 // Crafteo: precios por el backend (gateado por token).
-ipcMain.handle('craft-prices', async (_e, ids, locations) => {
-  const r = await apiCall('/api/craft-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations } });
+ipcMain.handle('craft-prices', async (_e, ids, locations, quality) => {
+  const r = await apiCall('/api/craft-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality } });
   return (r.data && r.data.rows) || [];
 });
 
 // Escáner: precios por el backend (paginado en servidor, gateado por token).
-ipcMain.handle('scan-prices', async (_e, ids, locations) => {
-  const r = await apiCall('/api/scan-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations } });
+ipcMain.handle('scan-prices', async (_e, ids, locations, quality) => {
+  const r = await apiCall('/api/scan-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality } });
   return (r.data && r.data.rows) || [];
 });
 
