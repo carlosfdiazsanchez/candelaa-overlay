@@ -256,7 +256,7 @@
         acts.push('delete');
       }
       const btns = acts.map((a) => `<button data-tok="${esc(t.token)}" data-act="${a}">${ACT_LABEL[a]}</button>`).join('');
-      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span><span class="abadge ${t.status}">${t.status}</span></div><div class="atok">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
+      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span><span class="abadge ${t.status}">${t.status}</span></div><div class="atok copyable" data-copy="${esc(t.token)}" title="Clic para copiar el token">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
     }).join('');
   }
   btnAdmin.addEventListener('click', () => {
@@ -269,7 +269,7 @@
     const inp = document.getElementById('admin-name');
     const name = (inp.value || '').trim(); if (!name) return;
     const r = await window.overlay.adminIssue(name); inp.value = '';
-    if (r && r.token) document.getElementById('admin-new').innerHTML = `<div class="newtok">Token para <b>${esc(r.name)}</b>:<br>${esc(r.token)}<br><small>Cópialo y pásaselo a esa persona.</small></div>`;
+    if (r && r.token) document.getElementById('admin-new').innerHTML = `<div class="newtok">Token para <b>${esc(r.name)}</b>:<br><span class="copyable" data-copy="${esc(r.token)}" title="Clic para copiar">${esc(r.token)}</span><br><small>Clic en el token para copiarlo y pásaselo a esa persona.</small></div>`;
     renderAdmin();
   });
   alist.addEventListener('click', async (e) => {
@@ -278,6 +278,24 @@
     if (act === 'delete' && !window.confirm('¿Borrar este token? No se puede deshacer.')) return;
     await window.overlay.adminAction(tok, act);
     renderAdmin();
+  });
+
+  // copiar token al portapapeles al hacer click (igual que los nombres de item)
+  let _copyToastEl = null, _copyToastT = null;
+  function copyToast(msg) {
+    if (!_copyToastEl) { _copyToastEl = document.createElement('div'); _copyToastEl.id = 'copy-toast'; document.body.appendChild(_copyToastEl); }
+    _copyToastEl.textContent = msg; _copyToastEl.classList.add('show');
+    clearTimeout(_copyToastT); _copyToastT = setTimeout(() => _copyToastEl.classList.remove('show'), 1400);
+  }
+  function copyTok(txt) {
+    if (!txt) return;
+    const done = () => copyToast('📋 Copiado: ' + txt);
+    const fb = () => { const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (_) {} document.body.removeChild(ta); };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb(); } catch (_) { fb(); }
+  }
+  pAdmin.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-copy]'); if (!el) return;
+    copyTok(el.getAttribute('data-copy'));
   });
 
   // ================= NPCAP (auto-descarga, vía gratis) =================
