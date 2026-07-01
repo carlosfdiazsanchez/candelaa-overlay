@@ -101,7 +101,8 @@
   function doSearch() {
     const q = norm(search.value.trim());
     if (q.length < 2) { results.innerHTML = ''; return; }
-    const matches = items.filter((it) => norm(it.n).includes(q)).slice(0, 14);
+    // solo items base (sin @ench): una fila por item; el encantamiento se elige con el filtro Ench.
+    const matches = items.filter((it) => it.id.indexOf('@') < 0 && norm(it.n).includes(q)).slice(0, 14);
     results.innerHTML = matches.length
       ? matches.map((m) => `<div class="mres" data-id="${esc(m.id)}"><img class="ires-icon" src="https://render.albiononline.com/v1/item/${encodeURIComponent(m.id)}.png?size=40" loading="lazy" alt=""><span class="ires-name">${esc(m.n)}</span><span class="mid">${recipes[m.id] ? '🔨' : ''}</span></div>`).join('')
       : '<div class="mempty">Sin resultados</div>';
