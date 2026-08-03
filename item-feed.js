@@ -723,7 +723,7 @@
       + `<div class="cr-row cr-prod"><span class="cr-name">Vender en ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Ciudad de venta del producto · precio por ciudad (🏴 Black Market = venta inmediata a su orden de compra)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
       + volLine
       + '<div id="craft-result" class="craft-total"></div>'
-      + '<div class="cr-blocks"><div id="craft-focus-out"></div><div id="craft-price-out"></div><div id="craft-budget-out"></div></div>';
+      + '<div id="craft-budget-out"></div>';
     calcResult();
   }
 
@@ -822,98 +822,76 @@
     return use.length ? Math.min(...use) : 0;
   };
 
+  // material más barato del mercado y en qué ciudad está (es el tope real de lo que tiene
+  // sentido ofrecer por chat: por encima, te sale mejor comprarlo allí)
+  const cheapestOf = (id) => {
+    const c = craftPriceMap[id] || {};
+    const rows = Object.entries(c).filter(([ct, v]) => ct !== 'Black Market' && (v.sell || 0) > 0);
+    if (!rows.length) return { price: 0, city: '' };
+    const all = rows.map(([, v]) => v.sell);
+    const valid = rows.filter(([, v]) => !isLoOutlier(v.sell, all));
+    const use = valid.length ? valid : rows;
+    const best = use.reduce((a, b) => (b[1].sell < a[1].sell ? b : a));
+    return { price: best[1].sell, city: best[0] };
+  };
+
   function renderPlan(ctx) {
-    const fEl = document.getElementById('craft-focus-out');
-    const pEl = document.getElementById('craft-price-out');
     const bEl = document.getElementById('craft-budget-out');
-    if (!fEl || !pEl || !bEl) return;
+    const result = document.getElementById('craft-result');
+    if (!bEl || !result) return;
     const useFocus = !!(document.getElementById('craft-focus') || {}).checked;
     const focusAvail = +(document.getElementById('craft-focus-avail') || {}).value || 0;
     const focusCost = +(document.getElementById('craft-focus-cost') || {}).value || 0;
     const mode = (document.getElementById('craft-session-mode') || {}).value || 'focus';
-    const margin = (+(document.getElementById('craft-margin') || {}).value || 0) / 100;
     const R = ctx.returnR, mo = ctx.matOrder ? 1.025 : 1;
-    const baseFocus = focusBaseOf(currentBase, currentEnch);
-    const eff = effOf(currentBase);
 
-    // --- foco y sesión ---
-    let units = ctx.qty, sessionRows = '', focusHtml = '';
-    if (!useFocus) {
-      focusHtml = `<div class="cr-b-title">⚡ Foco</div><div class="cr-hint">Marca <b>Usar foco</b> arriba para planificar la sesión: cuántas unidades te dan tus ${fmtInt(focusAvail)} de foco y cuánto silver rinde cada punto.</div>`;
-    } else if (!baseFocus) {
-      focusHtml = `<div class="cr-b-title">⚡ Foco</div><div class="cr-hint">No hay coste de foco en los datos del juego para este item.</div>`;
-    } else if (!focusCost) {
-      focusHtml = `<div class="cr-b-title">⚡ Foco</div><div class="cr-hint">Escribe en <b>Foco/ud</b> el coste que te muestra la estación y calculo la sesión entera.</div>`;
-    } else {
+    // punto de equilibrio, como una línea más del resultado
+    const netSell = 1 - ctx.tax - (ctx.instant ? 0 : ctx.sellFee);
+    const breakEven = netSell > 0 ? ctx.netCost / netSell : 0;
+    const cushion = breakEven > 0 ? (ctx.sellPrice / breakEven - 1) * 100 : 0;
+    const cc = cushion >= 0 ? 'up' : 'down';
+    let extra = `<div style="margin-top:5px" title="Por debajo de ese precio pierdes silver: ya incluye impuesto de venta y, si la marcaste, la tasa de orden.">Pierdes por debajo de <b>${fmtInt(breakEven)}</b> · vendes a <b>${fmtInt(ctx.sellPrice)}</b> <span class="${cc}">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% de colchón)</span></div>`;
+
+    // sesión de foco, otra línea
+    if (useFocus && focusCost > 0) {
       const perFocus = ctx.profit / focusCost;
       const craftsF = Math.floor(focusAvail / focusCost);
       const R0 = returnRate(currentBase, { focus: false }).pct / 100;
-      let totalUnits = craftsF, matCrafts = craftsF * (1 - R), extraNon = 0, tramo = '';
-      if (mode === 'mixed') {
-        const extra = R < 1 ? (craftsF * R) / (1 - R0) : 0;
-        totalUnits = craftsF + extra;
-        matCrafts = craftsF;
-        extraNon = extra;
-        tramo = `<div class="cr-kv"><span>Con foco / sin foco</span><span><b>${fmtInt(craftsF)}</b> + ${fmtInt(extra)} uds</span></div>`;
-      }
-      units = Math.floor(totalUnits);
-      const matCost = ctx.mats.reduce((s, m) => s + m.price * m.c * (m.ret ? matCrafts : totalUnits), 0) * mo;
-      const feeTotal = ctx.fee * totalUnits;
-      const invest = matCost + feeTotal;
-      const income = ctx.ventaNeta * totalUnits;
-      const gain = income - invest;
+      let totalUnits = craftsF, matCrafts = craftsF * (1 - R);
+      if (mode === 'mixed') { totalUnits = craftsF + (R < 1 ? (craftsF * R) / (1 - R0) : 0); matCrafts = craftsF; }
+      const invest = ctx.mats.reduce((s, m) => s + m.price * m.c * (m.ret ? matCrafts : totalUnits), 0) * mo + ctx.fee * totalUnits;
+      const gain = ctx.ventaNeta * totalUnits - invest;
       const gc = gain >= 0 ? 'up' : 'down';
-      const effTxt = eff > 0
-        ? `<span class="faint" title="Deducida del coste real que escribiste. Vale para todos los tiers y encantamientos de esta misma línea de spec.">eficiencia ${fmtInt(eff)}</span>`
-        : `<span class="down" title="Sin calibrar: se usa el coste base sin especialización, así que el silver por punto de foco sale peor de lo real. Escribe en Foco/ud el número que ves en la estación.">⚠ sin calibrar tu spec</span>`;
-      focusHtml = '<div class="cr-b-title">⚡ Foco y sesión</div>'
-        + `<div class="cr-kv"><span>Coste de foco/ud</span><span><b>${fmtInt(focusCost)}</b> <span class="faint">(base ${fmtInt(baseFocus)})</span> ${effTxt}</span></div>`
-        + `<div class="cr-kv"><span title="Beneficio neto por cada punto de foco gastado. Es la métrica que decide qué craftear: el foco es el recurso limitado, no el silver.">Silver por punto de foco</span><span><b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b></span></div>`
-        + `<div class="cr-kv"><span>Con ${fmtInt(focusAvail)} de foco</span><span><b>${fmtInt(craftsF)}</b> crafteos ${mode === 'mixed' ? '' : `→ <b>${fmtInt(totalUnits)}</b> uds`}</span></div>`
-        + tramo
-        + `<div class="cr-kv"><span>Produces</span><span><b>${fmtInt(totalUnits)}</b> uds</span></div>`
-        + `<div class="cr-kv"><span>Inviertes / recuperas</span><span><b class="silver">${fmt(invest)}</b> → <b class="silver">${fmt(income)}</b></span></div>`
-        + `<div class="cr-kv"><span>Beneficio de la sesión</span><span><b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b></span></div>`
-        + (mode === 'focus'
-          ? `<div class="cr-hint">Compras material para <b>${fmtInt(Math.ceil(matCrafts))}</b> ${Math.ceil(matCrafts) === 1 ? 'unidad' : 'unidades'} y el resto sale del ${(R * 100).toFixed(1)}% que te devuelve la estación, recrafteado siempre con foco.</div>`
-          : `<div class="cr-hint">Compras material para las <b>${fmtInt(craftsF)}</b> con foco; lo devuelto se recraftea sin foco (retorno ${(R0 * 100).toFixed(1)}%) hasta agotarlo.${extraNon ? ' Los materiales que no retornan hay que comprarlos también para esas unidades extra.' : ''}</div>`);
+      const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="Sin calibrar: se usa el coste de foco sin especialización, así que sale peor de lo real. Escribe en Foco/ud lo que ves en la estación.">⚠ spec sin calibrar</span>';
+      extra += `<div style="margin-top:5px" title="El foco es lo limitado, no el silver: la plata por punto es la que decide qué craftear.">${fmtInt(focusAvail)} de foco → <b>${fmtInt(totalUnits)}</b> uds · <b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b>/foco · sesión <b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b>${warn}</div>`;
     }
-    fEl.className = 'cr-block';
-    fEl.innerHTML = focusHtml;
+    result.insertAdjacentHTML('beforeend', extra);
 
-    // --- punto de equilibrio ---
-    const netSell = 1 - ctx.tax - (ctx.instant ? 0 : ctx.sellFee);
-    const breakEven = netSell > 0 ? ctx.netCost / netSell : 0;
-    const target = netSell > 0 ? (ctx.netCost * (1 + margin)) / netSell : 0;
-    const cushion = breakEven > 0 ? (ctx.sellPrice / breakEven - 1) * 100 : 0;
-    const cc = cushion >= 0 ? 'up' : 'down';
-    pEl.className = 'cr-block';
-    pEl.innerHTML = '<div class="cr-b-title">🎯 A cuánto vender</div>'
-      + `<div class="cr-kv"><span title="Por debajo de este precio pierdes silver. Ya incluye impuesto de venta y, si la marcaste, la tasa de orden.">Punto de equilibrio</span><span><b>${fmtInt(breakEven)}</b></span></div>`
-      + `<div class="cr-kv"><span>Precio actual</span><span><b class="${cc}">${fmtInt(ctx.sellPrice)}</b> <span class="faint">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% sobre el equilibrio)</span></span></div>`;
-
-    // --- compra de materiales: órdenes, techo de puja y negociación ---
+    // compra de materiales
     const buyUnits = ctx.qty;
     const matCraftsBudget = (useFocus && focusCost && mode === 'focus') ? Math.ceil(buyUnits * (1 - R)) : buyUnits;
     let totInstant = 0, totOrder = 0, totOffer = 0;
     const rows = ctx.mats.map((m) => {
       const need = Math.ceil(m.c * (m.ret ? matCraftsBudget : buyUnits));
-      const bid = bestBuyOf(m.id), ask = bestSellMinOf(m.id) || m.price;
-      // techo: precio de este material que deja el beneficio a cero, con los demás fijos
+      const bid = bestBuyOf(m.id);
+      const cheap = cheapestOf(m.id);
+      const ask = cheap.price || m.price;
+      // hasta aquí puedes pagar sin dejar de ganar (con el resto de materiales igual)
       const weight = m.c * (m.ret ? (1 - R) : 1) * mo;
-      const ceil = weight > 0 ? m.price + ctx.profit / weight : 0;
+      const maxPay = weight > 0 ? m.price + ctx.profit / weight : 0;
       const sellerNet = bid * (1 - ctx.tax);
       const myCost = ctx.matOrder ? (bid ? (bid + 1) * 1.025 : ask * 1.025) : ask;
       let offer = 0;
       if (sellerNet > 0 && myCost > sellerNet) offer = sellerNet + (myCost - sellerNet) * 0.4;
       else if (ask > 0) offer = ask * 0.97;
-      if (ceil > 0 && offer > ceil) offer = ceil;
+      if (ask > 0 && offer > ask) offer = ask * 0.97;
+      if (maxPay > 0 && offer > maxPay) offer = maxPay;
       const orderPrice = bid ? bid + 1 : Math.round(ask * 0.9);
       totInstant += ask * need;
       totOrder += orderPrice * 1.025 * need;
       totOffer += offer * need;
-      const over = ceil > 0 && orderPrice * 1.025 > ceil;
-      return { m, need, bid, ask, ceil, offer, orderPrice, over };
+      const over = maxPay > 0 && orderPrice * 1.025 > maxPay;
+      return { m, need, bid, ask, cheap, maxPay, offer, orderPrice, over };
     });
     const cityPlain = (c) => String(c || '').replace('FortSterling', 'Fort Sterling');
     const station = cityPlain((document.getElementById('craft-station-city') || {}).value);
@@ -924,14 +902,12 @@
       + ` <span class="faint">· para ${fmtInt(buyUnits)} uds${matCraftsBudget !== buyUnits ? ' (material de ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
       + '<table class="cr-tbl"><thead><tr><th>Material</th><th title="Unidades que necesitas comprar">Uds</th>'
       + '<th title="Mejor orden de COMPRA ahora mismo: lo que ya está pujando otro jugador. Para ser el mejor postor tienes que superarla.">Puja</th>'
-      + '<th title="Venta más barata: lo que pagas si lo compras al instante">Venta</th>'
-      + '<th title="Precio máximo que puedes pagar por este material sin dejar de ganar (con el resto igual)">Techo</th>'
-      + '<th title="Precio sugerido para trade directo por chat: por encima de lo que el vendedor sacaría en el mercado tras impuestos y por debajo de lo que te cuesta a ti">Ofrecer</th></tr></thead><tbody>'
+      + '<th title="Precio más barato en TODAS las ciudades y dónde está. Es tu tope: por encima de eso te sale mejor ir a comprarlo allí.">Techo (más barato)</th>'
+      + '<th title="Precio sugerido para trade directo por chat: por encima de lo que el vendedor sacaría vendiendo al mercado y por debajo de lo que te cuesta a ti.">Ofrecer</th></tr></thead><tbody>'
       + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.id)}" title="Clic para copiar el ID">${esc(r.m.name)}</td>`
         + `<td><b>${fmtInt(r.need)}</b></td>`
-        + `<td class="${r.over ? 'down' : ''}" title="Pon tu orden a ${fmtInt(r.orderPrice)} para ser el mejor postor${r.over ? ' — ¡ojo! eso ya supera tu techo' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
-        + `<td>${r.ask ? fmtInt(r.ask) : '—'}</td>`
-        + `<td class="${r.ceil > r.ask ? 'up' : 'down'}">${r.ceil > 0 ? fmtInt(r.ceil) : '—'}</td>`
+        + `<td class="${r.over ? 'down' : ''}" title="Pon tu orden a ${fmtInt(r.orderPrice)} para ser el mejor postor${r.over ? ' — ojo, eso ya pasa de lo que puedes pagar sin perder (' + fmtInt(r.maxPay) + ')' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
+        + `<td title="${r.maxPay > 0 ? 'Sin perder dinero podrías llegar hasta ' + fmtInt(r.maxPay) : ''}">${r.ask ? fmtInt(r.ask) : '—'}${r.cheap.city ? ` <span class="faint">${cityShort(r.cheap.city)}</span>` : ''}</td>`
         + `<td class="silver">${r.offer > 0 ? fmtInt(r.offer) : '—'}</td></tr>`).join('')
       + '</tbody></table>'
       + `<div class="cr-kv" style="margin-top:6px"><span>Comprando al instante</span><span><b class="silver">${fmt(totInstant)}</b></span></div>`
