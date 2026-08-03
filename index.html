@@ -571,6 +571,7 @@
       <div id="craft-out"></div>
     </div>
     <div id="tab-scan" hidden>
+      <div class="cfg-row"><span class="cfg-lbl">Modo</span><select id="scan-mode" title="Revender: compras el item hecho y lo mueves. Craftear: compras los materiales y lo fabricas, asumiendo que crafteas en la ciudad con el bono de cada item y con la configuración de foco de la pestaña Crafteo."><option value="flip" selected>Comprar y revender</option><option value="craft">Craftear</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell"><option value="bm" selected>Black Market (inmediato)</option><option value="market">Mercado (orden, mejor ciudad)</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>Todos (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="scan-city"><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option></select></div>
@@ -591,14 +592,6 @@
         <option value="3">3 días</option><option value="7" selected>7 días</option><option value="14">14 días</option><option value="30">30 días</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="top-tier">
         <option value="" selected>Todos</option><option value="4">T4</option><option value="5">T5</option><option value="6">T6</option><option value="7">T7</option><option value="8">T8</option><option value="678">T6-T8</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Cuántos</span><select id="top-limit">
-        <option value="25">25</option><option value="50" selected>50</option><option value="100">100</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Ordenar por</span><select id="top-sort" title="El orden se aplica en el servidor antes de recortar el top, así que cambia QUÉ items entran, no solo su posición.">
-        <option value="turnover" selected>Plata/día (lo que mueve)</option>
-        <option value="daily">Unidades/día (lo que absorbe)</option>
-        <option value="now">Lo que pagan ahora</option>
-        <option value="avg">Precio medio</option>
-        <option value="delta">Δ vs medio (pagan de más)</option></select></div>
       <label class="cfg-check" title="Deja fuera los items sin orden de compra activa o sin precio medio: los que salían con — en las columnas."><input type="checkbox" id="top-only-priced" checked> Solo items con precio ahora (sin “—”)</label>
       <button class="scan-btn" id="top-btn">💰 Ver lo que más se mueve</button>
       <div id="top-result"></div>

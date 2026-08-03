@@ -211,7 +211,7 @@
     const focus = (opts && typeof opts.focus === 'boolean')
       ? opts.focus : !!(document.getElementById('craft-focus') || {}).checked;
     const daily = dailyPct(baseId || currentBase);
-    const match = !!(bon && st && cityKey(st) === cityKey(bon.city));
+    const match = !!(bon && ((opts && opts.best) || (st && cityKey(st) === cityKey(bon.city))));
     const B = RET_BASE + (match ? bon.pct : 0) + (focus ? RET_FOCUS : 0) + daily / 100;
     const pct = (1 - 1 / (1 + B)) * 100;
     return { pct: Math.floor(pct * 10) / 10, match, bon, focus, daily, station: st };
@@ -972,9 +972,11 @@
   let scanCache = null;    // configuración mostrada ahora mismo
   // el escáner calcula y recorta en el cliente sobre el dataset cacheado, así que
   // reordenar no necesita volver a la API: se ordena antes del recorte y se re-renderiza.
-  const SCAN_SORTS = { eurDay: (r) => r.eurDay, gain: (r) => r.gain, vol: (r) => r.vol, cost: (r) => r.netCost, price: (r) => r.price, avg: (r) => r.avg, roi: (r) => r.roi };
+  const SCAN_SORTS = { eurDay: (r) => r.eurDay, gain: (r) => r.gain, vol: (r) => r.vol, cost: (r) => r.netCost, price: (r) => r.price, avg: (r) => r.avg, roi: (r) => r.roi, perFocus: (r) => r.perFocus || 0 };
   let scanSort = 'eurDay', scanDir = 'desc';
+  const scanMode = () => (document.getElementById('scan-mode') || {}).value || 'flip';
   const scanKey = () => [
+    scanMode(),
     (document.getElementById('scan-sell') || {}).value || 'bm',
     document.getElementById('scan-tier').value,
     document.getElementById('scan-city').value,
@@ -1016,12 +1018,18 @@
     const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
     // rentabilidad: usa la calidad que DE VERDAD compras/flipeas. "Todas" (0) = Normal (1).
     const q = currentQuality || 1;
+    const mode = scanMode();
     try {
-      // Flip: comprar el ITEM ya hecho en la ciudad y revenderlo (BM/mercado)
-      const [prodRows, volRows] = await Promise.all([
+      // Flip: comprar el ITEM ya hecho y revenderlo. Craft: comprar los MATERIALES y fabricarlo.
+      const matSet = new Set();
+      if (mode === 'craft') targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => recipeRows(id, e).forEach((m) => matSet.add(m.priceId))));
+      const [prodRows, volRows, matRows] = await Promise.all([
         window.overlay.scanPrices(prodIds, [...new Set([city, ...sellLocs])], q),
         window.overlay.history(prodIds, sellLocs, 21, q),
+        mode === 'craft' ? window.overlay.scanPrices([...matSet], [city], 1) : Promise.resolve([]),
       ]);
+      const matP = {};
+      (matRows || []).forEach((r) => { if (cityKey(r.city) === cityKey(city)) matP[r.item_id] = r.sell_price_min || 0; });
       const buyP = {}, buyDateM = {}, sellP = {}, dateM = {};
       (prodRows || []).forEach((r) => {
         const ck = cityKey(r.city);
@@ -1030,7 +1038,7 @@
         (dateM[r.item_id] = dateM[r.item_id] || {})[ck] = sellMode === 'bm' ? (r.buy_price_max_date || null) : (r.sell_price_min_date || null);
       });
       const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
-      scanStore[scanKey()] = { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city };
+      scanStore[scanKey()] = { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP };
       scanCache = scanStore[scanKey()];
       stopProg();
       renderScanResults(false);
@@ -1043,15 +1051,31 @@
   }
   function renderScanResults(fromCache) {
     const out = document.getElementById('scan-result'); if (!out || !scanCache) return;
-    const { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city } = scanCache;
+    const { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP } = scanCache;
     const bmNet = 1 - salesTax();
     const ordNet = 1 - salesTax() - 0.025;
+    const isCraft = mode === 'craft';
+    const useFocus = isCraft && !!(document.getElementById('craft-focus') || {}).checked;
+    // en modo crafteo se asume que fabricas cada item en la ciudad que tiene su bono
+    const craftCostOf = (id, e) => {
+      const rows = recipeRows(id, e);
+      if (!rows.length) return 0;
+      let ret = 0, non = 0;
+      for (const m of rows) {
+        const u = (matP && matP[m.priceId]) || 0;
+        if (!u) return 0;
+        const c = u * m.c;
+        if (returnable(m.nameId)) ret += c; else non += c;
+      }
+      const R = returnRate(id, { best: true }).pct / 100;
+      return ret * (1 - R) + non + stationFeeOf(id, stationRate());
+    };
     const res = targets.map((id) => {
       let best = null;
       SCAN_ENCHANTS.forEach((e) => {
         const pid = prodEnch(id, e);
-        const netCost = (buyP && buyP[pid]) || 0;
-        if (netCost <= 0) return;                  // no se puede comprar el item en esa ciudad
+        const netCost = isCraft ? craftCostOf(id, e) : ((buyP && buyP[pid]) || 0);
+        if (netCost <= 0) return;                  // sin precio de compra / sin todos los materiales
         const prices = sellP[pid] || {}, vols = volM[pid] || {}, dts = (dateM && dateM[pid]) || {};
         sellLocs.forEach((ckRaw) => {
           const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
@@ -1062,7 +1086,10 @@
           const roi = netCost > 0 ? (gain / netCost) * 100 : Infinity;
           if (roi > SCAN_MAX_ROI) return;   // precio outlier (troll/dato podrido), no una oportunidad real
           const eurDay = gain * vol * SCAN_CAPTURE;
-          if (!best || eurDay > best.eurDay) best = { id, e, netCost, price, avg, city: ck, gain, vol, eurDay, roi, sellDate: dts[ck] || null, buyDate: (buyDateM && buyDateM[id]) || null };
+          const fCost = useFocus ? focusCostOf(id, e) : 0;
+          const perFocus = fCost > 0 ? gain / fCost : 0;
+          const craftCity = isCraft ? (productionBonus(id) || {}).city || '' : '';
+          if (!best || eurDay > best.eurDay) best = { id, e, netCost, price, avg, city: ck, gain, vol, eurDay, roi, perFocus, fCost, craftCity, sellDate: dts[ck] || null, buyDate: (buyDateM && buyDateM[id]) || null };
         });
       });
       return best;
@@ -1086,18 +1113,21 @@
     const sArrow = sdir === -1 ? ' ▲' : ' ▼';
     const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · clic para ordenar${skey === k ? ' al revés' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
     out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
-      + sSort('cost', 'Compra', 'Lo que te cuesta comprarlo en la ciudad de origen')
+      + sSort('cost', isCraft ? 'Craftear' : 'Compra', isCraft ? 'Coste de fabricarlo: materiales menos el retorno de la estación, más la tarifa del taller' : 'Lo que te cuesta comprarlo en la ciudad de origen')
       + sSort('price', sellHdr, 'Precio de venta que se usa (orden de ahora)')
       + sSort('avg', 'Medio', 'Precio medio realmente vendido (histórico)')
       + sSort('gain', 'Gana', 'Ganancia neta por unidad tras impuestos')
       + sSort('vol', 'Vol/día', 'Unidades que se mueven al día')
-      + sSort('eurDay', '€/día', 'Ganancia por unidad × ~20% del volumen diario')
+      + sSort('eurDay', 'Plata/día', 'Ganancia por unidad × ~20% del volumen diario: lo que ese item puede darte al día sin hundir su precio')
+      + (useFocus ? sSort('perFocus', 'Plata/foco', 'Ganancia por punto de foco gastado. Con el foco limitado, esta es la columna que decide qué craftear') : '')
       + '<th>Visto</th></tr></thead><tbody>'
       + res2.map((r) => {
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellMode === 'bm' ? '🏴 BM' : cityShort(r.city);
-        const action = `comprar en ${buyCityShort} → vender ${where}`;
+        const action = isCraft
+          ? `craftear en ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'estación sin bono'} · mats de ${buyCityShort} → vender ${where}`
+          : `comprar en ${buyCityShort} → vender ${where}`;
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
         const iconId = prodEnch(r.id, r.e);
@@ -1107,9 +1137,10 @@
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
           + `<td class="${r.vol > 0 ? '' : 'faint'}" title="Volumen/día (calidad Normal). El €/día usa ~20% de este volumen.">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
           + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td>`
+          + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' de foco por unidad' : 'sin datos de foco para este item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
           + `<td class="${stale ? 'down' : 'faint'}" title="Hace cuánto se vio este precio">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
       }).join('') + '</tbody></table></div>'
-      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cacheado</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} pico${spikes === 1 ? '' : 's'} ${hideSpikes ? 'oculto' + (spikes === 1 ? '' : 's') : 'visible' + (spikes === 1 ? '' : 's')}</b> · ` : ''}${res.length} con datos · ${sellMode === 'bm' ? '🏴 BM' : 'orden en ciudad'}</div>`;
+      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cacheado</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} pico${spikes === 1 ? '' : 's'} ${hideSpikes ? 'oculto' + (spikes === 1 ? '' : 's') : 'visible' + (spikes === 1 ? '' : 's')}</b> · ` : ''}${res.length} con datos · ${isCraft ? 'crafteo' : 'reventa'} · ${sellMode === 'bm' ? '🏴 BM' : 'orden en ciudad'}${useFocus ? ' · con foco' : ''}</div>`;
   }
   // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
   // si no, pedir pulsar Buscar. Solo el botón consulta la API.
@@ -1123,7 +1154,7 @@
       out.innerHTML = `<div class="mempty">T${tier} sin cachear todavía — pulsa 🔍 Buscar para escanearlo.</div>`;
     }
   }
-  ['scan-tier', 'scan-city', 'scan-sell'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
+  ['scan-tier', 'scan-city', 'scan-sell', 'scan-mode'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
   { const hs = document.getElementById('scan-hide-spikes'); if (hs) hs.addEventListener('change', () => { if (scanCache) renderScanResults(true); }); }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
   { const sr = document.getElementById('scan-result'); if (sr) sr.addEventListener('click', (e) => {
@@ -1235,14 +1266,14 @@
   ['level-target', 'level-city'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) loadLevel(); }); });
 
   // ================= TOP (lo que más se mueve · base de la cartera) =================
-  let topCache = null, topDir = 'desc';
+  let topCache = null, topDir = 'desc', topSort = 'turnover';
   async function loadTop(force) {
     const out = document.getElementById('top-result'); if (!out) return;
     const city = (document.getElementById('top-city') || {}).value || 'Black Market';
     const days = +((document.getElementById('top-days') || {}).value) || 7;
     const tierSel = (document.getElementById('top-tier') || {}).value || '';
-    const limit = +((document.getElementById('top-limit') || {}).value) || 50;
-    const sortBy = (document.getElementById('top-sort') || {}).value || 'turnover';
+    const limit = 50;
+    const sortBy = topSort;
     const dir = topDir;
     const onlyPriced = (document.getElementById('top-only-priced') || {}).checked !== false;
     const tiers = tierSel ? tierSel.split('') : [];
@@ -1304,14 +1335,12 @@
       + `<div class="best-hint" title="Clic en una cabecera ordena por ella (otra vez invierte) y recalcula en el servidor; clic en una fila abre el item en Precios; ★ lo guarda en la cartera">${days} días · ${isBM ? '🏴 BM' : cityShort(city)} · ${QNAMES[currentQuality] || 'Todas'} · ${rows.length} items</div>`;
   }
   { const tb = document.getElementById('top-btn'); if (tb) tb.addEventListener('click', () => loadTop(true)); }
-  ['top-city', 'top-days', 'top-tier', 'top-limit', 'top-sort', 'top-only-priced'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => loadTop(false)); });
+  ['top-city', 'top-days', 'top-tier', 'top-only-priced'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => loadTop(false)); });
   { const tr = document.getElementById('top-result'); if (tr) tr.addEventListener('click', (e) => {
       const th = e.target.closest('.top-sort');
       if (th) {
-        const sel = document.getElementById('top-sort');
-        if (!sel) return;
-        if (sel.value === th.dataset.sort) topDir = topDir === 'desc' ? 'asc' : 'desc';
-        else { sel.value = th.dataset.sort; topDir = 'desc'; }
+        if (topSort === th.dataset.sort) topDir = topDir === 'desc' ? 'asc' : 'desc';
+        else { topSort = th.dataset.sort; topDir = 'desc'; }
         loadTop(false);
         return;
       }
