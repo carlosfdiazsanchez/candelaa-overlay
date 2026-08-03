@@ -930,8 +930,10 @@
       const over = ceil > 0 && orderPrice * 1.025 > ceil;
       return { m, need, bid, ask, ceil, offer, orderPrice, over };
     });
-    const wtb = rows.filter((r) => r.need > 0).map((r) => `${fmtInt(r.need)}x ${r.m.id} @ ${Math.round(r.offer)}`).join(' + ');
-    const wtbMsg = `WTB ${wtb} — total ${Math.round(totOffer).toLocaleString('es-ES')} — direct trade ${(document.getElementById('craft-station-city') || {}).value || ''}`.trim();
+    const cityPlain = (c) => String(c || '').replace('FortSterling', 'Fort Sterling');
+    const station = cityPlain((document.getElementById('craft-station-city') || {}).value);
+    const wtb = rows.filter((r) => r.need > 0).map((r) => `${fmtInt(r.need)}x ${r.m.name} a ${fmtInt(r.offer)}`).join(' + ');
+    const wtbMsg = `Compro ${wtb} · total ${fmtInt(totOffer)}${station ? ' · trato directo en ' + station : ''}`;
     bEl.className = 'cr-block';
     bEl.innerHTML = '<div class="cr-b-title">🛒 Comprar materiales'
       + ` <span class="faint">· para ${fmtInt(buyUnits)} uds${matCraftsBudget !== buyUnits ? ' (material de ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
