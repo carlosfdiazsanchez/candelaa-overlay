@@ -29,7 +29,8 @@
   // cantidad exacta de unidades (separador de miles, sin abreviar): 3.200
   const fmtInt = (n) => (n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-ES'));
   const salesTax = () => ((document.getElementById('premium-toggle') || {}).checked === false ? 0.08 : 0.04);
-  const stationRate = () => (+(document.getElementById('station-rate') || {}).value || 0);
+  const DEFAULT_STATION_RATE = 400;
+  const stationRate = () => { const el = document.getElementById('station-rate'); return el ? (+el.value || 0) : DEFAULT_STATION_RATE; };
   const agoStr = (ds) => { if (!ds) return ''; const m = Math.round((Date.now() - new Date(ds + 'Z').getTime()) / 60000); return m < 0 ? '' : (m < 60 ? m + 'm' : (m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd')); };
   const ageHours = (ds) => (ds ? (Date.now() - new Date(ds + 'Z').getTime()) / 3600000 : Infinity);
 
@@ -75,7 +76,6 @@
   (function restoreCfg() {
     let c = {}; try { c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); } catch (_) {}
     const pt = document.getElementById('premium-toggle'); if (pt && typeof c.premium === 'boolean') pt.checked = c.premium;
-    const sr = document.getElementById('station-rate'); if (sr && c.stationRate != null) sr.value = c.stationRate;
     const fr = document.getElementById('mkt-fresh'); if (fr && c.freshMaxH != null) fr.value = String(c.freshMaxH);
     const sc = document.getElementById('craft-station-city'); if (sc && c.stationCity != null) sc.value = c.stationCity;
     const fo = document.getElementById('craft-focus'); if (fo && typeof c.focus === 'boolean') fo.checked = c.focus;
@@ -567,6 +567,7 @@
   const CRAFT_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien']; // mats: sin Black Market
   async function loadCraft() {
     const rec = recipes[currentBase];
+    { const q = document.getElementById('craft-qty'); if (q) q.dataset.auto = '1'; }
     if (!rec) { craftOut.innerHTML = '<div class="mempty">Este item no es crafteable.</div>'; return; }
     applyAutoReturn();
     craftOut.innerHTML = '<div class="mempty">Cargando precios…</div>';
@@ -590,8 +591,6 @@
     [...(matRows || []), ...(prodRows || [])].forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
-    const feeInp = document.getElementById('craft-fee');
-    if (feeInp && feeInp.dataset.auto !== '0') { feeInp.value = Math.round(stationFeeOf(currentBase, stationRate())); feeInp.dataset.auto = '1'; }
     renderCraft();
   }
   const craftCityPrice = (id) => {
@@ -635,7 +634,7 @@
     const tax = salesTax();
     const sellFee = (document.getElementById('craft-sell-order') || {}).checked ? 0.025 : 0;
     const returnR = (+document.getElementById('craft-return').value || 0) / 100;
-    const fee = +document.getElementById('craft-fee').value || 0;
+    const fee = stationFeeOf(currentBase, stationRate());
     const matOrder = !!(document.getElementById('craft-mat-order') || {}).checked;
 
     // mini comparativa E0-E4 (precios auto, referencia rápida y clicable)
@@ -733,8 +732,14 @@
     const result = document.getElementById('craft-result'); if (!result) return;
     const returnR = (+document.getElementById('craft-return').value || 0) / 100;
     const tax = salesTax();
-    const fee = +document.getElementById('craft-fee').value || 0;
-    const qty = +document.getElementById('craft-qty').value || 1;
+    const fee = stationFeeOf(currentBase, stationRate());
+    // la cantidad la propone la sesión de foco, pero si la escribes tú manda la tuya
+    const fCost = +(document.getElementById('craft-focus-cost') || {}).value || 0;
+    const fAvail = +(document.getElementById('craft-focus-avail') || {}).value || 0;
+    const craftsF = ((document.getElementById('craft-focus') || {}).checked && fCost > 0) ? Math.floor(fAvail / fCost) : 0;
+    const qtyEl = document.getElementById('craft-qty');
+    if (qtyEl && qtyEl.dataset.auto !== '0' && craftsF > 0) qtyEl.value = craftsF;
+    const qty = +((qtyEl || {}).value) || 1;
     const matOrder = !!(document.getElementById('craft-mat-order') || {}).checked;
     const sellFee = (document.getElementById('craft-sell-order') || {}).checked ? 0.025 : 0;
     let ret = 0, non = 0; const mats = [];
@@ -885,11 +890,10 @@
     pEl.className = 'cr-block';
     pEl.innerHTML = '<div class="cr-b-title">🎯 A cuánto vender</div>'
       + `<div class="cr-kv"><span title="Por debajo de este precio pierdes silver. Ya incluye impuesto de venta y, si la marcaste, la tasa de orden.">Punto de equilibrio</span><span><b>${fmtInt(breakEven)}</b></span></div>`
-      + `<div class="cr-kv"><span>Precio objetivo (+${Math.round(margin * 100)}%)</span><span><b>${fmtInt(target)}</b></span></div>`
       + `<div class="cr-kv"><span>Precio actual</span><span><b class="${cc}">${fmtInt(ctx.sellPrice)}</b> <span class="faint">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% sobre el equilibrio)</span></span></div>`;
 
     // --- compra de materiales: órdenes, techo de puja y negociación ---
-    const buyUnits = units > 0 ? units : ctx.qty;
+    const buyUnits = ctx.qty;
     const matCraftsBudget = (useFocus && focusCost && mode === 'focus') ? Math.ceil(buyUnits * (1 - R)) : buyUnits;
     let totInstant = 0, totOrder = 0, totOffer = 0;
     const rows = ctx.mats.map((m) => {
@@ -1375,14 +1379,7 @@
     document.querySelectorAll('#item-ench button[data-e]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.e === currentEnch)));
     renderCraft();
   });
-  { const el = document.getElementById('craft-qty'); if (el) el.addEventListener('input', () => { if (currentBase) calcResult(); }); }
-  { const fi = document.getElementById('craft-fee'); if (fi) fi.addEventListener('input', () => { fi.dataset.auto = '0'; if (currentBase) calcResult(); }); }
-  { const sr = document.getElementById('station-rate'); if (sr) sr.addEventListener('input', () => {
-      const fi = document.getElementById('craft-fee');
-      if (fi && fi.dataset.auto !== '0' && currentBase) fi.value = Math.round(stationFeeOf(currentBase, stationRate()));
-      if (currentBase) calcResult();
-      onScanFilterChange();
-    }); }
+  { const el = document.getElementById('craft-qty'); if (el) el.addEventListener('input', () => { el.dataset.auto = '0'; if (currentBase) calcResult(); }); }
   ['craft-return', 'craft-mat-order', 'craft-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) calcResult(); }); });
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;

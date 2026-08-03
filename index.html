@@ -565,15 +565,11 @@
         <div class="cfg-row"><span class="cfg-lbl">Foco/ud</span><input type="number" id="craft-focus-cost" min="0" title="Coste de foco por unidad. Se estima desde los datos del juego y tu eficiencia; escribe el valor EXACTO que ves en la estación y tu spec queda calibrada para toda esta línea de items."><button class="mini-btn" id="craft-focus-auto" title="Volver al coste estimado (borra la calibración de este item)">auto</button></div>
         <div class="cfg-row"><span class="cfg-lbl">Sesión</span><select id="craft-session-mode" title="Cómo gastas el material que te devuelve la estación: volver a craftearlo con foco (más beneficio por punto) o seguir sin foco hasta agotarlo (más volumen).">
           <option value="focus" selected>Todo con foco</option><option value="mixed">Foco + resto sin foco</option></select></div>
-        <div class="cfg-row"><span class="cfg-lbl">Margen obj.</span><input type="number" id="craft-margin" value="20" min="0" step="5" title="Margen sobre coste al que quieres vender. Sale el precio objetivo además del punto de equilibrio."></div>
         <div class="cfg-row"><span class="cfg-lbl">Retorno %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% de recursos que te devuelve la estación. Se calcula solo desde ciudad + foco + bono diario; si escribes a mano, manda tu valor (toca cualquier ajuste para volver al automático)."><button class="mini-btn" id="craft-return-auto" title="Volver al retorno calculado">auto</button></div>
-        <div class="cfg-row"><span class="cfg-lbl">Tarifa taller</span><input type="number" id="station-rate" value="400" min="0" step="10" title="Plata por cada 100 de nutrición que cobra el taller donde crafteas (se ve en el juego). Cambia según el taller."></div>
-        <div class="cfg-row"><span class="cfg-lbl">Taller/ud</span><input type="number" id="craft-fee" value="0" min="0" title="Coste de uso del taller por cada unidad crafteada. Se autoestima desde la Tarifa taller; escribe aquí el valor EXACTO del juego para sobrescribirlo."></div>
         <div class="cfg-row"><span class="cfg-lbl">Mats de</span><select id="craft-city">
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
         <label class="cfg-check" title="Comprar los materiales dejando orden de compra cuesta un 2,5% de tasa"><input type="checkbox" id="craft-mat-order"> Mats con orden (+2,5%)</label>
         <label class="cfg-check" title="Vender con orden de venta cuesta un 2,5% de tasa ademas del impuesto"><input type="checkbox" id="craft-sell-order" checked> Vender con orden (+2,5%)</label>
-        <div class="cfg-row w2"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="opcional: precio que te dan (BM…) para comparar"></div>
       </div>
       <div id="craft-out"></div>
     </div>
