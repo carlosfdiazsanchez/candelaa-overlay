@@ -12,7 +12,7 @@
 
   let items = [], nameById = {}, recipes = {}, focusData = {};
   let currentBase = null, currentName = '', currentEnch = 0, currentQuality = 0;
-  let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null, craftQualMap = {};
+  let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null;
 
   const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -590,17 +590,6 @@
     [...(matRows || []), ...(prodRows || [])].forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
-    // precio del producto en el BM POR CALIDAD (para el chip anti-pico y la mini-tabla): bm=buy_max, avg=medio realizado
-    craftQualMap = {};
-    const QS = [1, 2, 3, 4, 5];
-    const [qbm, qhist] = await Promise.all([
-      Promise.all(QS.map((q) => window.overlay.craftPrices(prodIds, ['Black Market'], q).catch(() => []))),
-      Promise.all(QS.map((q) => window.overlay.history(prodIds, ['Black Market'], 21, q).catch(() => []))),
-    ]);
-    QS.forEach((q, i) => {
-      (qbm[i] || []).forEach((r) => { const d = (craftQualMap[r.item_id] = craftQualMap[r.item_id] || {}); const c = (d[q] = d[q] || {}); c.bm = r.buy_price_max || 0; c.date = r.buy_price_max_date || null; });
-      (qhist[i] || []).forEach((r) => { const d = (craftQualMap[r.item_id] = craftQualMap[r.item_id] || {}); (d[q] = d[q] || {}).avg = r.avg_price || 0; });
-    });
     const feeInp = document.getElementById('craft-fee');
     if (feeInp && feeInp.dataset.auto !== '0') { feeInp.value = Math.round(stationFeeOf(currentBase, stationRate())); feeInp.dataset.auto = '1'; }
     renderCraft();
@@ -716,8 +705,7 @@
     const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || document.getElementById('craft-city').value || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
-    const prodQ = currentQuality || 1;
-    const prodAvg = ((craftQualMap[prodEnch(currentBase, e)] || {})[prodQ] || {}).avg || 0;
+    const prodAvg = ((craftVolMap[prodEnch(currentBase, e)] || {})[cityKey(chosenSell || '')] || {}).avg || 0;
     const rawProd = chosenRow.p || Math.round(bs.gross) || 0;
     // si vendes al BM y el precio de ahora es un pico, calcula con el MEDIO (sostenible)
     const prodPrice = (prodInstant && prodAvg > 0) ? Math.min(rawProd, prodAvg) : rawProd;
@@ -730,18 +718,11 @@
       ? `<div class="cr-vol" title="Unidades/día que absorbe cada mercado · ~ = precio medio realizado">Absorbe/día: ${vsorted.map((x) => `<span class="${x[0] === sellCk ? 'cr-vol-best' : ''}">${cityShort(x[0])} <b>${fmtInt(x[1].daily)}</b>${x[1].avg ? ` <span class="cr-vol-avg" title="precio medio realizado">~${fmt(x[1].avg)}</span>` : ''}</span>`).join(' · ')}</div>`
       : '<div class="cr-vol faint">Volumen/día: sin datos</div>';
 
-    const cq = craftQualMap[prodEnch(currentBase, e)] || {};
-    const qualProdHtml = [1, 2, 3, 4, 5].some((q) => (cq[q] || {}).bm)
-      ? '<div class="mkt-quality"><div class="mkt-q-title" title="Lo que paga el Black Market por cada calidad del producto (al craftear te salen varias)">💎 Vender por calidad</div><table><thead><tr><th style="text-align:left">Calidad</th><th>BM paga</th><th></th><th>Visto</th></tr></thead><tbody>'
-        + [1, 2, 3, 4, 5].map((q) => { const d = cq[q] || {}; if (!d.bm) return ''; const age = agoStr(d.date); const stale = ageHours(d.date) > (freshMaxH() || 24); return `<tr><td class="name">${QNAMES[q]}</td><td class="best-sell">${fmt(d.bm)}</td><td>${sostChip(d.bm, d.avg)}</td><td class="${stale ? 'down' : 'faint'}">${stale ? '⚠ ' : ''}${age || '—'}</td></tr>`; }).join('')
-        + '</tbody></table></div>'
-      : '';
     craftOut.innerHTML = itemHeadHtml('crafteo · elige materiales y dónde vender')
       + `<div class="cr-mini-row">${mini}</div>`
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Receta E${e} <button class="mini-btn" id="cr-cheapest" title="Pone cada material al precio de la ciudad donde esté más barato (ojo: puede implicar varios viajes)">💸 más barato</button></div>${matRows}</div>`
       + `<div class="cr-row cr-prod"><span class="cr-name">Vender en ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Ciudad de venta del producto · precio por ciudad (🏴 Black Market = venta inmediata a su orden de compra)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
       + volLine
-      + qualProdHtml
       + '<div id="craft-result" class="craft-total"></div>'
       + '<div class="cr-blocks"><div id="craft-focus-out"></div><div id="craft-price-out"></div><div id="craft-budget-out"></div></div>';
     calcResult();
