@@ -743,9 +743,7 @@
       + volLine
       + qualProdHtml
       + '<div id="craft-result" class="craft-total"></div>'
-      + '<div id="craft-focus-out"></div>'
-      + '<div id="craft-price-out"></div>'
-      + '<div id="craft-budget-out"></div>';
+      + '<div class="cr-blocks"><div id="craft-focus-out"></div><div id="craft-price-out"></div><div id="craft-budget-out"></div></div>';
     calcResult();
   }
 

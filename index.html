@@ -270,7 +270,14 @@
   .mid{font-family:var(--mono);font-size:11px;color:var(--faint);flex:0 0 auto;}
   .mempty{color:var(--faint);font-size:11.5px;padding:8px 4px;text-align:center;}
 
-  .craft-cfg{display:flex;flex-direction:column;gap:6px;margin:9px 0;}
+  .craft-cfg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 14px;margin:9px 0;align-items:center;}
+  .craft-cfg .cfg-row{min-width:0;}
+  .craft-cfg .w2{grid-column:span 2;}
+  .craft-cfg .w3{grid-column:1 / -1;}
+  .cr-blocks{display:grid;grid-template-columns:1.1fr 0.95fr 1.75fr;gap:8px;align-items:start;}
+  .cr-blocks .cr-block{margin-top:8px;min-width:0;overflow-x:auto;}
+  .cr-blocks .cr-tbl th,.cr-blocks .cr-tbl td{padding:2px;font-size:11px;}
+  .cr-blocks .cr-tbl td:first-child{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .craft-cfg input[type=number],.craft-cfg select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
   .craft-cfg .cfg-lbl{width:64px;}
   .craft-mats{font-size:11.5px;color:var(--dim);margin-bottom:8px;line-height:1.5;}
@@ -553,7 +560,7 @@
           <option value="">— sin bono</option>
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
         <label class="cfg-check"><input type="checkbox" id="craft-focus"> Usar <b>foco</b> (+59% al bono de producción)</label>
-        <div class="cfg-row" id="daily-row"><span class="cfg-lbl" title="Cada día dos familias de items tienen +10% de bono de producción. Elige las dos de hoy: el bono se aplica solo cuando el item que miras pertenece a una de ellas.">Bono hoy</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
+        <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Cada día dos familias de items tienen +10% de bono de producción. Elige las dos de hoy: el bono se aplica solo cuando el item que miras pertenece a una de ellas.">Bono hoy</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
         <div class="cfg-row"><span class="cfg-lbl">Foco disp.</span><input type="number" id="craft-focus-avail" value="10000" min="0" step="500" title="Foco que piensas gastar en la sesión. Con premium se regeneran 10.000/día."></div>
         <div class="cfg-row"><span class="cfg-lbl">Foco/ud</span><input type="number" id="craft-focus-cost" min="0" title="Coste de foco por unidad. Se estima desde los datos del juego y tu eficiencia; escribe el valor EXACTO que ves en la estación y tu spec queda calibrada para toda esta línea de items."><button class="mini-btn" id="craft-focus-auto" title="Volver al coste estimado (borra la calibración de este item)">auto</button></div>
         <div class="cfg-row"><span class="cfg-lbl">Sesión</span><select id="craft-session-mode" title="Cómo gastas el material que te devuelve la estación: volver a craftearlo con foco (más beneficio por punto) o seguir sin foco hasta agotarlo (más volumen).">
@@ -561,30 +568,35 @@
         <div class="cfg-row"><span class="cfg-lbl">Margen obj.</span><input type="number" id="craft-margin" value="20" min="0" step="5" title="Margen sobre coste al que quieres vender. Sale el precio objetivo además del punto de equilibrio."></div>
         <div class="cfg-row"><span class="cfg-lbl">Retorno %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% de recursos que te devuelve la estación. Se calcula solo desde ciudad + foco + bono diario; si escribes a mano, manda tu valor (toca cualquier ajuste para volver al automático)."><button class="mini-btn" id="craft-return-auto" title="Volver al retorno calculado">auto</button></div>
         <div class="cfg-row"><span class="cfg-lbl">Tarifa taller</span><input type="number" id="station-rate" value="400" min="0" step="10" title="Plata por cada 100 de nutrición que cobra el taller donde crafteas (se ve en el juego). Cambia según el taller."></div>
-        <div class="cfg-row"><span class="cfg-lbl">Coste taller/ud</span><input type="number" id="craft-fee" value="0" min="0" title="Coste de uso del taller por cada unidad crafteada. Se autoestima desde la Tarifa taller; escribe aquí el valor EXACTO del juego para sobrescribirlo."></div>
-        <div class="cfg-row"><span class="cfg-lbl">Comprar mats en</span><select id="craft-city">
+        <div class="cfg-row"><span class="cfg-lbl">Taller/ud</span><input type="number" id="craft-fee" value="0" min="0" title="Coste de uso del taller por cada unidad crafteada. Se autoestima desde la Tarifa taller; escribe aquí el valor EXACTO del juego para sobrescribirlo."></div>
+        <div class="cfg-row"><span class="cfg-lbl">Mats de</span><select id="craft-city">
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
-        <label class="cfg-check"><input type="checkbox" id="craft-mat-order"> Comprar mats con orden (+2,5%)</label>
-        <label class="cfg-check"><input type="checkbox" id="craft-sell-order" checked> Vender producto con orden (+2,5%)</label>
-        <div class="cfg-row"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="opcional: precio que te dan (BM…) para comparar"></div>
+        <label class="cfg-check" title="Comprar los materiales dejando orden de compra cuesta un 2,5% de tasa"><input type="checkbox" id="craft-mat-order"> Mats con orden (+2,5%)</label>
+        <label class="cfg-check" title="Vender con orden de venta cuesta un 2,5% de tasa ademas del impuesto"><input type="checkbox" id="craft-sell-order" checked> Vender con orden (+2,5%)</label>
+        <div class="cfg-row w2"><span class="cfg-lbl">Te ofrecen</span><input type="number" id="cmp-offer" min="0" placeholder="opcional: precio que te dan (BM…) para comparar"></div>
       </div>
       <div id="craft-out"></div>
     </div>
     <div id="tab-scan" hidden>
+      <div class="craft-cfg">
       <div class="cfg-row"><span class="cfg-lbl">Modo</span><select id="scan-mode" title="Revender: compras el item hecho y lo mueves. Craftear: compras los materiales y lo fabricas, asumiendo que crafteas en la ciudad con el bono de cada item y con la configuración de foco de la pestaña Crafteo."><option value="flip" selected>Comprar y revender</option><option value="craft">Craftear</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell"><option value="bm" selected>Black Market (inmediato)</option><option value="market">Mercado (orden, mejor ciudad)</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>Todos (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="scan-city"><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option></select></div>
       <label class="cfg-check" title="Descarta las filas donde el precio de venta de ahora es más de 3× el precio medio histórico: son picos u órdenes troll, no oportunidades reales."><input type="checkbox" id="scan-hide-spikes" checked> Ocultar picos (venta &gt; 3× el medio)</label>
+      </div>
       <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
       <div id="scan-result"></div>
     </div>
     <div id="tab-level" hidden>
+      <div class="craft-cfg">
       <div class="cfg-row"><span class="cfg-lbl">Nivel</span><select id="level-target"><option>4</option><option>5</option><option>6</option><option>7</option><option value="8" selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="level-city"><option value="">Todas (más barata)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+      </div>
       <div id="level-result"></div>
     </div>
     <div id="tab-top" hidden>
+      <div class="craft-cfg">
       <div class="cfg-row"><span class="cfg-lbl">Mercado</span><select id="top-city">
         <option value="Black Market" selected>🏴 Black Market</option>
         <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
@@ -593,6 +605,7 @@
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="top-tier">
         <option value="" selected>Todos</option><option value="4">T4</option><option value="5">T5</option><option value="6">T6</option><option value="7">T7</option><option value="8">T8</option><option value="678">T6-T8</option></select></div>
       <label class="cfg-check" title="Deja fuera los items sin orden de compra activa o sin precio medio: los que salían con — en las columnas."><input type="checkbox" id="top-only-priced" checked> Solo items con precio ahora (sin “—”)</label>
+      </div>
       <button class="scan-btn" id="top-btn">💰 Ver lo que más se mueve</button>
       <div id="top-result"></div>
     </div>
