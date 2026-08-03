@@ -7,11 +7,15 @@ const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electro
 const path = require('path');
 const os = require('os');
 const http = require('http');
-const { spawn, execFile } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 
 let win = null;
 let radarProc = null;
-let uploaderProc = null;
+let marketProc = null;
+
+// Mata procesos hijos huérfanos por nombre de imagen (evita duplicados tras update/crash/relanzamiento).
+function killStray(image) { try { execFileSync('taskkill', ['/im', image, '/f', '/t'], { stdio: 'ignore', windowsHide: true }); } catch (_) {} }
+function cleanupStrays() { killStray('candelaa-radar.exe'); killStray('albiondata-client.exe'); killStray('candelaa-market.exe'); }
 
 // Una sola instancia: si ya hay una abierta, enfoca esa y cierra esta.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -73,32 +77,65 @@ function stopRadar() {
   }
 }
 
-// --- Data uploader (vendored albiondata-client) managed as a child process ---
-// Aporta los precios/historias que el usuario ve al pozo público de AODP, que
-// alimenta el feed NATS que consume nuestro backend (y a toda la comunidad).
-// Captura pasiva por Npcap (ya instalado para el radar). Sube al ingest público por defecto.
-const UPLOADER_CWD = app.isPackaged
-  ? path.join(process.resourcesPath, 'uploader')
-  : path.join(__dirname, 'vendor', 'uploader');
-const UPLOADER_EXE = path.join(UPLOADER_CWD, 'albiondata-client.exe');
+// NOTA: ya NO arrancamos el uploader público de AODP (albiondata-client). Las capturas
+// del usuario van SOLO a su API privada (candelaa-market -> /api/ingest), nunca al pozo
+// público: así sus precios frescos son una ventaja exclusiva y no se regalan a la comunidad.
+// cleanupStrays() mata cualquier albiondata-client.exe que quedara de versiones anteriores.
 
-function ensureUploader() {
-  if (uploaderProc) return;                  // ya corriendo
-  if (!fs.existsSync(UPLOADER_EXE)) return;   // no bundleado en este build
+// --- Capturador de MERCADO EN VIVO (lee el mercado/BM del trafico del cliente y lo sirve en http://localhost:5002) ---
+const MARKET_CWD = app.isPackaged
+  ? path.join(process.resourcesPath, 'market')
+  : path.join(__dirname, 'vendor', 'market');
+const MARKET_EXE = path.join(MARKET_CWD, 'candelaa-market.exe');
+
+function ensureMarket() {
+  if (marketProc) return;
+  if (!fs.existsSync(MARKET_EXE)) return;      // no bundleado en este build
+  killStray('candelaa-market.exe');            // nunca dos a la vez
   try {
-    // cwd a userData (escribible) para su log; -minimize para no molestar.
-    uploaderProc = spawn(UPLOADER_EXE, ['-minimize'], { cwd: app.getPath('userData'), windowsHide: true, stdio: 'ignore' });
-    uploaderProc.on('error', (e) => { console.error('[overlay] uploader no arrancó:', e.message); uploaderProc = null; });
-    uploaderProc.on('exit', () => { uploaderProc = null; }); // el watchdog lo revivirá
-  } catch (e) { console.error('[overlay] spawn uploader:', e.message); uploaderProc = null; }
+    marketProc = spawn(MARKET_EXE, [], { cwd: app.getPath('userData'), windowsHide: true, stdio: 'ignore',
+      env: { ...process.env, CANDELAA_API: API_BASE, CANDELAA_TOKEN_FILE: tokenFile() } });
+    marketProc.on('error', (e) => { console.error('[overlay] market no arrancó:', e.message); marketProc = null; });
+    marketProc.on('exit', () => { marketProc = null; }); // el watchdog lo revivirá
+  } catch (e) { console.error('[overlay] spawn market:', e.message); marketProc = null; }
 }
-function startUploaderWatchdog() { setInterval(ensureUploader, 10000); }
-function stopUploader() {
-  if (uploaderProc && uploaderProc.pid) {
-    try { execFile('taskkill', ['/pid', String(uploaderProc.pid), '/t', '/f']); } catch (_) {}
-    uploaderProc = null;
+function startMarketWatchdog() { setInterval(ensureMarket, 10000); }
+function stopMarket() {
+  if (marketProc && marketProc.pid) {
+    try { execFile('taskkill', ['/pid', String(marketProc.pid), '/t', '/f']); } catch (_) {}
+    marketProc = null;
   }
 }
+
+// mapId de zona -> ciudad de mercado (para etiquetar las ordenes capturadas del cliente).
+// El Black Market lo detecta el capturador por BuyerName; esto es solo para mercados de ciudad.
+const MARKET_CITY_NAMES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'Fort Sterling', 'Brecilien'];
+let zoneCityMap = null;
+function mapIdToCity(mapId) {
+  if (!mapId) return null;
+  if (!zoneCityMap) {
+    zoneCityMap = {};
+    try {
+      const z = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zones.json'), 'utf8'));
+      for (const [id, v] of Object.entries(z)) {
+        const nm = (v && v.name) || '';
+        const c = MARKET_CITY_NAMES.find((city) => nm.includes(city));
+        if (c) zoneCityMap[id] = c;
+      }
+    } catch (_) {}
+  }
+  return zoneCityMap[mapId] || null;
+}
+// el renderer (radar) avisa del cambio de zona; se lo pasamos al capturador para que sepa
+// en que ciudad estan las ordenes del mercado normal que ves.
+ipcMain.handle('market-zone', async (_e, mapId) => {
+  const city = mapIdToCity(mapId);
+  try {
+    await fetch('http://127.0.0.1:5002/zone', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ city }), signal: AbortSignal.timeout(1500) });
+  } catch (_) {}
+  return city;
+});
 
 function targetDisplay(displayId) {
   const displays = screen.getAllDisplays();
@@ -142,10 +179,11 @@ function createWindow() {
 }
 
 if (gotSingleInstanceLock) app.whenReady().then(() => {
+  cleanupStrays();        // limpia huérfanos de instancias previas (update/crash) antes de arrancar los nuestros
   ensureRadar();          // levanta el motor de radar si no está corriendo
   startRadarWatchdog();   // y lo mantiene vivo (re-arranca si se cae)
-  ensureUploader();       // arranca el uploader de datos (aporta al pozo de AODP)
-  startUploaderWatchdog();
+  ensureMarket();         // arranca el capturador de mercado EN VIVO (http://localhost:5002)
+  startMarketWatchdog();
   createWindow();
   // Atajo global para alternar el modo "pasar clics al juego" (funciona aunque
   // el overlay esté ignorando el ratón).
@@ -182,7 +220,7 @@ ipcMain.on('install-update', () => {
   try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (e) { console.error('[overlay] quitAndInstall:', e.message); }
 });
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); stopUploader(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); stopMarket(); });
 
 app.on('window-all-closed', () => app.quit());
 
@@ -218,6 +256,16 @@ ipcMain.handle('items-index', () => {
   catch (_) { return []; }
 });
 
+ipcMain.handle('items-by-index', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-byindex.json'), 'utf8')); }
+  catch (_) { return null; }
+});
+
+ipcMain.handle('zones', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zones.json'), 'utf8')); }
+  catch (_) { return null; }
+});
+
 const CITIES = ['Caerleon', 'Bridgewatch', 'Lymhurst', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien', 'Black Market'];
 function fetchPrices(idStr, locations) {
   return new Promise((resolve) => {
@@ -235,8 +283,24 @@ ipcMain.handle('market-prices', async (_e, itemId, quality) => {
   return (r.data && r.data.rows) || [];
 });
 
+// Mercado EN VIVO: lee lo capturado del cliente por el sidecar local (http://localhost:5002).
+// Devuelve [] si no hay datos, null si el capturador no responde (juego cerrado / no arrancó).
+ipcMain.handle('market-live', async (_e, itemId, quality) => {
+  try {
+    const url = `http://127.0.0.1:5002/item?id=${encodeURIComponent(itemId || '')}&q=${+quality || 0}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return (j && j.rows) || [];
+  } catch (_) { return null; }
+});
+
 ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
+  catch (_) { return {}; }
+});
+ipcMain.handle('focus-index', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-focus.json'), 'utf8')); }
   catch (_) { return {}; }
 });
 // Crafteo: precios por el backend (gateado por token).
@@ -252,8 +316,14 @@ ipcMain.handle('scan-prices', async (_e, ids, locations, quality) => {
 });
 
 // Volumen diario (history) por el backend, gateado por token.
-ipcMain.handle('history', async (_e, ids, locations, days) => {
-  const r = await apiCall('/api/history', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, days } });
+// Top de items por volumen (Black Market por defecto): base para la cartera.
+ipcMain.handle('top-volume', async (_e, opts) => {
+  const r = await apiCall('/api/top-volume', { method: 'POST', token: readStoredToken(), body: opts || {} });
+  return (r.data && r.data.rows) || [];
+});
+
+ipcMain.handle('history', async (_e, ids, locations, days, quality) => {
+  const r = await apiCall('/api/history', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, days, quality } });
   return (r.data && r.data.rows) || [];
 });
 
@@ -262,6 +332,17 @@ const API_BASE = process.env.CANDELAA_API || 'https://api.candelaa.dently.es';
 const tokenFile = () => path.join(app.getPath('userData'), 'token.json');
 function readStoredToken() { try { return JSON.parse(fs.readFileSync(tokenFile(), 'utf8')).token || null; } catch (_) { return null; } }
 function writeStoredToken(t) { try { fs.writeFileSync(tokenFile(), JSON.stringify({ token: t })); } catch (_) {} }
+
+// Heartbeat de presencia: cada ~10-20s marca al backend que este usuario sigue conectado
+// (actualiza last_seen_at de su token). El panel admin lo usa para ver quién está en línea.
+function scheduleHeartbeat() {
+  const ms = 10000 + Math.floor(Math.random() * 10000);
+  setTimeout(() => {
+    try { const t = readStoredToken(); if (t) apiCall('/auth/verify', { method: 'POST', token: t, body: {} }).catch(() => {}); } catch (_) {}
+    scheduleHeartbeat();
+  }, ms);
+}
+scheduleHeartbeat();
 function clearStoredToken() { try { fs.unlinkSync(tokenFile()); } catch (_) {} }
 
 async function apiCall(pathname, { method = 'GET', token, body } = {}) {

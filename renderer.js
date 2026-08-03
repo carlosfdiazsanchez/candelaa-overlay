@@ -37,10 +37,8 @@
     });
   }
 
-  // (el radar lo dibuja radar-feed.js con datos reales)
-
   // ---- layout persistence ----
-  const draggables = ['bar', 'p-radar', 'p-players', 'p-item'];
+  const draggables = ['bar', 'p-players', 'p-radar', 'p-item'];
   function loadState() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (_) { return {}; } }
   function saveState() {
     const st = { panels: {}, opacity: document.getElementById('op').value, monitor: document.getElementById('mon').value, passthrough };
@@ -88,7 +86,7 @@
     });
   }
   makeDraggable(document.getElementById('bar'), document.querySelector('#bar .brand'));
-  ['p-radar', 'p-players', 'p-item'].forEach((id) => {
+  ['p-players', 'p-radar', 'p-item'].forEach((id) => {
     const el = document.getElementById(id);
     makeDraggable(el, el.querySelector('.panel__head'));
   });
@@ -155,8 +153,7 @@
   // En vacío -> deja pasar los clics al juego.
   function evalAt(target) {
     if (dragging) return;
-    if (gateActive) { applyIgnore(false); return; }   // pantalla de token: captura todo
-    const interactive = target.closest('#bar') || target.closest('#npcap-notice') || (!passthrough && target.closest('.panel'));
+    const interactive = target.closest('#bar') || target.closest('#npcap-notice') || target.closest('.gate-card') || (!passthrough && target.closest('.panel'));
     applyIgnore(!interactive);
   }
   document.addEventListener('mousemove', (e) => evalAt(e.target), true);
@@ -180,11 +177,14 @@
   const btnAdmin = document.getElementById('btn-admin');
   const pAdmin = document.getElementById('p-admin');
   let isAdmin = false;
+  let gateDismissed = false;
+  makeDraggable(gate.querySelector('.gate-card'), gate.querySelector('.gate-card'));
+  document.getElementById('gate-close').addEventListener('click', () => { gateDismissed = true; hideGate(); });
 
   function showGate(msg) {
-    gateActive = true; gate.hidden = false;
+    gateActive = true; gateDismissed = false; gate.hidden = false;
     if (msg) gateMsg.textContent = msg;
-    gateErr.textContent = ''; lastIgnore = null; applyIgnore(false);
+    gateErr.textContent = ''; lastIgnore = null;
     setTimeout(() => { try { gateInput.focus(); } catch (_) {} }, 60);
   }
   function hideGate() { gateActive = false; gate.hidden = true; lastIgnore = null; }
@@ -234,7 +234,7 @@
     if (gateActive) return;
     const r = await verify(await window.overlay.getToken());
     if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); }
-    else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); showGate('Sesión cerrada: ' + reasonText(r.reason)); }
+    else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); if (!gateDismissed) showGate('Sesión cerrada: ' + reasonText(r.reason)); }
   }, 10 * 60 * 1000);
 
   // ================= PANEL ADMIN (solo is_admin) =================
@@ -243,12 +243,15 @@
   const adminCount = document.getElementById('admin-count');
   const ACT_LABEL = { revoke: 'Revocar', block: 'Bloquear', activate: 'Reactivar', delete: 'Borrar' };
 
+  const agoR = (ds) => { if (!ds) return 'nunca'; const m = Math.round((Date.now() - new Date(ds).getTime()) / 60000); if (m < 1) return 'ahora'; return m < 60 ? m + 'm' : (m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd'); };
+  const isOnline = (ds) => !!(ds && (Date.now() - new Date(ds).getTime()) < 40000);
   async function renderAdmin() {
-    alist.innerHTML = '<div class="pl-empty">Cargando…</div>';
     const res = await window.overlay.adminList();
     const tokens = (res && res.tokens) || [];
-    adminCount.textContent = String(tokens.length);
+    const online = tokens.filter((t) => isOnline(t.last_seen_at)).length;
+    adminCount.textContent = online ? `${tokens.length} · ${online} en línea` : String(tokens.length);
     if (!tokens.length) { alist.innerHTML = '<div class="pl-empty">Sin tokens emitidos.</div>'; return; }
+    tokens.sort((a, b) => (isOnline(b.last_seen_at) - isOnline(a.last_seen_at)) || String(b.last_seen_at || '').localeCompare(String(a.last_seen_at || '')));
     alist.innerHTML = tokens.map((t) => {
       const acts = [];
       if (!t.is_admin) {
@@ -256,14 +259,17 @@
         acts.push('delete');
       }
       const btns = acts.map((a) => `<button data-tok="${esc(t.token)}" data-act="${a}">${ACT_LABEL[a]}</button>`).join('');
-      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span><span class="abadge ${t.status}">${t.status}</span></div><div class="atok copyable" data-copy="${esc(t.token)}" title="Clic para copiar el token">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
+      const on = isOnline(t.last_seen_at);
+      const pres = `<span class="apres" title="${t.last_seen_at ? 'Última vez: ' + new Date(t.last_seen_at).toLocaleString('es-ES') : 'Nunca conectado'}"><span class="adot ${on ? 'on' : ''}"></span>${on ? 'en línea' : 'visto ' + agoR(t.last_seen_at)}</span>`;
+      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span>${pres}<span class="abadge ${t.status}">${t.status}</span></div><div class="atok copyable" data-copy="${esc(t.token)}" title="Clic para copiar el token">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
     }).join('');
   }
+  let adminTimer = null;
   btnAdmin.addEventListener('click', () => {
     pAdmin.hidden = false;
     const open = pAdmin.dataset.open === '1';
-    if (open) { pAdmin.style.display = 'none'; pAdmin.dataset.open = '0'; }
-    else { pAdmin.style.display = ''; pAdmin.dataset.open = '1'; renderAdmin(); }
+    if (open) { pAdmin.style.display = 'none'; pAdmin.dataset.open = '0'; if (adminTimer) { clearInterval(adminTimer); adminTimer = null; } }
+    else { pAdmin.style.display = ''; pAdmin.dataset.open = '1'; renderAdmin(); if (adminTimer) clearInterval(adminTimer); adminTimer = setInterval(renderAdmin, 12000); }
   });
   document.getElementById('admin-add').addEventListener('click', async () => {
     const inp = document.getElementById('admin-name');
