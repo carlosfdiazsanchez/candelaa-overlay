@@ -626,15 +626,22 @@
     }
     return ret * (1 - returnR) + non + stationFeeOf(nameId, stationRate());
   }
+  const sellOrderOn = () => !!(document.getElementById('craft-sell-order') || {}).checked;
+  // con orden de venta te pones en la cola al precio de la más barata (paga impuesto + 2,5%);
+  // sin orden vendes ya a la mejor puja de ese mercado (solo impuesto). Vale igual para el BM.
+  const sellUnitPrice = (cell) => (cell ? (sellOrderOn() ? (cell.sell || 0) : (cell.buy || 0)) : 0);
   const bestSellOf = (id, tax, sellFee) => {
     const c = craftPriceMap[id]; if (!c) return { gross: 0, net: 0, city: null, instant: false };
-    const citySells = Object.entries(c).filter(([ct, v]) => ct !== 'Black Market' && v.sell > 0).map(([ct, v]) => v.sell);
-    let net = -1, gross = 0, city = null, instant = false;
+    const order = sellOrderOn();
+    const refs = Object.entries(c).filter(([ct]) => ct !== 'Black Market').map(([, v]) => sellUnitPrice(v)).filter((x) => x > 0);
+    let net = -1, gross = 0, city = null;
     Object.entries(c).forEach(([ct, v]) => {
-      if (ct === 'Black Market') { const b = v.buy || 0; if (b > 0 && !isHiOutlier(b, citySells)) { const n = b * (1 - tax); if (n > net) { net = n; gross = b; city = ct; instant = true; } } }
-      else { const s = v.sell || 0; if (s > 0 && !isHiOutlier(s, citySells)) { const n = s * (1 - tax - sellFee); if (n > net) { net = n; gross = s; city = ct; instant = false; } } }
+      const p = sellUnitPrice(v);
+      if (p <= 0 || isHiOutlier(p, refs)) return;
+      const n = p * (1 - tax - (order ? sellFee : 0));
+      if (n > net) { net = n; gross = p; city = ct; }
     });
-    return { gross, net: Math.max(0, net), city, instant };
+    return { gross, net: Math.max(0, net), city, instant: !order };
   };
 
   function renderCraft() {
@@ -705,19 +712,15 @@
     }).join('');
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodPriceMap = craftPriceMap[prodEnch(currentBase, e)] || {};
-    const prodCityRows = ALL_CITIES.map((c) => {
-      const isBM = c === 'Black Market';
-      const cell = prodPriceMap[c] || {};
-      return { c, p: (isBM ? cell.buy : cell.sell) || 0, instant: isBM };
-    });
+    const prodCityRows = ALL_CITIES.map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
     const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || document.getElementById('craft-city').value || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
     const prodAvg = ((craftVolMap[prodEnch(currentBase, e)] || {})[cityKey(chosenSell || '')] || {}).avg || 0;
     const rawProd = chosenRow.p || Math.round(bs.gross) || 0;
-    // si vendes al BM y el precio de ahora es un pico, calcula con el MEDIO (sostenible)
-    const prodPrice = (prodInstant && prodAvg > 0) ? Math.min(rawProd, prodAvg) : rawProd;
-    const prodChip = (prodInstant && prodAvg > 0) ? sostChip(rawProd, prodAvg) : '';
+    // si el precio de ahora es un pico, calcula con el MEDIO histórico (sostenible)
+    const prodPrice = prodAvg > 0 ? Math.min(rawProd, prodAvg) : rawProd;
+    const prodChip = prodAvg > 0 ? sostChip(rawProd, prodAvg) : '';
     const prodOpts = prodCityRows.map((x) => `<option value="${x.p}" data-instant="${x.instant ? 1 : 0}" data-city="${esc(x.c)}"${x.c === chosenSell ? ' selected' : ''}>${x.c === 'Black Market' ? '🏴 Black Market' : esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}${x.instant && x.p ? ' ⚡' : ''}</option>`).join('');
     const vmap = craftVolMap[prodEnch(currentBase, e)] || {};
     const vsorted = Object.entries(vmap).filter((x) => (x[1].daily || 0) > 0).sort((a, b) => (b[1].daily || 0) - (a[1].daily || 0));
@@ -1365,7 +1368,8 @@
     renderCraft();
   });
   { const el = document.getElementById('craft-qty'); if (el) el.addEventListener('input', () => { el.dataset.auto = '0'; if (currentBase) calcResult(); }); }
-  ['craft-return', 'craft-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) calcResult(); }); });
+  { const cr = document.getElementById('craft-return'); if (cr) cr.addEventListener('change', () => { if (currentBase) calcResult(); }); }
+  { const so = document.getElementById('craft-sell-order'); if (so) so.addEventListener('change', () => { if (currentBase && recipes[currentBase]) renderCraft(); }); }
   { const mo = document.getElementById('craft-mat-order'); if (mo) mo.addEventListener('change', () => { if (currentBase && recipes[currentBase]) renderCraft(); onScanFilterChange(); }); }
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;
