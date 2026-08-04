@@ -29,6 +29,7 @@
       "players-feed.js",
       "resources-feed.js",
       "item-feed.js",
+      "app-key.json",
       "data/**/*",
       "images/**/*",
       "!**/*.log",

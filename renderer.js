@@ -206,7 +206,7 @@
     gateBtn.disabled = true; gateErr.textContent = 'Verificando…';
     const r = await verify(t);
     gateBtn.disabled = false;
-    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); hideGate(); gateInput.value = ''; }
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); hideGate(); gateInput.value = ''; }
     else { gateErr.textContent = reasonText(r.reason); }
   }
   gateBtn.addEventListener('click', gateSubmit);
@@ -218,22 +218,21 @@
     showGate('Introduce tu token de acceso');
   });
 
-  // arranque: SIEMPRE comprueba el token guardado
-  showGate('Comprobando acceso…');
+  // arranque: la app trae su propia clave, así que no se pide nada. El gate solo aparece
+  // si el servidor rechaza esa clave (revocada o build sin clave), nunca por un corte de red.
   (async function bootAuth() {
     const stored = await window.overlay.getToken();
     if (!stored) { showGate('Introduce tu token de acceso'); return; }
     const r = await verify(stored);
-    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); hideGate(); }
-    else if (r.reason === 'network') { showGate('Sin conexión con el servidor. Reintenta con tu token.'); }
-    else { showGate(reasonText(r.reason) + ' Introduce uno válido.'); }
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); hideGate(); }
+    else if (r.reason !== 'network') { showGate(reasonText(r.reason) + ' Introduce un token válido.'); }
   })();
 
   // re-verificación periódica: si revocas el token, se bloquea en ~10 min
   setInterval(async () => {
     if (gateActive) return;
     const r = await verify(await window.overlay.getToken());
-    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name); }
+    if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); }
     else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); if (!gateDismissed) showGate('Sesión cerrada: ' + reasonText(r.reason)); }
   }, 10 * 60 * 1000);
 

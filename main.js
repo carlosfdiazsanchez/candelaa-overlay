@@ -362,7 +362,19 @@ ipcMain.handle('history', async (_e, ids, locations, days, quality) => {
 // --- Candelaa backend: token auth + admin -------------------------------
 const API_BASE = process.env.CANDELAA_API || 'https://api.candelaa.dently.es';
 const tokenFile = () => path.join(app.getPath('userData'), 'token.json');
-function readStoredToken() { try { return JSON.parse(fs.readFileSync(tokenFile(), 'utf8')).token || null; } catch (_) { return null; } }
+// Clave de aplicación: va dentro del paquete (no en el repo) y permite usar la app sin
+// pedir nada al usuario. Un token personal guardado, si lo hay, tiene prioridad: es el
+// que da acceso de admin.
+const APP_KEY = (() => {
+  for (const p of [path.join(__dirname, 'app-key.json'), path.join(process.resourcesPath || '', 'app.asar', 'app-key.json')]) {
+    try { const k = JSON.parse(fs.readFileSync(p, 'utf8')).key; if (k) return String(k).trim(); } catch (_) {}
+  }
+  return null;
+})();
+function readStoredToken() {
+  try { const t = JSON.parse(fs.readFileSync(tokenFile(), 'utf8')).token; if (t) return t; } catch (_) {}
+  return APP_KEY;
+}
 function writeStoredToken(t) { try { fs.writeFileSync(tokenFile(), JSON.stringify({ token: t })); } catch (_) {} }
 
 // Heartbeat de presencia: cada ~10-20s marca al backend que este usuario sigue conectado

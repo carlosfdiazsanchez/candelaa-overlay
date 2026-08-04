@@ -8,3 +8,4 @@ tools-publish.ps1
 party-sniff.log
 run.err.log
 .DS_Store
+app-key.json
