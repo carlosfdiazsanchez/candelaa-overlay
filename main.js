@@ -106,6 +106,17 @@ function stopMarket() {
     marketProc = null;
   }
 }
+// Los hijos viven DENTRO de la carpeta de instalación (resources\radar, resources\market).
+// Si siguen vivos cuando el instalador sobrescribe esa carpeta, NSIS falla con "error
+// opening file for writing" y pide reintentar. Al instalar hay que matarlos SIN prisa de
+// forma síncrona: taskkill lanzado en asíncrono no da tiempo a soltar el fichero.
+function stopChildrenSync() {
+  [radarProc, marketProc].forEach((p) => {
+    if (p && p.pid) { try { execFileSync('taskkill', ['/pid', String(p.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true }); } catch (_) {} }
+  });
+  radarProc = null; marketProc = null;
+  cleanupStrays();
+}
 
 // mapId de zona -> ciudad de mercado (para etiquetar las ordenes capturadas del cliente).
 // El Black Market lo detecta el capturador por BuyerName; esto es solo para mercados de ciudad.
@@ -196,18 +207,33 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.autoDownload = true;
       autoUpdater.autoInstallOnAppQuit = true;
+      // la descarga por bloques falla a menudo contra el CDN de GitHub y deja el update en
+      // error; bajar el instalador entero es más lento pero no se cae
+      autoUpdater.disableDifferentialDownload = true;
       const send = (s) => { if (win && !win.isDestroyed()) win.webContents.send('update-status', s); };
-      autoUpdater.on('update-available', (info) => send({ state: 'downloading', percent: 0, version: info && info.version }));
+      let updateReady = false, downloading = false, retries = 0;
+      autoUpdater.on('update-available', (info) => { downloading = true; send({ state: 'downloading', percent: 0, version: info && info.version }); });
+      autoUpdater.on('update-not-available', () => { downloading = false; });
       autoUpdater.on('download-progress', (p) => send({ state: 'downloading', percent: Math.round(p.percent) }));
-      let updateReady = false;
-      autoUpdater.on('update-downloaded', (info) => { updateReady = true; send({ state: 'ready', version: info && info.version }); });
-      autoUpdater.on('error', (err) => send({ state: 'error', message: String((err && err.message) || err) }));
+      autoUpdater.on('update-downloaded', (info) => { updateReady = true; downloading = false; retries = 0; send({ state: 'ready', version: info && info.version }); });
+      autoUpdater.on('error', (err) => {
+        const wasDownloading = downloading;
+        downloading = false;
+        // un corte descargando se reintenta solo: el usuario no tiene por qué pulsar nada
+        if (wasDownloading && retries < 3) {
+          retries += 1;
+          send({ state: 'downloading', percent: 0 });
+          setTimeout(() => { downloading = true; autoUpdater.downloadUpdate().catch(() => { downloading = false; }); }, 5000 * retries);
+          return;
+        }
+        send({ state: 'error', message: String((err && err.message) || err) });
+      });
       // Chequeo periódico ALEATORIO mientras la app está abierta (90–240s):
       // una versión nueva llega casi al momento sin martillear GitHub. Deja de
       // chequear una vez descargada (ya solo falta reiniciar).
       const scheduleUpdateCheck = () => {
         const delay = (60 + Math.floor(Math.random() * 120)) * 1000;
-        setTimeout(() => { if (!updateReady) autoUpdater.checkForUpdates().catch(() => {}); scheduleUpdateCheck(); }, delay);
+        setTimeout(() => { if (!updateReady && !downloading) autoUpdater.checkForUpdates().catch(() => {}); scheduleUpdateCheck(); }, delay);
       };
       autoUpdater.checkForUpdates().catch(() => {});
       scheduleUpdateCheck();
@@ -217,10 +243,16 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
 
 // Instalación explícita del update descargado (botón "Reiniciar para actualizar").
 ipcMain.on('install-update', () => {
-  try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (e) { console.error('[overlay] quitAndInstall:', e.message); }
+  stopChildrenSync();
+  // margen para que Windows suelte los handles de los .exe recién matados
+  setTimeout(() => {
+    try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (e) { console.error('[overlay] quitAndInstall:', e.message); }
+  }, 600);
 });
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); stopRadar(); stopMarket(); });
+// también al cerrar normal: con autoInstallOnAppQuit el instalador corre al salir y se
+// encontraría los mismos ficheros bloqueados
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopChildrenSync(); });
 
 app.on('window-all-closed', () => app.quit());
 

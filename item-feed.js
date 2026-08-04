@@ -385,13 +385,25 @@
     }
     renderMarket(silent);
   }
-  function sostChip(bm, avg) {
+  function sostChip(bm, avg, short) {
     if (!bm || !avg) return '';
     const r = bm / avg;
-    return r > 1.4 ? `<span class="chip chip-pico" title="Pico: el BM paga ${fmt(bm)} ahora pero lo normal es ~${fmt(avg)}; cuenta con el medio">⚠ PICO ${r.toFixed(1)}×</span>`
-      : r < 0.7 ? '<span class="chip chip-flojo" title="El BM paga menos de lo normal ahora; suele recuperarse">↓ flojo</span>'
-      : '<span class="chip chip-ok" title="El precio de ahora va en línea con el medio histórico: fiable">✅ sostenido</span>';
+    const pico = r > 1.4, flojo = r < 0.7;
+    const cls = pico ? 'chip-pico' : flojo ? 'chip-flojo' : 'chip-ok';
+    const title = pico ? `Pico: pagan ${fmt(bm)} ahora pero lo normal es ~${fmt(avg)}; cuenta con el medio`
+      : flojo ? `Pagan menos de lo normal ahora (~${fmt(avg)} de media); suele recuperarse`
+      : `El precio de ahora va en línea con el medio histórico (~${fmt(avg)}): fiable`;
+    const txt = short ? (pico ? '⚠' : flojo ? '↓' : '✅')
+      : (pico ? `⚠ PICO ${r.toFixed(1)}×` : flojo ? '↓ flojo' : '✅ sostenido');
+    return `<span class="chip ${cls}" title="${title}">${txt}</span>`;
   }
+  // el Black Market solo compra EQUIPO (lo que dropean los mobs): ni comida, ni pociones,
+  // ni monturas, ni recursos. La API devuelve filas suyas igualmente, así que hay que filtrar.
+  const BM_CATS = new Set(['arcanestaff', 'axe', 'bag', 'bow', 'cape', 'cloth_armor', 'cloth_helmet', 'cloth_shoes',
+    'crossbow', 'cursestaff', 'dagger', 'firestaff', 'froststaff', 'hammer', 'holystaff', 'knuckles',
+    'leather_armor', 'leather_helmet', 'leather_shoes', 'mace', 'naturestaff', 'offhand',
+    'plate_armor', 'plate_helmet', 'plate_shoes', 'quarterstaff', 'spear', 'sword']);
+  const bmBuys = (baseId) => BM_CATS.has(catOf(baseId));
   function renderMarket(silent) {
     const rows = (marketData || []).filter((r) => r.sell_price_min > 0 || r.buy_price_max > 0);
     if (!rows.length) { if (!silent) tabMarket.innerHTML = '<div class="mempty">Sin datos de mercado.</div>'; return; }
@@ -629,10 +641,12 @@
   const sellUnitPrice = (cell) => (cell ? (sellOrderOn() ? (cell.sell || 0) : (cell.buy || 0)) : 0);
   const bestSellOf = (id, tax, sellFee) => {
     const c = craftPriceMap[id]; if (!c) return { gross: 0, net: 0, city: null, instant: false };
+    const noBM = !bmBuys(String(id).split('@')[0]);
     const order = sellOrderOn();
     const refs = Object.entries(c).filter(([ct]) => ct !== 'Black Market').map(([, v]) => sellUnitPrice(v)).filter((x) => x > 0);
     let net = -1, gross = 0, city = null;
     Object.entries(c).forEach(([ct, v]) => {
+      if (ct === 'Black Market' && noBM) return;
       const p = sellUnitPrice(v);
       if (p <= 0 || isHiOutlier(p, refs)) return;
       const n = p * (1 - tax - (order ? sellFee : 0));
@@ -709,7 +723,7 @@
     }).join('');
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodPriceMap = craftPriceMap[prodEnch(currentBase, e)] || {};
-    const prodCityRows = ALL_CITIES.map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
+    const prodCityRows = ALL_CITIES.filter((c) => c !== 'Black Market' || bmBuys(currentBase)).map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
     const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
@@ -943,7 +957,7 @@
   };
   const sellModeOf = (k) => SELL_MODES[k] || SELL_MODES.bm;
   const SCAN_ENCHANTS = [0, 1, 2, 3, 4]; // el escáner prueba todos y muestra el mejor por item
-  const SCAN_CAPTURE = 0.2;
+  const SCAN_CAPTURE = 1;   // volumen completo: el recorte mental lo pone el usuario, no el panel
   const SCAN_MAX_ROI = 500; // guarda anti-outlier: un ROI > 500% es casi siempre un precio troll de la API, no una oportunidad real
   const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
   const cityShort = (c) => (c === 'Black Market' ? '🏴 BM' : (c === 'FortSterling' ? 'F.Sterling' : esc(c)));
@@ -986,7 +1000,8 @@
     const sellMode = (document.getElementById('scan-sell') || {}).value || 'bm';
     const tiers = tier === 'all' ? ['4', '5', '6', '7', '8'] : [tier];
     const tierOk = (id) => tiers.some((t) => id.startsWith('T' + t + '_'));
-    const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && tierOk(id) && recipes[id] && recipes[id].r);
+    const onlyBM = sellModeOf((document.getElementById('scan-sell') || {}).value || 'bm').locs[0] === 'Black Market';
+    const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && tierOk(id) && recipes[id] && recipes[id].r && (!onlyBM || bmBuys(id)));
     if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier.</div>'; return; }
     out.innerHTML = `<div class="scan-prog"><div class="lbl"><span>Escaneando ${targets.length} items…</span><b id="scan-prog-pct">0%</b></div><div class="scan-bar"><i id="scan-bar-fill"></i></div></div>`;
     const btn = document.getElementById('scan-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Escaneando…'; }
@@ -1097,7 +1112,7 @@
       + sSort('avg', 'Medio', 'Precio medio realmente vendido (histórico)')
       + sSort('gain', 'Gana', 'Ganancia neta por unidad tras impuestos')
       + sSort('vol', 'Vol/día', 'Unidades que se mueven al día')
-      + sSort('eurDay', 'Plata/día', 'Ganancia por unidad × ~20% del volumen diario: lo que ese item puede darte al día sin hundir su precio')
+      + sSort('eurDay', 'Plata/día', 'Ganancia por unidad × TODO el volumen diario del mercado: el techo teórico si te llevaras el mercado entero')
       + (useFocus ? sSort('perFocus', 'Plata/foco', 'Ganancia por punto de foco gastado. Con el foco limitado, esta es la columna que decide qué craftear') : '')
       + '<th>Visto</th></tr></thead><tbody>'
       + res2.map((r) => {
@@ -1111,10 +1126,10 @@
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
         const iconId = prodEnch(r.id, r.e);
         return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(iconId)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(nm)}" title="Clic para copiar el nombre">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
-          + `<td class="silver">${fmt(r.netCost)}</td><td class="silver">${fmt(r.price)}${sostChip(r.price, r.avg)}</td>`
+          + `<td class="silver">${fmt(r.netCost)}</td><td class="silver scan-price">${fmt(r.price)}${sostChip(r.price, r.avg, true)}</td>`
           + `<td class="cr-vol-avg" title="precio medio realmente vendido (histórico): con esto se calcula la ganancia, no con el pico de ahora">${r.avg ? '~' + fmt(r.avg) : '—'}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
-          + `<td class="${r.vol > 0 ? '' : 'faint'}" title="Volumen/día (calidad Normal). El €/día usa ~20% de este volumen.">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
+          + `<td class="${r.vol > 0 ? '' : 'faint'}" title="Unidades que se mueven al día (calidad Normal). Plata/día usa este volumen completo.">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
           + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td>`
           + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' de foco por unidad' : 'sin datos de foco para este item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
           + `<td class="${stale ? 'down' : 'faint'}" title="Hace cuánto se vio este precio">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
