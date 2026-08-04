@@ -936,6 +936,15 @@
 
   // ================= ESCÁNER (flip: comprar hecho → revender) =================
   const SELL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien'];
+  // dónde vendes y cómo: inmediato cobra la puja y solo paga impuesto; con orden te pones
+  // en la cola al precio de la venta más barata y pagas impuesto + 2,5%
+  const SELL_MODES = {
+    bm: { locs: ['Black Market'], order: false, hdr: 'BM ⚡', txt: '🏴 BM inmediato' },
+    bmorder: { locs: ['Black Market'], order: true, hdr: 'BM ord.', txt: '🏴 BM con orden' },
+    market: { locs: SELL_CITIES, order: true, hdr: 'Venta', txt: 'orden en ciudad' },
+    cityfast: { locs: SELL_CITIES, order: false, hdr: 'Puja', txt: 'inmediato en ciudad' },
+  };
+  const sellModeOf = (k) => SELL_MODES[k] || SELL_MODES.bm;
   const SCAN_ENCHANTS = [0, 1, 2, 3, 4]; // el escáner prueba todos y muestra el mejor por item
   const SCAN_CAPTURE = 0.2;
   const SCAN_MAX_ROI = 500; // guarda anti-outlier: un ROI > 500% es casi siempre un precio troll de la API, no una oportunidad real
@@ -988,7 +997,7 @@
     const prodSet = new Set();
     targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => prodSet.add(prodEnch(id, e))));
     const prodIds = [...prodSet];
-    const sellLocs = sellMode === 'bm' ? ['Black Market'] : SELL_CITIES;
+    const sellLocs = sellModeOf(sellMode).locs;
     // rentabilidad: usa la calidad que DE VERDAD compras/flipeas. "Todas" (0) = Normal (1).
     const q = currentQuality || 1;
     const mode = scanMode();
@@ -1007,8 +1016,8 @@
       (prodRows || []).forEach((r) => {
         const ck = cityKey(r.city);
         if (ck === cityKey(city)) { buyP[r.item_id] = r.sell_price_min || 0; buyDateM[r.item_id] = r.sell_price_min_date || null; }
-        (sellP[r.item_id] = sellP[r.item_id] || {})[ck] = sellMode === 'bm' ? (r.buy_price_max || 0) : (r.sell_price_min || 0);
-        (dateM[r.item_id] = dateM[r.item_id] || {})[ck] = sellMode === 'bm' ? (r.buy_price_max_date || null) : (r.sell_price_min_date || null);
+        (sellP[r.item_id] = sellP[r.item_id] || {})[ck] = sellModeOf(sellMode).order ? (r.sell_price_min || 0) : (r.buy_price_max || 0);
+        (dateM[r.item_id] = dateM[r.item_id] || {})[ck] = sellModeOf(sellMode).order ? (r.sell_price_min_date || null) : (r.buy_price_max_date || null);
       });
       const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
       scanStore[scanKey()] = { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP };
@@ -1054,7 +1063,7 @@
           const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
           const vcell = vols[ck] || {}; const vol = vcell.daily || 0; const avg = vcell.avg || 0;
           const sellPrice = avg > 0 ? Math.min(price, avg) : price;   // valora con el MEDIO sostenible, no el pico de ahora
-          const net = sellMode === 'bm' ? sellPrice * bmNet : sellPrice * ordNet;
+          const net = sellPrice * (sellModeOf(sellMode).order ? ordNet : bmNet);
           const gain = net - netCost;
           const roi = netCost > 0 ? (gain / netCost) * 100 : Infinity;
           if (roi > SCAN_MAX_ROI) return;   // precio outlier (troll/dato podrido), no una oportunidad real
@@ -1081,7 +1090,7 @@
       return;
     }
     const res2 = shown;
-    const sellHdr = sellMode === 'bm' ? 'BM' : 'Venta';
+    const sellHdr = sellModeOf(sellMode).hdr;
     const buyCityShort = cityShort(cityKey(city));
     const sArrow = sdir === -1 ? ' ▲' : ' ▼';
     const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · clic para ordenar${skey === k ? ' al revés' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
@@ -1097,7 +1106,7 @@
       + res2.map((r) => {
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
-        const where = sellMode === 'bm' ? '🏴 BM' : cityShort(r.city);
+        const where = sellModeOf(sellMode).locs.length === 1 ? '🏴 BM' : cityShort(r.city);
         const action = isCraft
           ? `craftear en ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'estación sin bono'} · mats de ${buyCityShort} → vender ${where}`
           : `comprar en ${buyCityShort} → vender ${where}`;
@@ -1113,7 +1122,7 @@
           + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' de foco por unidad' : 'sin datos de foco para este item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
           + `<td class="${stale ? 'down' : 'faint'}" title="Hace cuánto se vio este precio">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
       }).join('') + '</tbody></table></div>'
-      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cacheado</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} pico${spikes === 1 ? '' : 's'} ${hideSpikes ? 'oculto' + (spikes === 1 ? '' : 's') : 'visible' + (spikes === 1 ? '' : 's')}</b> · ` : ''}${res.length} con datos · ${isCraft ? 'crafteo' : 'reventa'} · ${sellMode === 'bm' ? '🏴 BM' : 'orden en ciudad'}${useFocus ? ' · con foco' : ''}</div>`;
+      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cacheado</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} pico${spikes === 1 ? '' : 's'} ${hideSpikes ? 'oculto' + (spikes === 1 ? '' : 's') : 'visible' + (spikes === 1 ? '' : 's')}</b> · ` : ''}${res.length} con datos · ${isCraft ? 'crafteo' : 'reventa'} · ${sellModeOf(sellMode).txt}${useFocus ? ' · con foco' : ''}</div>`;
   }
   // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
   // si no, pedir pulsar Buscar. Solo el botón consulta la API.
