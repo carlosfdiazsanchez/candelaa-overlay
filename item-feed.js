@@ -603,10 +603,7 @@
   };
   const craftCityPrice = (id) => {
     const c = craftPriceMap[id]; if (!c) return 0;
-    const city = document.getElementById('craft-city').value;
-    const here = cityUnitPrice(c[city]);
-    if (here) return here;
-    const all = Object.values(c).map((x) => cityUnitPrice(x)).filter((x) => x > 0);
+    const all = CRAFT_CITIES.map((ct) => cityUnitPrice(c[ct])).filter((x) => x > 0);
     const valid = all.filter((v) => !isLoOutlier(v, all));   // ignora precios irrisorios (dato podrido) al coger el más barato
     const use = valid.length ? valid : all;
     return use.length ? Math.min(...use) : 0;
@@ -675,7 +672,7 @@
     // receta editable del encantamiento seleccionado: por cada material,
     // selector de ciudad (con su precio) + precio editable + subtotal
     const e = currentEnch;
-    const defaultCity = document.getElementById('craft-city').value;
+    const defaultCity = '';
     const craftQty = +document.getElementById('craft-qty').value || 1;
     const matRows = recipeRows(currentBase, e).map((m) => {
       const id = m.priceId;
@@ -713,7 +710,7 @@
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodPriceMap = craftPriceMap[prodEnch(currentBase, e)] || {};
     const prodCityRows = ALL_CITIES.map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
-    const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || document.getElementById('craft-city').value || '';
+    const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
     const prodAvg = ((craftVolMap[prodEnch(currentBase, e)] || {})[cityKey(chosenSell || '')] || {}).avg || 0;
@@ -1406,7 +1403,6 @@
       applyAutoReturn();
       if (currentBase && recipes[currentBase]) renderCraft();
     }); }
-  document.getElementById('craft-city').addEventListener('change', () => { if (currentBase) renderCraft(); });
   { const pt = document.getElementById('premium-toggle'); if (pt) pt.addEventListener('change', () => {
       if (currentBase && marketData) renderMarket();
       if (currentBase && recipes[currentBase]) renderCraft();
