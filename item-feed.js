@@ -593,11 +593,20 @@
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
     renderCraft();
   }
+  const matOrderOn = () => !!(document.getElementById('craft-mat-order') || {}).checked;
+  // lo que te cuesta la unidad: comprando al instante es la venta más barata; dejando orden
+  // de compra es superar en 1 la puja actual (la tasa del 2,5% se suma aparte)
+  const cityUnitPrice = (cell) => {
+    if (!cell) return 0;
+    if (matOrderOn()) return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
+    return cell.sell || 0;
+  };
   const craftCityPrice = (id) => {
     const c = craftPriceMap[id]; if (!c) return 0;
     const city = document.getElementById('craft-city').value;
-    if (c[city] && c[city].sell) return c[city].sell;
-    const all = Object.values(c).map((x) => x.sell).filter((x) => x > 0);
+    const here = cityUnitPrice(c[city]);
+    if (here) return here;
+    const all = Object.values(c).map((x) => cityUnitPrice(x)).filter((x) => x > 0);
     const valid = all.filter((v) => !isLoOutlier(v, all));   // ignora precios irrisorios (dato podrido) al coger el más barato
     const use = valid.length ? valid : all;
     return use.length ? Math.min(...use) : 0;
@@ -664,7 +673,7 @@
     const matRows = recipeRows(currentBase, e).map((m) => {
       const id = m.priceId;
       const cm = craftPriceMap[id] || {};
-      const perCity = CRAFT_CITIES.map((c) => ({ c, p: (cm[c] && cm[c].sell) || 0 }));
+      const perCity = CRAFT_CITIES.map((c) => ({ c, p: cityUnitPrice(cm[c]) }));
       const withPrice = perCity.filter((x) => x.p > 0);
       // ciudad por defecto: la global si tiene precio, si no la más barata disponible
       let chosen = perCity.find((x) => x.c === defaultCity && x.p > 0);
@@ -990,7 +999,7 @@
         mode === 'craft' ? window.overlay.scanPrices([...matSet], [city], 1) : Promise.resolve([]),
       ]);
       const matP = {};
-      (matRows || []).forEach((r) => { if (cityKey(r.city) === cityKey(city)) matP[r.item_id] = r.sell_price_min || 0; });
+      (matRows || []).forEach((r) => { if (cityKey(r.city) === cityKey(city)) matP[r.item_id] = cityUnitPrice({ sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }); });
       const buyP = {}, buyDateM = {}, sellP = {}, dateM = {};
       (prodRows || []).forEach((r) => {
         const ck = cityKey(r.city);
@@ -1356,7 +1365,8 @@
     renderCraft();
   });
   { const el = document.getElementById('craft-qty'); if (el) el.addEventListener('input', () => { el.dataset.auto = '0'; if (currentBase) calcResult(); }); }
-  ['craft-return', 'craft-mat-order', 'craft-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) calcResult(); }); });
+  ['craft-return', 'craft-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) calcResult(); }); });
+  { const mo = document.getElementById('craft-mat-order'); if (mo) mo.addEventListener('change', () => { if (currentBase && recipes[currentBase]) renderCraft(); onScanFilterChange(); }); }
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;
     el.addEventListener('change', () => {
