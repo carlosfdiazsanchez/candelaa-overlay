@@ -943,14 +943,12 @@
       const over = maxPay > 0 && orderPrice * 1.025 > maxPay;
       return { m, need, bid, ask, cheap, maxPay, offer, orderPrice, over };
     });
-    const cityPlain = (c) => String(c || '').replace('FortSterling', 'Fort Sterling');
-    const station = cityPlain((document.getElementById('craft-station-city') || {}).value);
     const wanted = rows.filter((r) => r.need > 0);
     const wtbEs = wanted.map((r) => `${fmtInt(r.need)}x ${r.m.name} a ${fmtInt(r.offer)}`).join(' + ');
-    const msgEs = `Compro ${wtbEs} · total ${fmtInt(totOffer)}${station ? ' · trato directo en ' + station : ''}`;
+    const msgEs = `Compro ${wtbEs} · total ${fmtInt(totOffer)}`;
     const num = (n) => Math.round(n).toLocaleString('en-US');
     const wtbEn = wanted.map((r) => `${num(r.need)}x ${enNameOf(r.m.id)} @ ${num(r.offer)}`).join(' + ');
-    const msgEn = `WTB ${wtbEn} — total ${num(totOffer)}${station ? ' — direct trade in ' + station : ''}`;
+    const msgEn = `WTB ${wtbEn} — ${num(totOffer)} total`;
     bEl.className = 'cr-block';
     bEl.innerHTML = '<div class="cr-b-title">🛒 Comprar materiales'
       + ` <span class="faint">· para ${fmtInt(buyUnits)} uds${matCraftsBudget !== buyUnits ? ' (material de ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
