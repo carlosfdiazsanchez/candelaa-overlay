@@ -575,7 +575,6 @@
       <button class="tab-btn" data-tab="craft">Crafteo</button>
       <button class="tab-btn" data-tab="scan">Escáner</button>
       <button class="tab-btn" data-tab="level">Nivel</button>
-      <button class="tab-btn" data-tab="top" title="Lo que más se mueve: para armar cartera">Top</button>
       <button class="tab-btn" data-tab="config" title="Ajustes que se ponen una vez y afectan a todo el panel">⚙</button>
     </div>
     <div id="tab-market"></div>
@@ -604,6 +603,8 @@
       <div class="craft-cfg">
       <div class="cfg-row"><span class="cfg-lbl">Modo</span><select id="scan-mode" title="Revender: compras el item hecho y lo mueves. Craftear: compras los materiales y lo fabricas, asumiendo que crafteas en la ciudad con el bono de cada item y con la configuración de foco de la pestaña Crafteo."><option value="flip" selected>Comprar y revender</option><option value="craft">Craftear</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell" title="Inmediato: cobras la puja de ese mercado al momento y solo pagas impuesto. Con orden: te pones en la cola al precio de la venta mas barata, pagas impuesto mas 2,5% y esperas a que te la llenen."><option value="bm" selected>Black Market — inmediato</option><option value="bmorder">Black Market — con orden</option><option value="market">Ciudades — con orden</option><option value="cityfast">Ciudades — inmediato</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl" title="Ventana de historico con la que se calculan el volumen y el precio medio. Menos dias = mas reciente; mas dias = mas estable.">Ventana</span><select id="scan-days">
+        <option value="3">3 dias</option><option value="7">7 dias</option><option value="14">14 dias</option><option value="21" selected>21 dias</option><option value="30">30 dias</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>Todos (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="scan-city" title="Ciudad donde compras. Dejalo en Cualquiera para que use el precio mas barato de todas las ciudades (puede implicar varios viajes)."><option value="" selected>Cualquiera (la mas barata)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
       <label class="cfg-check" title="Descarta las filas donde el precio de venta de ahora es más de 3× el precio medio histórico: son picos u órdenes troll, no oportunidades reales."><input type="checkbox" id="scan-hide-spikes" checked> Ocultar picos (venta &gt; 3× el medio)</label>
@@ -618,20 +619,7 @@
       </div>
       <div id="level-result"></div>
     </div>
-    <div id="tab-top" hidden>
-      <div class="craft-cfg">
-      <div class="cfg-row"><span class="cfg-lbl">Mercado</span><select id="top-city">
-        <option value="Black Market" selected>🏴 Black Market</option>
-        <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Ventana</span><select id="top-days">
-        <option value="3">3 días</option><option value="7" selected>7 días</option><option value="14">14 días</option><option value="30">30 días</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="top-tier">
-        <option value="" selected>Todos</option><option value="4">T4</option><option value="5">T5</option><option value="6">T6</option><option value="7">T7</option><option value="8">T8</option><option value="678">T6-T8</option></select></div>
-      <label class="cfg-check" title="Deja fuera los items sin orden de compra activa o sin precio medio: los que salían con — en las columnas."><input type="checkbox" id="top-only-priced" checked> Solo items con precio ahora (sin “—”)</label>
-      </div>
-      <button class="scan-btn" id="top-btn">💰 Ver lo que más se mueve</button>
-      <div id="top-result"></div>
-    </div>
+
   </div>
 </div>
 

@@ -347,7 +347,6 @@
       document.querySelectorAll('#item-quality button[data-q]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       if (currentBase) { loadMarket(); loadCraft(); }
       onScanFilterChange();
-      { const tt = document.getElementById('tab-top'); if (tt && !tt.hidden) loadTop(true); }
     });
   });
 
@@ -355,9 +354,8 @@
   document.querySelectorAll('#item-tabs .tab-btn').forEach((b) => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#item-tabs .tab-btn').forEach((x) => x.classList.toggle('active', x === b));
-      ['market', 'craft', 'scan', 'level', 'top', 'config'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
+      ['market', 'craft', 'scan', 'level', 'config'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
       if (b.dataset.tab === 'level') loadLevel();
-      if (b.dataset.tab === 'top' && !topCache) loadTop(true);
       const enchSel = document.getElementById('item-ench');
       if (enchSel) enchSel.style.display = (b.dataset.tab === 'market') ? '' : 'none';
       const frSel = document.getElementById('item-fresh');
@@ -1023,8 +1021,10 @@
   const SCAN_SORTS = { eurDay: (r) => r.eurDay, gain: (r) => r.gain, vol: (r) => r.vol, cost: (r) => r.netCost, price: (r) => r.price, avg: (r) => r.avg, roi: (r) => r.roi, perFocus: (r) => r.perFocus || 0 };
   let scanSort = 'eurDay', scanDir = 'desc';
   const scanMode = () => (document.getElementById('scan-mode') || {}).value || 'flip';
+  const scanDays = () => +((document.getElementById('scan-days') || {}).value) || 21;
   const scanKey = () => [
     scanMode(),
+    'd' + scanDays(),
     (document.getElementById('scan-sell') || {}).value || 'bm',
     document.getElementById('scan-tier').value,
     document.getElementById('scan-city').value,
@@ -1077,7 +1077,7 @@
       const inBuyLocs = (ck) => buyLocs.some((c) => cityKey(c) === ck);
       const [prodRows, volRows, matRows] = await Promise.all([
         window.overlay.scanPrices(prodIds, [...new Set([...buyLocs, ...sellLocs])], q),
-        window.overlay.history(prodIds, sellLocs, 21, q),
+        window.overlay.history(prodIds, sellLocs, scanDays(), q),
         mode === 'craft' ? window.overlay.scanPrices([...matSet], buyLocs, 1) : Promise.resolve([]),
       ]);
       const matP = {}, matCityM = {};
@@ -1169,7 +1169,7 @@
     const sdir = scanDir === 'asc' ? -1 : 1;
     const shown = (hideSpikes ? res.filter((r) => !isSpike(r)) : res)
       .sort((a, b) => (SCAN_SORTS[skey](b) - SCAN_SORTS[skey](a)) * sdir)
-      .slice(0, 25);
+      .slice(0, 50);
     if (!shown.length) {
       out.innerHTML = `<div class="mempty">Sin oportunidades con datos completos.${spikes && hideSpikes ? ` Se han descartado ${spikes} pico${spikes === 1 ? '' : 's'} de precio; desmarca "Ocultar picos" para verlos.` : ' Prueba otro tier o canal de venta.'}</div>`;
       return;
@@ -1223,7 +1223,7 @@
       out.innerHTML = `<div class="mempty">T${tier} sin cachear todavía — pulsa 🔍 Buscar para escanearlo.</div>`;
     }
   }
-  ['scan-tier', 'scan-city', 'scan-sell', 'scan-mode'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
+  ['scan-tier', 'scan-city', 'scan-sell', 'scan-mode', 'scan-days'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
   { const hs = document.getElementById('scan-hide-spikes'); if (hs) hs.addEventListener('change', () => { if (scanCache) renderScanResults(true); }); }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
   { const sr = document.getElementById('scan-result'); if (sr) sr.addEventListener('click', (e) => {
@@ -1335,98 +1335,6 @@
   ['level-target', 'level-city'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) loadLevel(); }); });
 
   // ================= TOP (lo que más se mueve · base de la cartera) =================
-  let topCache = null, topDir = 'desc', topSort = 'turnover';
-  async function loadTop(force) {
-    const out = document.getElementById('top-result'); if (!out) return;
-    const city = (document.getElementById('top-city') || {}).value || 'Black Market';
-    const days = +((document.getElementById('top-days') || {}).value) || 7;
-    const tierSel = (document.getElementById('top-tier') || {}).value || '';
-    const limit = 50;
-    const sortBy = topSort;
-    const dir = topDir;
-    const onlyPriced = (document.getElementById('top-only-priced') || {}).checked !== false;
-    const tiers = tierSel ? tierSel.split('') : [];
-    const key = [city, days, tierSel, limit, sortBy, dir, onlyPriced ? 'p' : 'all', 'q' + currentQuality].join('|');
-    if (!force && topCache && topCache.key === key) { renderTop(); return; }
-    out.innerHTML = '<div class="mempty">Mirando qué se mueve…</div>';
-    const btn = document.getElementById('top-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando…'; }
-    try {
-      const rows = await window.overlay.topVolume({ city, days, quality: currentQuality, limit, tiers, sortBy, dir, onlyPriced });
-      topCache = { key, city, days, sortBy, dir, rows: rows || [] };
-      renderTop();
-    } catch (_) {
-      out.innerHTML = '<div class="mempty">No he podido cargar el top (¿sin conexión o token caducado?).</div>';
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '💰 Ver lo que más se mueve'; }
-    }
-  }
-  function renderTop() {
-    const out = document.getElementById('top-result'); if (!out || !topCache) return;
-    const { rows, city, days } = topCache;
-    const sortBy = topCache.sortBy || 'turnover';
-    if (!rows.length) { out.innerHTML = '<div class="mempty">Sin datos de volumen para ese mercado/ventana. Prueba una ventana más larga, otro tier, o desmarca "Solo items con precio ahora".</div>'; return; }
-    const isBM = city === 'Black Market';
-    const priceHdr = isBM ? 'BM paga ahora' : 'Compran ya a';
-    const dir = topCache.dir || 'desc';
-    const arrow = dir === 'asc' ? ' ▲' : ' ▼';
-    const sortable = (k, label, tip) => `<th class="top-sort${sortBy === k ? ' on' : ''}" data-sort="${k}" title="${tip} · clic para ordenar${sortBy === k ? ' al revés' : ' por esto'}">${label}${sortBy === k ? arrow : ''}</th>`;
-    out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item</th>'
-      + sortable('daily', 'Absorbe/día', 'Unidades que absorbe el mercado al día (media de la ventana, corregida por cobertura de datos)')
-      + sortable('avg', 'Medio', 'Precio medio al que se cierra de verdad (último día con datos)')
-      + sortable('now', priceHdr, 'La mejor orden de compra en este momento: esto te pagan al instante')
-      + sortable('delta', 'Δ vs medio', 'Cuánto se desvía el precio de ahora del medio. Verde = pagan por encima de lo normal (vende); rojo = pagan por debajo (espera)')
-      + sortable('turnover', 'Mueve/día', 'Plata/día que mueve este item aquí (absorbe/día × medio): mide lo gordo del mercado, no tu beneficio')
-      + '<th>Visto</th><th></th></tr></thead><tbody>'
-      + rows.map((r) => {
-        const base = String(r.item_id).split('@')[0];
-        const e = String(r.item_id).indexOf('@') > 0 ? String(r.item_id).split('@')[1] : '0';
-        const nm = nameById[base] || base;
-        const now = r.buy_price_max || 0, avg = r.avg_price || 0;
-        const d = (now > 0 && avg > 0) ? Math.round((now / avg - 1) * 100) : null;
-        const dCls = d == null ? 'faint' : (d >= 15 ? 'up' : (d <= -15 ? 'down' : 'faint'));
-        const spike = d != null && d >= 200;
-        const age = agoStr(r.buy_price_max_date);
-        const stale = isStale(r.buy_price_max_date);
-        const turnover = avg > 0 ? avg * (r.daily || 0) : 0;
-        const fav = isFav(base);
-        return `<tr class="top-row" data-topid="${esc(base)}" data-topn="${esc(nm)}">`
-          + `<td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(r.item_id)}?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(base, e, nm))}" title="Clic para copiar «${esc(copyNameOf(base, e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${e}</span></div></div></td>`
-          + `<td><b>${fmtInt(r.daily)}</b></td>`
-          + `<td class="cr-vol-avg">${avg ? '~' + fmt(avg) : '—'}</td>`
-          + `<td class="${now ? (isBM ? 'best-sell' : 'silver') : 'faint'}">${now ? fmt(now) : '—'}${qBadge(r.buy_price_max_quality)}</td>`
-          + `<td class="${dCls}" ${spike ? 'title="Pico: pagan muchísimo más que el medio. Casi seguro no aguanta; valida en el juego"' : ''}>${d == null ? '—' : (d > 0 ? '+' : '') + d + '%'}${spike ? ' ⚠' : ''}</td>`
-          + `<td class="silver" title="${fmtInt(r.daily)} uds × ~${fmt(avg)}">${turnover ? fmt(turnover) : '—'}</td>`
-          + `<td class="${stale ? 'down' : 'faint'}" title="Hace cuánto se vio la orden de compra">${stale ? '⚠ ' : ''}${age || '—'}</td>`
-          + `<td><span class="fav-star${fav ? ' on' : ''}" data-topfav="${esc(base)}" data-topfavn="${esc(nm)}" title="${fav ? 'Quitar de la cartera' : 'Añadir a la cartera'}">${fav ? '★' : '☆'}</span></td>`
-          + '</tr>';
-      }).join('') + '</tbody></table></div>'
-      + `<div class="best-hint" title="Clic en una cabecera ordena por ella (otra vez invierte) y recalcula en el servidor; clic en una fila abre el item en Precios; ★ lo guarda en la cartera">${days} días · ${isBM ? '🏴 BM' : cityShort(city)} · ${QNAMES[currentQuality] || 'Todas'} · ${rows.length} items</div>`;
-  }
-  { const tb = document.getElementById('top-btn'); if (tb) tb.addEventListener('click', () => loadTop(true)); }
-  ['top-city', 'top-days', 'top-tier', 'top-only-priced'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => loadTop(false)); });
-  { const tr = document.getElementById('top-result'); if (tr) tr.addEventListener('click', (e) => {
-      const th = e.target.closest('.top-sort');
-      if (th) {
-        if (topSort === th.dataset.sort) topDir = topDir === 'desc' ? 'asc' : 'desc';
-        else { topSort = th.dataset.sort; topDir = 'desc'; }
-        loadTop(false);
-        return;
-      }
-      const st = e.target.closest('[data-topfav]');
-      if (st) {
-        e.stopPropagation();
-        const id = st.getAttribute('data-topfav'), n = st.getAttribute('data-topfavn');
-        if (isFav(id)) { favs = favs.filter((f) => f.id !== id); toast('☆ Fuera de la cartera'); }
-        else { favs = [{ id, n }, ...favs.filter((f) => f.id !== id)].slice(0, FAV_MAX); toast('★ En la cartera'); }
-        saveFavs(); renderFavs(); renderTop();
-        return;
-      }
-      if (e.target.closest('[data-copy]')) return;
-      const row = e.target.closest('.top-row');
-      if (row) selectItem(row.getAttribute('data-topid'), row.getAttribute('data-topn'));
-    }); }
-
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
   craftOut.addEventListener('input', (ev) => { if (ev.target.classList && ev.target.classList.contains('cr-price')) calcResult(); });
   // cambiar la ciudad de un material → coge su precio en esa ciudad y recalcula
