@@ -3,7 +3,7 @@
 // monitor. Clicks pass through to the game except over UI panels (the renderer
 // toggles click-through on hover via IPC). No injection into the game process.
 
-const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, protocol } = require('electron');
 const path = require('path');
 const os = require('os');
 const http = require('http');
@@ -16,6 +16,48 @@ let marketProc = null;
 // Mata procesos hijos huérfanos por nombre de imagen (evita duplicados tras update/crash/relanzamiento).
 function killStray(image) { try { execFileSync('taskkill', ['/im', image, '/f', '/t'], { stdio: 'ignore', windowsHide: true }); } catch (_) {} }
 function cleanupStrays() { killStray('candelaa-radar.exe'); killStray('albiondata-client.exe'); killStray('candelaa-market.exe'); }
+
+// Iconos de items: se sirven por icon://item/<ID>?size=N desde una caché en disco. El render
+// oficial solo los cachea 24h, así que tras un día volvía la ráfaga de descargas; el icono de
+// un item no cambia salvo parche, así que aquí se guardan y ya no se vuelven a pedir.
+// El id va en el PATH tras un host fijo (icon://item/<ID>): con esquema standard el primer
+// segmento se convierte en host y se pasaría a minúsculas, rompiendo los ids.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'icon', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+
+const ICON_MAX_MB = 120;
+function registerIconCache() {
+  const dir = path.join(app.getPath('userData'), 'icons');
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+  const fileFor = (id, size) => path.join(dir, id.replace(/[^A-Za-z0-9_@]/g, '-') + '_' + size + '.png');
+  const png = (buf) => new Response(buf, { headers: { 'content-type': 'image/png', 'cache-control': 'max-age=31536000' } });
+  protocol.handle('icon', async (req) => {
+    let id = '', size = '64';
+    try {
+      const u = new URL(req.url);
+      id = decodeURIComponent(u.pathname.replace(/^\/+/, '')).replace(/\.png$/i, '');
+      size = String(+u.searchParams.get('size') || 64);
+    } catch (_) { return new Response(null, { status: 400 }); }
+    if (!id) return new Response(null, { status: 400 });
+    const f = fileFor(id, size);
+    try { return png(fs.readFileSync(f)); } catch (_) {}
+    try {
+      const r = await fetch('https://render.albiononline.com/v1/item/' + encodeURIComponent(id) + '.png?size=' + size,
+        { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) return new Response(null, { status: r.status });
+      const buf = Buffer.from(await r.arrayBuffer());
+      try { fs.writeFileSync(f, buf); } catch (_) {}
+      return png(buf);
+    } catch (_) { return new Response(null, { status: 504 }); }
+  });
+  // por si algún día se desmadra: si la caché pasa del límite, se vacía y se rehace sola
+  try {
+    const files = fs.readdirSync(dir);
+    const mb = files.reduce((s, n) => { try { return s + fs.statSync(path.join(dir, n)).size; } catch (_) { return s; } }, 0) / 1048576;
+    if (mb > ICON_MAX_MB) files.forEach((n) => { try { fs.unlinkSync(path.join(dir, n)); } catch (_) {} });
+  } catch (_) {}
+}
 
 // Una sola instancia: si ya hay una abierta, enfoca esa y cierra esta.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -190,6 +232,7 @@ function createWindow() {
 }
 
 if (gotSingleInstanceLock) app.whenReady().then(() => {
+  registerIconCache();    // iconos de items desde disco (icon:///<ID>?size=N)
   cleanupStrays();        // limpia huérfanos de instancias previas (update/crash) antes de arrancar los nuestros
   ensureRadar();          // levanta el motor de radar si no está corriendo
   startRadarWatchdog();   // y lo mantiene vivo (re-arranca si se cae)

@@ -65,6 +65,13 @@
       document.body.removeChild(ta);
     }
   }
+  // si el render oficial no devuelve el icono de algún item, se oculta el hueco en vez de
+  // dejar la imagen rota (el evento error no burbujea: hay que escucharlo en captura)
+  document.getElementById('p-item').addEventListener('error', (e) => {
+    const t = e.target;
+    if (t && t.tagName === 'IMG') t.style.visibility = 'hidden';
+  }, true);
+
   // delegado: cualquier elemento con [data-copy] dentro del panel Item copia su nombre al click
   document.getElementById('p-item').addEventListener('click', (e) => {
     const t = e.target.closest('[data-copy]'); if (!t) return;
@@ -282,6 +289,10 @@
   // ---------- buscador ----------
   function selectItem(id, fallbackName) {
     currentBase = id; currentName = nameById[id] || fallbackName || id;
+    if (pendingEnch != null) {
+      currentEnch = pendingEnch; pendingEnch = null;
+      document.querySelectorAll('#item-ench button[data-e]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.e === currentEnch)));
+    }
     results.innerHTML = ''; search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
     { const co = document.getElementById('cmp-offer'); if (co) co.value = ''; }
     loadMarket(); loadCraft();
@@ -296,13 +307,23 @@
       if (!txt) { toast('Portapapeles vacío'); return; }
       search.value = txt; search.focus(); doSearch();
     }); }
+  // "Bolsa de visión del maestro .1" o "vara 6.2": el sufijo dice el encantamiento (y el tier)
+  let pendingEnch = null;
+  function parseQuery(raw) {
+    const m = /(?:\b([4-8]))?\s*\.\s*([0-4])\s*$/.exec(raw);
+    if (!m) return { text: raw, tier: null, ench: null };
+    return { text: raw.slice(0, m.index).trim(), tier: m[1] ? +m[1] : null, ench: +m[2] };
+  }
   function doSearch() {
-    const q = norm(search.value.trim());
+    const parsed = parseQuery(search.value.trim());
+    pendingEnch = parsed.ench;
+    const q = norm(parsed.text);
     if (q.length < 2) { results.innerHTML = ''; return; }
     // solo items base (sin @ench): una fila por item; el encantamiento se elige con el filtro Ench.
-    const matches = items.filter((it) => it.id.indexOf('@') < 0 && norm(it.n).includes(q)).slice(0, 14);
+    const matches = items.filter((it) => it.id.indexOf('@') < 0 && norm(it.n).includes(q)
+      && (!parsed.tier || it.id.startsWith('T' + parsed.tier + '_'))).slice(0, 14);
     results.innerHTML = matches.length
-      ? matches.map((m) => `<div class="mres" data-id="${esc(m.id)}"><img class="ires-icon" src="https://render.albiononline.com/v1/item/${encodeURIComponent(m.id)}.png?size=40" loading="lazy" alt=""><span class="ires-name">${esc(m.n)}</span><span class="mid">${recipes[m.id] ? '🔨' : ''}</span></div>`).join('')
+      ? matches.map((m) => `<div class="mres" data-id="${esc(m.id)}"><img class="ires-icon" src="icon://item/${encodeURIComponent(m.id)}?size=40" loading="lazy" alt=""><span class="ires-name">${esc(m.n)}</span><span class="mid">${recipes[m.id] ? '🔨' : ''}</span></div>`).join('')
       : '<div class="mempty">Sin resultados</div>';
   }
   results.addEventListener('click', (e) => {
@@ -349,7 +370,7 @@
   const QNAMES = ['Todas', 'Normal', 'Bueno', 'Notable', 'Sobresaliente', 'Obra maestra'];
   function itemHeadHtml(sub) {
     const qid = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="https://render.albiononline.com/v1/item/${encodeURIComponent(qid)}.png?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
+    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="icon://item/${encodeURIComponent(qid)}?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
   }
 
   // ================= MERCADO =================
@@ -1179,7 +1200,7 @@
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
         const iconId = prodEnch(r.id, r.e);
-        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(iconId)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(r.id, r.e, nm))}" title="Clic para copiar «${esc(copyNameOf(r.id, r.e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
+        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(iconId)}?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(r.id, r.e, nm))}" title="Clic para copiar «${esc(copyNameOf(r.id, r.e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
           + `<td class="silver">${fmt(r.netCost)}</td><td class="silver scan-price">${fmt(r.price)}${sostChip(r.price, r.avg, true)}</td>`
           + `<td class="cr-vol-avg" title="precio medio realmente vendido (histórico): con esto se calcula la ganancia, no con el pico de ahora">${r.avg ? '~' + fmt(r.avg) : '—'}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
@@ -1370,7 +1391,7 @@
         const turnover = avg > 0 ? avg * (r.daily || 0) : 0;
         const fav = isFav(base);
         return `<tr class="top-row" data-topid="${esc(base)}" data-topn="${esc(nm)}">`
-          + `<td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(r.item_id)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(base, e, nm))}" title="Clic para copiar «${esc(copyNameOf(base, e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${e}</span></div></div></td>`
+          + `<td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(r.item_id)}?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(base, e, nm))}" title="Clic para copiar «${esc(copyNameOf(base, e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${e}</span></div></div></td>`
           + `<td><b>${fmtInt(r.daily)}</b></td>`
           + `<td class="cr-vol-avg">${avg ? '~' + fmt(avg) : '—'}</td>`
           + `<td class="${now ? (isBM ? 'best-sell' : 'silver') : 'faint'}">${now ? fmt(now) : '—'}${qBadge(r.buy_price_max_quality)}</td>`
