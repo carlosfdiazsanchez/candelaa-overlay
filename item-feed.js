@@ -1051,22 +1051,34 @@
       // Flip: comprar el ITEM ya hecho y revenderlo. Craft: comprar los MATERIALES y fabricarlo.
       const matSet = new Set();
       if (mode === 'craft') targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => recipeRows(id, e).forEach((m) => matSet.add(m.priceId))));
+      // "Comprar en" vacío = cualquier ciudad: se piden todas y se queda la más barata de cada cosa
+      const buyLocs = city ? [city] : CRAFT_CITIES;
+      const inBuyLocs = (ck) => buyLocs.some((c) => cityKey(c) === ck);
       const [prodRows, volRows, matRows] = await Promise.all([
-        window.overlay.scanPrices(prodIds, [...new Set([city, ...sellLocs])], q),
+        window.overlay.scanPrices(prodIds, [...new Set([...buyLocs, ...sellLocs])], q),
         window.overlay.history(prodIds, sellLocs, 21, q),
-        mode === 'craft' ? window.overlay.scanPrices([...matSet], [city], 1) : Promise.resolve([]),
+        mode === 'craft' ? window.overlay.scanPrices([...matSet], buyLocs, 1) : Promise.resolve([]),
       ]);
-      const matP = {};
-      (matRows || []).forEach((r) => { if (cityKey(r.city) === cityKey(city)) matP[r.item_id] = cityUnitPrice({ sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }); });
-      const buyP = {}, buyDateM = {}, sellP = {}, dateM = {};
+      const matP = {}, matCityM = {};
+      (matRows || []).forEach((r) => {
+        if (!inBuyLocs(cityKey(r.city))) return;
+        const p = cityUnitPrice({ sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 });
+        if (p > 0 && (!matP[r.item_id] || p < matP[r.item_id])) { matP[r.item_id] = p; matCityM[r.item_id] = cityKey(r.city); }
+      });
+      const buyP = {}, buyDateM = {}, buyCityM = {}, sellP = {}, dateM = {};
       (prodRows || []).forEach((r) => {
         const ck = cityKey(r.city);
-        if (ck === cityKey(city)) { buyP[r.item_id] = r.sell_price_min || 0; buyDateM[r.item_id] = r.sell_price_min_date || null; }
+        if (inBuyLocs(ck)) {
+          const p = r.sell_price_min || 0;
+          if (p > 0 && (!buyP[r.item_id] || p < buyP[r.item_id])) {
+            buyP[r.item_id] = p; buyDateM[r.item_id] = r.sell_price_min_date || null; buyCityM[r.item_id] = ck;
+          }
+        }
         (sellP[r.item_id] = sellP[r.item_id] || {})[ck] = sellModeOf(sellMode).order ? (r.sell_price_min || 0) : (r.buy_price_max || 0);
         (dateM[r.item_id] = dateM[r.item_id] || {})[ck] = sellModeOf(sellMode).order ? (r.sell_price_min_date || null) : (r.buy_price_max_date || null);
       });
       const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
-      scanStore[scanKey()] = { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP };
+      scanStore[scanKey()] = { targets, buyP, buyDateM, buyCityM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP, matCityM };
       scanCache = scanStore[scanKey()];
       stopProg();
       renderScanResults(false);
@@ -1079,10 +1091,16 @@
   }
   function renderScanResults(fromCache) {
     const out = document.getElementById('scan-result'); if (!out || !scanCache) return;
-    const { targets, buyP, buyDateM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP } = scanCache;
+    const { targets, buyP, buyDateM, buyCityM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP, matCityM } = scanCache;
     const bmNet = 1 - salesTax();
     const ordNet = 1 - salesTax() - 0.025;
     const isCraft = mode === 'craft';
+    // con "cualquiera" cada material puede venir de una ciudad distinta
+    const matsCityLabel = (id, e) => {
+      const cities = [...new Set(recipeRows(id, e).map((m) => (matCityM || {})[m.priceId]).filter(Boolean))];
+      if (!cities.length) return 'la más barata';
+      return cities.length === 1 ? cityShort(cities[0]) : cities.length + ' ciudades';
+    };
     const useFocus = isCraft && !!(document.getElementById('craft-focus') || {}).checked;
     // en modo crafteo se asume que fabricas cada item en la ciudad que tiene su bono
     const craftCostOf = (id, e) => {
@@ -1137,7 +1155,7 @@
     }
     const res2 = shown;
     const sellHdr = sellModeOf(sellMode).hdr;
-    const buyCityShort = cityShort(cityKey(city));
+    const buyCityShort = city ? cityShort(cityKey(city)) : '';
     const sArrow = sdir === -1 ? ' ▲' : ' ▼';
     const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · clic para ordenar${skey === k ? ' al revés' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
     out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
@@ -1153,9 +1171,11 @@
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellModeOf(sellMode).locs.length === 1 ? '🏴 BM' : cityShort(r.city);
+        const matsFrom = isCraft && !city ? matsCityLabel(r.id, r.e) : buyCityShort;
+        const buyFrom = buyCityShort || cityShort(buyCityM[prodEnch(r.id, r.e)] || '') || 'la más barata';
         const action = isCraft
-          ? `craftear en ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'estación sin bono'} · mats de ${buyCityShort} → vender ${where}`
-          : `comprar en ${buyCityShort} → vender ${where}`;
+          ? `craftear en ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'estación sin bono'} · mats de ${matsFrom} → vender ${where}`
+          : `comprar en ${buyFrom} → vender ${where}`;
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
         const iconId = prodEnch(r.id, r.e);
