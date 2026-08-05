@@ -113,6 +113,22 @@
     const state = document.getElementById('notes-state');
     if (!ta) return;
     try { ta.value = localStorage.getItem(NOTES_KEY) || ''; } catch (_) {}
+    // el tamaño al que la dejes estirada se recuerda
+    const SIZE_KEY = 'candelaa-notes-size-v1';
+    try {
+      const sz = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null');
+      if (sz && sz.w) ta.style.width = sz.w;
+      if (sz && sz.h) ta.style.height = sz.h;
+    } catch (_) {}
+    if (window.ResizeObserver) {
+      let rt = null;
+      new ResizeObserver(() => {
+        clearTimeout(rt);
+        rt = setTimeout(() => {
+          try { localStorage.setItem(SIZE_KEY, JSON.stringify({ w: ta.style.width, h: ta.style.height })); } catch (_) {}
+        }, 500);
+      }).observe(ta);
+    }
     let t = null, clearT = null;
     const mark = (txt) => { if (!state) return; state.textContent = txt; clearTimeout(clearT); clearT = setTimeout(() => { state.textContent = ''; }, 1500); };
     ta.addEventListener('input', () => {

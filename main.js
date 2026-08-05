@@ -331,6 +331,10 @@ ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
   catch (_) { return {}; }
 });
+ipcMain.handle('items-index-en', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-en.json'), 'utf8')); }
+  catch (_) { return []; }
+});
 ipcMain.handle('focus-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-focus.json'), 'utf8')); }
   catch (_) { return {}; }

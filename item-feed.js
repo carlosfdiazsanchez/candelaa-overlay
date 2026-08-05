@@ -10,7 +10,7 @@
   const craftOut = document.getElementById('craft-out');
   if (!search) return;
 
-  let items = [], nameById = {}, recipes = {}, focusData = {};
+  let items = [], nameById = {}, nameEnById = {}, recipes = {}, focusData = {};
   let currentBase = null, currentName = '', currentEnch = 0, currentQuality = 0;
   let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null;
 
@@ -104,6 +104,23 @@
   const freshMaxH = () => { const el = document.getElementById('mkt-fresh'); return el ? +el.value || 0 : 0; };
   const isStale = (date) => { const h = freshMaxH(); return h > 0 && ageHours(date) > h; };
 
+  // Nombre a copiar de un item encantado: en los recursos la rareza va en el propio nombre
+  // ("Tela suntuosa rara" = .2) y ese es el que se busca en el juego; en el equipo el nombre
+  // no cambia, así que se le añade la notación .N para no perder el dato.
+  const copyNameOf = (baseId, e, baseName, dict) => {
+    const map = dict || nameById;
+    const nm = baseName || map[baseId] || baseId;
+    if (!e) return nm;
+    const enchId = enchantable(baseId) ? ench(baseId, e) : prodEnch(baseId, e);
+    const own = map[enchId];
+    return own && own !== nm ? own : nm + ' .' + e;
+  };
+  const enNameOf = (id) => {
+    const base = String(id).replace(/_LEVEL\d+@\d+$/, '').replace(/@\d+$/, '');
+    const m = /_LEVEL(\d)@/.exec(String(id)) || /@(\d)$/.exec(String(id));
+    return copyNameOf(base, m ? +m[1] : 0, nameEnById[base], nameEnById);
+  };
+
   const QAB = ['', '', 'B', 'Not', 'Sob', 'OM'];
   const qBadge = (qv) => (currentQuality === 0 && qv > 1 && QAB[qv])
     ? ` <span class="qbadge" title="Ojo: este precio NO es de calidad Normal, es ${QNAMES[qv]}">${QAB[qv]}</span>` : '';
@@ -113,6 +130,10 @@
     nameById = Object.fromEntries(items.map((x) => [x.id, x.n]));
     initDailyBonus();
   });
+  // nombres en inglés: para el mensaje de compra del chat global (se carga aparte, sin bloquear)
+  if (window.overlay.itemsIndexEn) {
+    window.overlay.itemsIndexEn().then((en) => { nameEnById = Object.fromEntries((en || []).map((x) => [x.id, x.n])); }).catch(() => {});
+  }
 
   // ---------- bono diario de producción (dos familias al día, +10%) ----------
   const CAT_ES = {
@@ -328,7 +349,7 @@
   const QNAMES = ['Todas', 'Normal', 'Bueno', 'Notable', 'Sobresaliente', 'Obra maestra'];
   function itemHeadHtml(sub) {
     const qid = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="https://render.albiononline.com/v1/item/${encodeURIComponent(qid)}.png?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(currentName)}" title="Clic para copiar el nombre">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
+    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="https://render.albiononline.com/v1/item/${encodeURIComponent(qid)}.png?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
   }
 
   // ================= MERCADO =================
@@ -693,15 +714,21 @@
       const cm = craftPriceMap[id] || {};
       const perCity = CRAFT_CITIES.map((c) => ({ c, p: cityUnitPrice(cm[c]) }));
       const withPrice = perCity.filter((x) => x.p > 0);
-      // ciudad por defecto: la global si tiene precio, si no la más barata disponible
+      // ciudad por defecto: la más barata según el MISMO criterio que usa el bloque de compra
+      // (mismo modo de compra y mismo descarte de precios podridos), para que no discrepen
       let chosen = perCity.find((x) => x.c === defaultCity && x.p > 0);
+      if (!chosen) { const ch = cheapestOf(id); chosen = perCity.find((x) => x.c === ch.city && x.p > 0); }
       if (!chosen) chosen = withPrice.slice().sort((a, b) => a.p - b.p)[0];
       const chosenCity = chosen ? chosen.c : defaultCity;
       const det = chosen ? chosen.p : 0;
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
       const enchTag = (e > 0 && enchantable(m.nameId)) ? '.' + e : '';
       const ret = returnable(m.nameId) ? 1 : 0;
-      const mnm = nameById[m.nameId] || m.nameId;
+      const mnmBase = nameById[m.nameId] || m.nameId;
+      const enchName = (m.priceId !== m.nameId && nameById[m.priceId]) || '';
+      const ownName = enchName && enchName !== mnmBase ? enchName : '';
+      const mnm = ownName || mnmBase;
+      const copyName = ownName || (mnmBase + (enchTag ? ' ' + enchTag : ''));
       const subC = subCraftCost(m.nameId, e);
       let subChip = '';
       if (subC != null && subC > 0) {
@@ -712,8 +739,8 @@
           + ` title="Fabricarlo tú cuesta ${fmt(subC)}/ud (retorno ${rr.pct.toFixed(1)}% en ${rr.match ? cityShort(rr.bon.city) : 'estación sin bono'} + taller). Comprarlo cuesta ${det ? fmt(det) : '—'}. Clic para usar este coste.">`
           + `🔨 ${fmt(subC)}${diff != null ? ` (${diff >= 0 ? '+' : ''}${diff}%)` : ''}</span>`;
       }
-      return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}" data-id="${esc(id)}" data-name="${esc(mnm + enchTag)}">`
-        + `<span class="cr-name copyable" data-copy="${esc(mnm)}" title="Clic para copiar el nombre">${m.c}× ${esc(mnm)}${enchTag}</span>`
+      return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}" data-id="${esc(id)}" data-name="${esc(copyName)}">`
+        + `<span class="cr-name copyable" data-copy="${esc(copyName)}" title="Clic para copiar «${esc(copyName)}» (el nombre exacto que buscar en el juego)">${m.c}× ${esc(mnm)}${enchTag}</span>`
         + subChip
         + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
         + `<select class="cr-city" title="Ciudad de compra de este material">${opts}</select>`
@@ -849,13 +876,13 @@
   // sentido ofrecer por chat: por encima, te sale mejor comprarlo allí)
   const cheapestOf = (id) => {
     const c = craftPriceMap[id] || {};
-    const rows = Object.entries(c).filter(([ct, v]) => ct !== 'Black Market' && (v.sell || 0) > 0);
+    const rows = CRAFT_CITIES.map((ct) => ({ ct, p: cityUnitPrice(c[ct]) })).filter((x) => x.p > 0);
     if (!rows.length) return { price: 0, city: '' };
-    const all = rows.map(([, v]) => v.sell);
-    const valid = rows.filter(([, v]) => !isLoOutlier(v.sell, all));
+    const all = rows.map((x) => x.p);
+    const valid = rows.filter((x) => !isLoOutlier(x.p, all));   // ignora precios irrisorios (dato podrido)
     const use = valid.length ? valid : rows;
-    const best = use.reduce((a, b) => (b[1].sell < a[1].sell ? b : a));
-    return { price: best[1].sell, city: best[0] };
+    const best = use.reduce((a, b) => (b.p < a.p ? b : a));
+    return { price: best.p, city: best.ct };
   };
 
   function renderPlan(ctx) {
@@ -918,8 +945,12 @@
     });
     const cityPlain = (c) => String(c || '').replace('FortSterling', 'Fort Sterling');
     const station = cityPlain((document.getElementById('craft-station-city') || {}).value);
-    const wtb = rows.filter((r) => r.need > 0).map((r) => `${fmtInt(r.need)}x ${r.m.name} a ${fmtInt(r.offer)}`).join(' + ');
-    const wtbMsg = `Compro ${wtb} · total ${fmtInt(totOffer)}${station ? ' · trato directo en ' + station : ''}`;
+    const wanted = rows.filter((r) => r.need > 0);
+    const wtbEs = wanted.map((r) => `${fmtInt(r.need)}x ${r.m.name} a ${fmtInt(r.offer)}`).join(' + ');
+    const msgEs = `Compro ${wtbEs} · total ${fmtInt(totOffer)}${station ? ' · trato directo en ' + station : ''}`;
+    const num = (n) => Math.round(n).toLocaleString('en-US');
+    const wtbEn = wanted.map((r) => `${num(r.need)}x ${enNameOf(r.m.id)} @ ${num(r.offer)}`).join(' + ');
+    const msgEn = `WTB ${wtbEn} — total ${num(totOffer)}${station ? ' — direct trade in ' + station : ''}`;
     bEl.className = 'cr-block';
     bEl.innerHTML = '<div class="cr-b-title">🛒 Comprar materiales'
       + ` <span class="faint">· para ${fmtInt(buyUnits)} uds${matCraftsBudget !== buyUnits ? ' (material de ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
@@ -936,9 +967,14 @@
       + `<div class="cr-kv" style="margin-top:6px"><span>Comprando al instante</span><span><b class="silver">${fmt(totInstant)}</b></span></div>`
       + `<div class="cr-kv"><span title="Superando la puja actual en 1 silver, más el 2,5% de tasa por crear la orden. Es más barato pero tardas en que te la llenen.">Dejando órdenes de compra</span><span><b class="silver">${fmt(totOrder)}</b></span></div>`
       + `<div class="cr-kv"><span title="Trade directo por chat: ni tú pagas tasa de orden ni el vendedor paga impuesto de venta. El ahorro se reparte.">Por trade directo</span><span><b class="silver">${fmt(totOffer)}</b> <span class="up">−${fmt(totInstant - totOffer)}</span></span></div>`
-      + `<textarea class="cr-wtb" id="cr-wtb" rows="2" readonly title="Clic para copiar">${esc(wtbMsg)}</textarea>`;
-    const wtbEl = document.getElementById('cr-wtb');
-    if (wtbEl) wtbEl.addEventListener('click', () => { wtbEl.select(); copyText(wtbEl.value); });
+      + `<div class="cr-wtb-lbl">🇪🇸 para el chat en español<span class="faint"> · clic para copiar</span></div>`
+      + `<textarea class="cr-wtb" id="cr-wtb" rows="2" readonly title="Clic para copiar el mensaje en español">${esc(msgEs)}</textarea>`
+      + `<div class="cr-wtb-lbl">🇬🇧 para el chat global<span class="faint"> · clic para copiar</span></div>`
+      + `<textarea class="cr-wtb" id="cr-wtb-en" rows="2" readonly title="Clic para copiar el mensaje en inglés">${esc(msgEn)}</textarea>`;
+    ['cr-wtb', 'cr-wtb-en'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => { el.select(); copyText(el.value); });
+    });
   }
 
   // (La antigua pestaña Comparar quedó fusionada en Crafteo: el input "Te ofrecen"
@@ -1125,7 +1161,7 @@
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
         const iconId = prodEnch(r.id, r.e);
-        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(iconId)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(nm)}" title="Clic para copiar el nombre">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
+        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(iconId)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(r.id, r.e, nm))}" title="Clic para copiar «${esc(copyNameOf(r.id, r.e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
           + `<td class="silver">${fmt(r.netCost)}</td><td class="silver scan-price">${fmt(r.price)}${sostChip(r.price, r.avg, true)}</td>`
           + `<td class="cr-vol-avg" title="precio medio realmente vendido (histórico): con esto se calcula la ganancia, no con el pico de ahora">${r.avg ? '~' + fmt(r.avg) : '—'}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
@@ -1316,7 +1352,7 @@
         const turnover = avg > 0 ? avg * (r.daily || 0) : 0;
         const fav = isFav(base);
         return `<tr class="top-row" data-topid="${esc(base)}" data-topn="${esc(nm)}">`
-          + `<td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(r.item_id)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(nm)}" title="Clic para copiar el nombre">${esc(nm)}</span> <span class="enchtag">.${e}</span></div></div></td>`
+          + `<td class="name"><div class="scan-item"><img class="scan-ico" src="https://render.albiononline.com/v1/item/${encodeURIComponent(r.item_id)}.png?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(base, e, nm))}" title="Clic para copiar «${esc(copyNameOf(base, e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${e}</span></div></div></td>`
           + `<td><b>${fmtInt(r.daily)}</b></td>`
           + `<td class="cr-vol-avg">${avg ? '~' + fmt(avg) : '—'}</td>`
           + `<td class="${now ? (isBM ? 'best-sell' : 'silver') : 'faint'}">${now ? fmt(now) : '—'}${qBadge(r.buy_price_max_quality)}</td>`
