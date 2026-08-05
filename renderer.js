@@ -120,6 +120,21 @@
       if (sz && sz.w) ta.style.width = sz.w;
       if (sz && sz.h) ta.style.height = sz.h;
     } catch (_) {}
+    // el panel nace anclado a la derecha, así que al ensanchar crecería hacia la izquierda y
+    // el tirador se queda quieto bajo el cursor. Fijándolo por left/top crece hacia el lado
+    // que arrastras, como cualquier ventana.
+    const anchorTopLeft = () => {
+      const p = document.getElementById('p-notes');
+      if (!p || p.style.left) return;
+      const r = p.getBoundingClientRect();
+      if (!r.width) return;   // layout todavía sin calcular: no lo movemos a 0,0
+      p.style.left = Math.round(r.left) + 'px';
+      p.style.top = Math.round(r.top) + 'px';
+      p.style.right = 'auto';
+      p.style.bottom = 'auto';
+    };
+    setTimeout(anchorTopLeft, 0);
+    ta.addEventListener('pointerdown', anchorTopLeft);
     if (window.ResizeObserver) {
       let rt = null;
       new ResizeObserver(() => {
