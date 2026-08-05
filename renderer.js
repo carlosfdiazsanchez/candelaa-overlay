@@ -38,7 +38,7 @@
   }
 
   // ---- layout persistence ----
-  const draggables = ['bar', 'p-players', 'p-radar', 'p-item'];
+  const draggables = ['bar', 'p-players', 'p-radar', 'p-item', 'p-notes'];
   function loadState() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (_) { return {}; } }
   function saveState() {
     const st = { panels: {}, opacity: document.getElementById('op').value, monitor: document.getElementById('mon').value, passthrough };
@@ -86,7 +86,7 @@
     });
   }
   makeDraggable(document.getElementById('bar'), document.querySelector('#bar .brand'));
-  ['p-players', 'p-radar', 'p-item'].forEach((id) => {
+  ['p-players', 'p-radar', 'p-item', 'p-notes'].forEach((id) => {
     const el = document.getElementById(id);
     makeDraggable(el, el.querySelector('.panel__head'));
   });
@@ -106,6 +106,29 @@
     const el = document.getElementById('p-' + t.dataset.p); if (el) el.style.display = on ? 'none' : '';
     saveState();
   });
+  // ---- notas: texto libre, se guarda solo ----
+  (function notes() {
+    const NOTES_KEY = 'candelaa-notes-v1';
+    const ta = document.getElementById('notes-text');
+    const state = document.getElementById('notes-state');
+    if (!ta) return;
+    try { ta.value = localStorage.getItem(NOTES_KEY) || ''; } catch (_) {}
+    let t = null, clearT = null;
+    const mark = (txt) => { if (!state) return; state.textContent = txt; clearTimeout(clearT); clearT = setTimeout(() => { state.textContent = ''; }, 1500); };
+    ta.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => { try { localStorage.setItem(NOTES_KEY, ta.value); mark('guardado'); } catch (_) { mark('no se pudo guardar'); } }, 400);
+    });
+    const btn = document.getElementById('notes-clear');
+    if (btn) btn.addEventListener('click', () => {
+      if (!ta.value.trim()) return;
+      if (!window.confirm('¿Borrar todas las notas?')) return;
+      ta.value = '';
+      try { localStorage.setItem(NOTES_KEY, ''); } catch (_) {}
+      mark('vaciado');
+    });
+  })();
+
   document.getElementById('op').addEventListener('input', (e) => {
     document.documentElement.style.setProperty('--panel-alpha', (e.target.value / 100).toFixed(2));
   });

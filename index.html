@@ -84,6 +84,13 @@
   #mkt-best.neg{background:var(--elev);border-color:var(--border);color:var(--dim);cursor:default;}
   #mkt-best b{color:#a9e8bd;}
   .live-dot{font-size:9px;vertical-align:2px;}
+  .notes-text{width:100%;min-height:220px;max-height:60vh;resize:vertical;background:var(--panel-solid);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:7px;padding:9px 11px;font:inherit;font-size:13px;line-height:1.55;
+    -webkit-user-select:text;user-select:text;white-space:pre-wrap;}
+  .notes-text:focus{outline:none;border-color:var(--accent);}
+  .notes-text::placeholder{color:var(--faint);}
+  #p-notes{width:340px;}
+  #notes-state{font-size:10px;color:var(--faint);}
   .mkt-quality{margin-top:14px;}
   .mkt-q-title{font-size:12.5px;font-weight:700;color:var(--dim);margin-bottom:5px;}
   input:where([type=text],[type=number],[type=search],[type=password],:not([type])){background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:6px 9px;font:inherit;}
@@ -440,6 +447,7 @@
     <button class="tg" aria-pressed="true" data-p="players">Jugadores</button>
     <button class="tg" aria-pressed="true" data-p="radar">Radar</button>
     <button class="tg" aria-pressed="true" data-p="item">Mercado</button>
+    <button class="tg" aria-pressed="true" data-p="notes">Notas</button>
   </div>
   <div class="sep"></div>
   <div class="ctl"><span>Monitor</span><select id="mon"></select></div>
@@ -522,6 +530,16 @@
       </label>
     </div>
     <div class="rad-list" id="radar-list"><div class="rad-empty">Conectando con OpenRadar…</div></div>
+  </div>
+</div>
+
+<div class="panel" id="p-notes" style="bottom:20px;right:20px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Notas</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="notes-state"></span>
+    <button class="icon-btn" id="notes-clear" title="Borrar todas las notas">🗑</button>
+    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__body">
+    <textarea id="notes-text" class="notes-text" spellcheck="false" placeholder="Precios de referencia, a quién comprar, qué craftear mañana, nombres de gente a evitar…"></textarea>
   </div>
 </div>
 
