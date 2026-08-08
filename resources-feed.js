@@ -142,6 +142,9 @@
     ['gold', ['legendary', 'yellow', 'gold']],
     ['purple', ['rare', 'purple', 'epic']],
     ['blue', ['uncommon', 'blue']],
+    // OJO: "regular" NO va aquí. En Caminos los cofres verdes Y los azules llegan como
+    // LOOTCHEST_REGULAR_xx (capturado en vivo), así que tomarlo por verde pinta de verde un
+    // cofre azul — el error que hace que te lo saltes. Sin color en el nombre => sin clasificar.
     ['green', ['standard', 'green', 'common']],
   ];
   const RARITY_QUALITY = { 0: 'green', 1: 'blue', 2: 'purple', 3: 'gold', 4: 'gold' };
@@ -162,6 +165,32 @@
     unknownChests.set(key, (unknownChests.get(key) || 0) + 1);
     return 'unknown';
   }
+  // Recolector: cada combinación cofre+contexto vista queda registrada con su cuenta, para
+  // poder mapear el color con datos reales de partidas (window.__radar.chestSamples()).
+  // En Caminos el nombre no distingue el color, así que sin esto no hay forma de aprenderlo.
+  const chestSamples = new Map();
+  function sampleChest(name, ctx, p) {
+    const key = `${name} @ ${ctx || '?'}`;
+    const rec = chestSamples.get(key) || { name, ctx, n: 0, p5: new Set(), p23: new Set() };
+    rec.n++;
+    if (p['5'] != null) rec.p5.add(num(p['5']));
+    if (p['23'] != null) rec.p23.add(num(p['23']));
+    chestSamples.set(key, rec);
+  }
+
+  // nivel de la mazmorra a partir del contexto: hoy es el único dato fiable que acompaña al
+  // cofre, y ya orienta (una veterana da mejor botín que una solo).
+  function dungeonTier(ctx) {
+    const u = String(ctx || '').toUpperCase();
+    if (!u) return '';
+    if (u.includes('ELITE')) return 'elite';
+    if (u.includes('VETERAN')) return 'veteran';
+    if (u.includes('CHAMPION')) return 'champion';
+    if (u.includes('GROUP')) return 'group';
+    if (u.includes('SOLO')) return 'solo';
+    return '';
+  }
+
   // world / dungeon / mists, para que la etiqueta diga de qué cofre se trata
   function chestKind(name) {
     const u = String(name || '').toUpperCase();
@@ -279,8 +308,24 @@
     }
   }
 
+  // Cofres: se detectan por el PAYLOAD, no por el número de evento. Albion los desplaza con
+  // los parches — capturado en vivo el 2026-08-08: llegaban por 391 y hoy llegan por 393, el
+  // mismo +2 que se le hizo a la pesca (359 -> 361). El nombre LOOTCHEST es inequívoco y
+  // sobrevive a esos cambios. Se excluyen los mobs, que también llevan TREASURE en su nombre
+  // (T4_MOB_TREASURE_BOAR y compañía) y se colarían como cofres.
+  const CHEST_NAME_RE = /LOOTCHEST|TREASURE_?CHEST/i;
+  function chestNameOf(p) {
+    for (const k of Object.keys(p)) {
+      const v = p[k];
+      if (typeof v === 'string' && CHEST_NAME_RE.test(v) && !/_MOB_|MOB_/i.test(v)) return v;
+    }
+    return null;
+  }
+
   function onEvent(p, code) {
     const id = p['0'];
+    const chestName = chestNameOf(p);
+    if (chestName && Array.isArray(p['1'])) { newChest(p, chestName); return; }
     switch (code) {
       case 1: removeEverywhere(id); break;
       case 3: { // Move: update mob / mist / cage positions
@@ -295,10 +340,14 @@
       case 46: harvestableChange(p); break;
       case 123: newMob(p); break;
       case 47: { const mo = mobs.get(p['0']); if (mo) { mo.ench = num(p['1'], mo.ench); mo.last = Date.now(); } break; }
-      case 391: newChest(p); break;
-      case 323: newPortal(p); break;
-      case 530: newCage(p); break;
-      case 531: cages.delete(id); break;
+      // Los códigos ALTOS se desplazaron +2 en algún parche (capturado en vivo 2026-08-08:
+      // portales 323->325, cofres 391->393, pesca 359->361); los bajos (recursos 39/40/46,
+      // mobs 123/47) siguen igual. Se aceptan ambos: el viejo por si se juega otra versión,
+      // el nuevo porque es el que llega hoy. Cada handler valida el payload antes de usarlo.
+      case 391: case 393: newChest(p); break;
+      case 323: case 325: newPortal(p); break;
+      case 530: case 532: newCage(p); break;
+      case 531: case 533: cages.delete(id); break;
       default: break;
     }
   }
@@ -369,14 +418,26 @@
   }
 
   // ---- chests ----
-  function newChest(p) {
+  function newChest(p, knownName) {
     const id = p['0'];
     const pos = p['1']; if (!Array.isArray(pos)) return;
-    let name = p['3'];
-    if (typeof name === 'string' && name.toLowerCase().includes('mist')) name = p['4'];
+    // el nombre del cofre no está siempre en el mismo parámetro: en Caminos [3] es el tipo de
+    // mazmorra ("AVALON_SMALL_SOLO_BASE") y el cofre viene en [4] ("LOOTCHEST_REGULAR_01").
+    let name = knownName || chestNameOf(p);
+    if (!name) {
+      name = p['3'];
+      if (typeof name === 'string' && name.toLowerCase().includes('mist')) name = p['4'];
+    }
     if (typeof name !== 'string') name = '';
-    const rarity = p['5'] == null ? null : num(p['5']);
+    // [5] NO es la rareza en los LOOTCHEST: dos cofres VERDES distintos llegaron con [5]=2, que
+    // el mapeo por entero habría pintado de morado. Ahí manda solo el nombre; el entero se
+    // reserva para el formato antiguo, donde sí venía la rareza.
+    const rarity = CHEST_NAME_RE.test(name) ? null : (p['5'] == null ? null : num(p['5']));
     const quality = chestQuality(name, rarity);
+    // contexto de la mazmorra: en Caminos TODOS los cofres se llaman LOOTCHEST_REGULAR_xx sin
+    // importar el color, así que esto es lo único informativo que trae el evento hoy.
+    const ctx = typeof p['18'] === 'string' ? p['18'] : (typeof p['3'] === 'string' ? p['3'] : '');
+    sampleChest(name, ctx, p);
     const ex = chests.get(id);
     // un reenvío del evento puede traer el nombre que la primera vez llegó vacío: si ahora
     // sí se puede clasificar, se reclasifica en lugar de quedarse con "sin clasificar".
@@ -386,7 +447,7 @@
       if (quality !== 'unknown' && (ex.quality === 'unknown' || !ex.name)) { ex.quality = quality; ex.name = name; }
       return;
     }
-    chests.set(id, { id, posX: pos[0], posY: pos[1], name, quality, kind: chestKind(name), last: Date.now() });
+    chests.set(id, { id, posX: pos[0], posY: pos[1], name, quality, kind: chestKind(name), ctx, tier: dungeonTier(ctx), last: Date.now() });
   }
 
   // ---- dungeon / mists portals (event 323) ----
@@ -448,7 +509,7 @@
     const okType = (t) => sub.resTypes[t] !== false;
     const okTier = (t) => !sub.minTier || (t || 0) >= sub.minTier;
     const okEnch = (e) => sub.ench[e || 0] !== false;
-    if (filters.chest) chests.forEach((c) => { const q = QUALITY[c.quality] || QUALITY.unknown; if (sub.chestQ[c.quality] !== false) push('chest', c, { color: q.color, icon: '🎁', label: q.es + ' chest', quality: c.quality, kind: c.kind, raw: c.name, value: CHEST_VALUE[c.quality] || 0 }); });
+    if (filters.chest) chests.forEach((c) => { const q = QUALITY[c.quality] || QUALITY.unknown; if (sub.chestQ[c.quality] !== false) push('chest', c, { color: q.color, icon: '🎁', label: q.es + ' chest', quality: c.quality, kind: c.kind, raw: c.name, ctx: c.ctx, tier: c.tier, value: CHEST_VALUE[c.quality] || 0 }); });
     if (filters.resource) harvestables.forEach((h) => { if ((h.size || 0) >= 1 && okType(h.type) && okTier(h.tier) && okEnch(h.ench)) push('resource', h, { color: RES_COLOR[h.type] || '#4169E1', icon: RES_ICON[h.type] || '◆', label: RES_ES[h.type] || h.type, tier: h.tier, ench: h.ench, size: h.size, sizeMax: Math.max(h.sizeMax || 0, h.size || 0), value: resourceValue(h.type, h.tier, h.ench, h.size), priced: isPriced(h.type, h.tier, h.ench) }); });
     if (filters.living) {
       mobs.forEach((m) => {
@@ -563,13 +624,15 @@
       const tier = e.tier ? ` <b class="rt">T${e.tier}${e.ench ? '.' + e.ench : ''}</b>` : (e.ench ? ` <b class="rt">✨${e.ench}</b>` : '');
       const dm = e.d < 1 ? '0' : Math.round(e.d);
       const val = e.priced ? `<span class="rv" title="Estimated market value of the node">≈${fmtK(e.value)}</span>` : '';
-      // cargas del nodo: "x/max"
+      // cargas del nodo: "x/max" · en cofres, el nivel de la mazmorra (dato real; el color
+      // no viene en el evento, así que no se inventa)
       let charges = '';
-      if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
+      if (e.cat === 'chest' && e.tier) charges = `<span class="rc" title="Dungeon level">${esc(e.tier)}</span>`;
+      else if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
       const sel = e.id === selectedId ? ' selected' : '';
       // en cofres el tooltip lleva el nombre CRUDO del juego: es lo que permite ver por qué
       // uno sale sin clasificar y añadir su palabra clave.
-      const tip = e.cat === 'chest' && e.raw ? ` title="${esc(e.raw)}${e.kind ? ' · ' + e.kind : ''}"` : '';
+      const tip = e.cat === 'chest' && e.raw ? ` title="${esc(e.raw)}${e.ctx ? ' · ' + esc(e.ctx) : ''}${e.kind ? ' · ' + e.kind : ''}"` : '';
       return `<div class="rad-row cat-${e.cat}${sel}" data-id="${e.id}">
         <span class="ri" style="color:${e.color}">${e.icon}</span>
         <span class="rl"${tip}>${esc(e.label)}${tier}</span>
@@ -694,7 +757,7 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, unknownChests: () => [...unknownChests.entries()].sort((a, b) => b[1] - a[1]), state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
+  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, unknownChests: () => [...unknownChests.entries()].sort((a, b) => b[1] - a[1]), chestSamples: () => [...chestSamples.values()].sort((a, b) => b.n - a.n).map((r) => ({ cofre: r.name, mazmorra: r.ctx, vistos: r.n, p5: [...r.p5], p23: [...r.p23] })), state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }

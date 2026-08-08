@@ -410,6 +410,11 @@
   "Purple": "Morado",
   "Gold": "Dorado",
   "Unclassified": "Sin clasificar",
+  "Dungeon level": "Nivel de la mazmorra",
+  "veteran": "veterana",
+  "champion": "campeón",
+  "elite": "élite",
+  "group": "grupo",
   "Green chest": "Cofre verde",
   "Blue chest": "Cofre azul",
   "Purple chest": "Cofre morado",
@@ -493,7 +498,7 @@
   "Sell with order (+2.5%)": "Venta con orden (+2,5%)"
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#rad-tier option", "Todas", "Todos"], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Fiber", "Finder", "Gold", "Good", "Green", "Hammer", "Healer", "Hide", "Level", "Living", "Mace", "Market", "Mode", "Normal", "Notes", "Offer", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools"]);
+  const NO_SUB = new Set(["All", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Fiber", "Finder", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Level", "Living", "Mace", "Market", "Mode", "Normal", "Notes", "Offer", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);
   // en inputs y textareas se traducen los atributos pero NUNCA el contenido (es dato del usuario)
   const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, CANVAS: 1 };
