@@ -160,10 +160,16 @@
   // llega como HERETIC_VETERAN_LOOTCHEST_STANDARD (capturado en vivo), donde la última parte
   // es la calidad. En Caminos el contexto es AVALON_SMALL_SOLO_BASE y ahí no hay color: por
   // eso se mira primero el nombre, después el contexto, y solo si ninguno dice nada, unknown.
+  // El nombre puede traer el BIOMA y no la calidad: FOREST_GREEN_LOOTCHEST_..._RARE es un
+  // cofre morado en bosque verde, y FOREST_RED_... no dice nada del color. Por eso se limpia
+  // el prefijo de bioma y se mira ANTES el contexto, que es donde el juego pone la calidad
+  // de verdad (..._LOOTCHEST_STANDARD, ..._BOOKCHEST_RARE, ..._BOSS_UNCOMMON).
+  const BIOMA_RE = /\b(forest|highland|steppe|swamp|mountain|desert)_(green|red|blue|yellow|white|black)\b/gi;
   function chestQuality(name, rarity, ctx) {
-    for (const fuente of [name, ctx]) {
-      const n = (fuente || '').toLowerCase();
-      if (!n) continue;
+    const limpio = (s) => String(s || '').toLowerCase().replace(BIOMA_RE, ' ');
+    for (const fuente of [ctx, name]) {
+      const n = limpio(fuente);
+      if (!n.trim()) continue;
       for (const [quality, words] of QUALITY_WORDS) {
         if (words.some((w) => n.includes(w))) return quality;
       }
