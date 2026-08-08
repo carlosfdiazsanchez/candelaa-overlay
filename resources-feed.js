@@ -56,6 +56,9 @@
       resTypes: { Ore: true, Wood: true, Fiber: true, Hide: true, Rock: true },
       ench: { 0: true, 1: true, 2: true, 3: true, 4: true },
       chestQ: { green: true, blue: true, purple: true, gold: true, unknown: true },
+      // nivel de la mazmorra del cofre. Todos activos por defecto: en Caminos la calidad no
+      // se puede leer del evento, así que esto es lo que de verdad permite acotar la búsqueda.
+      chestTier: { solo: true, group: true, veteran: true, champion: true, elite: true, none: true },
       minTier: 0,      // 0 = todos
       sort: 'dist',    // 'dist' | 'value' | 'tier'
       dir: 'asc',      // 'asc' | 'desc'
@@ -66,6 +69,7 @@
         resTypes: Object.assign({}, def.resTypes, s.resTypes),
         ench: Object.assign({}, def.ench, s.ench),
         chestQ: Object.assign({}, def.chestQ, s.chestQ),
+        chestTier: Object.assign({}, def.chestTier, s.chestTier),
         minTier: s.minTier || 0,
         sort: s.sort || 'dist',
         dir: s.dir || 'asc',
@@ -509,7 +513,12 @@
     const okType = (t) => sub.resTypes[t] !== false;
     const okTier = (t) => !sub.minTier || (t || 0) >= sub.minTier;
     const okEnch = (e) => sub.ench[e || 0] !== false;
-    if (filters.chest) chests.forEach((c) => { const q = QUALITY[c.quality] || QUALITY.unknown; if (sub.chestQ[c.quality] !== false) push('chest', c, { color: q.color, icon: '🎁', label: q.es + ' chest', quality: c.quality, kind: c.kind, raw: c.name, ctx: c.ctx, tier: c.tier, value: CHEST_VALUE[c.quality] || 0 }); });
+    if (filters.chest) chests.forEach((c) => {
+      const q = QUALITY[c.quality] || QUALITY.unknown;
+      if (sub.chestQ[c.quality] === false) return;
+      if (sub.chestTier[c.tier || 'none'] === false) return;
+      push('chest', c, { color: q.color, icon: '🎁', label: q.es + ' chest', quality: c.quality, kind: c.kind, raw: c.name, ctx: c.ctx, tier: c.tier, value: CHEST_VALUE[c.quality] || 0 });
+    });
     if (filters.resource) harvestables.forEach((h) => { if ((h.size || 0) >= 1 && okType(h.type) && okTier(h.tier) && okEnch(h.ench)) push('resource', h, { color: RES_COLOR[h.type] || '#4169E1', icon: RES_ICON[h.type] || '◆', label: RES_ES[h.type] || h.type, tier: h.tier, ench: h.ench, size: h.size, sizeMax: Math.max(h.sizeMax || 0, h.size || 0), value: resourceValue(h.type, h.tier, h.ench, h.size), priced: isPriced(h.type, h.tier, h.ench) }); });
     if (filters.living) {
       mobs.forEach((m) => {
@@ -698,6 +707,9 @@
   // ---- sub-filters (resource types + chest qualities) ----
   const RES_ORDER = ['Ore', 'Wood', 'Fiber', 'Hide', 'Rock'];
   const QUAL_ORDER = ['green', 'blue', 'purple', 'gold', 'unknown'];
+  // "none" = el cofre no trae nivel de mazmorra (mundo abierto, brumas…), para que filtrar
+  // por nivel no haga desaparecer en silencio los que no lo tienen.
+  const TIER_ORDER = [['solo', 'solo'], ['group', 'group'], ['veteran', 'veteran'], ['champion', 'champion'], ['elite', 'elite'], ['none', '—']];
   const subEl = document.getElementById('rad-subfilters');
   function renderSubFilters() {
     if (!subEl) return;
@@ -711,15 +723,19 @@
     if (showRes && filters.chest) html += '<span class="rad-sub-sep"></span>';
     if (filters.chest) {
       html += QUAL_ORDER.map((q) => `<button class="rad-schip" data-cq="${q}" aria-pressed="${sub.chestQ[q] !== false}"><span class="sw" style="background:${QUALITY[q].color}"></span>${QUALITY[q].es}</button>`).join('');
+      html += '<span class="rad-sub-sep"></span>';
+      html += '<span class="rad-sub-lbl">Level</span>' + TIER_ORDER.map(([k, lbl]) =>
+        `<button class="rad-schip" data-ct="${k}" aria-pressed="${sub.chestTier[k] !== false}">${lbl}</button>`).join('');
     }
     subEl.innerHTML = html;
   }
   if (subEl) {
     renderSubFilters();
     subEl.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-rt],[data-re],[data-cq]'); if (!b) return;
+      const b = e.target.closest('[data-rt],[data-re],[data-cq],[data-ct]'); if (!b) return;
       if (b.dataset.rt) { const t = b.dataset.rt; sub.resTypes[t] = !(sub.resTypes[t] !== false); b.setAttribute('aria-pressed', String(sub.resTypes[t])); }
       else if (b.dataset.re != null) { const k = b.dataset.re; sub.ench[k] = !(sub.ench[k] !== false); b.setAttribute('aria-pressed', String(sub.ench[k])); }
+      else if (b.dataset.ct) { const t = b.dataset.ct; sub.chestTier[t] = !(sub.chestTier[t] !== false); b.setAttribute('aria-pressed', String(sub.chestTier[t])); }
       else { const q = b.dataset.cq; sub.chestQ[q] = !(sub.chestQ[q] !== false); b.setAttribute('aria-pressed', String(sub.chestQ[q])); }
       saveSub(); render(true);
     });
