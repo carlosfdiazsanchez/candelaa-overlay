@@ -55,7 +55,7 @@
     const def = {
       resTypes: { Ore: true, Wood: true, Fiber: true, Hide: true, Rock: true },
       ench: { 0: true, 1: true, 2: true, 3: true, 4: true },
-      chestQ: { green: true, blue: true, purple: true, gold: true },
+      chestQ: { green: true, blue: true, purple: true, gold: true, unknown: true },
       minTier: 0,      // 0 = todos
       sort: 'dist',    // 'dist' | 'value' | 'tier'
       dir: 'asc',      // 'asc' | 'desc'
@@ -134,20 +134,40 @@
     blue: { color: '#4aa3ff', es: 'Blue', rank: 1 },
     purple: { color: '#b96bff', es: 'Purple', rank: 2 },
     gold: { color: '#ffcc33', es: 'Gold', rank: 3 },
+    unknown: { color: '#9aa0a6', es: 'Unclassified', rank: -1 },
   };
+  // De MAYOR a MENOR rareza a propósito: si un nombre trae dos palabras clave, quedarse con
+  // la mejor. Equivocarse por arriba cuesta un viaje; por abajo, saltarse un cofre bueno.
+  const QUALITY_WORDS = [
+    ['gold', ['legendary', 'yellow', 'gold']],
+    ['purple', ['rare', 'purple', 'epic']],
+    ['blue', ['uncommon', 'blue']],
+    ['green', ['standard', 'green', 'common']],
+  ];
+  const RARITY_QUALITY = { 0: 'green', 1: 'blue', 2: 'purple', 3: 'gold', 4: 'gold' };
+  // nombres que no supimos clasificar: se acumulan para poder añadir su palabra clave
+  // (window.__radar.unknownChests). Un cofre mal leído sale como "sin clasificar", NUNCA
+  // como verde: marcarlo del color más pobre es justo lo que hace que te lo saltes.
+  const unknownChests = new Map();
   function chestQuality(name, rarity) {
     const n = (name || '').toLowerCase();
-    if (['standard', 'green'].some((s) => n.includes(s))) return 'green';
-    if (['uncommon', 'blue'].some((s) => n.includes(s))) return 'blue';
-    if (['rare', 'purple'].some((s) => n.includes(s))) return 'purple';
-    if (['legendary', 'yellow', 'gold'].some((s) => n.includes(s))) return 'gold';
-    switch (rarity) {
-      case 0: return 'green';
-      case 1: return 'blue';
-      case 2: return 'purple';
-      case 3: case 4: return 'gold';
-      default: return 'green';
+    if (n) {
+      for (const [quality, words] of QUALITY_WORDS) {
+        if (words.some((w) => n.includes(w))) return quality;
+      }
     }
+    const byRarity = RARITY_QUALITY[rarity];
+    if (byRarity) return byRarity;
+    const key = name || '(sin nombre)';
+    unknownChests.set(key, (unknownChests.get(key) || 0) + 1);
+    return 'unknown';
+  }
+  // world / dungeon / mists, para que la etiqueta diga de qué cofre se trata
+  function chestKind(name) {
+    const u = String(name || '').toUpperCase();
+    if (u.includes('MIST')) return 'mists';
+    if (u.includes('DUNGEON') || u.includes('BOSS')) return 'dungeon';
+    return '';
   }
 
   const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -354,10 +374,19 @@
     const pos = p['1']; if (!Array.isArray(pos)) return;
     let name = p['3'];
     if (typeof name === 'string' && name.toLowerCase().includes('mist')) name = p['4'];
+    if (typeof name !== 'string') name = '';
     const rarity = p['5'] == null ? null : num(p['5']);
+    const quality = chestQuality(name, rarity);
     const ex = chests.get(id);
-    if (ex) { ex.last = Date.now(); return; }
-    chests.set(id, { id, posX: pos[0], posY: pos[1], name: name || '', quality: chestQuality(name, rarity), last: Date.now() });
+    // un reenvío del evento puede traer el nombre que la primera vez llegó vacío: si ahora
+    // sí se puede clasificar, se reclasifica en lugar de quedarse con "sin clasificar".
+    if (ex) {
+      ex.last = Date.now();
+      ex.posX = pos[0]; ex.posY = pos[1];
+      if (quality !== 'unknown' && (ex.quality === 'unknown' || !ex.name)) { ex.quality = quality; ex.name = name; }
+      return;
+    }
+    chests.set(id, { id, posX: pos[0], posY: pos[1], name, quality, kind: chestKind(name), last: Date.now() });
   }
 
   // ---- dungeon / mists portals (event 323) ----
@@ -419,7 +448,7 @@
     const okType = (t) => sub.resTypes[t] !== false;
     const okTier = (t) => !sub.minTier || (t || 0) >= sub.minTier;
     const okEnch = (e) => sub.ench[e || 0] !== false;
-    if (filters.chest) chests.forEach((c) => { if (sub.chestQ[c.quality] !== false) push('chest', c, { color: QUALITY[c.quality].color, icon: '🎁', label: QUALITY[c.quality].es + ' chest', quality: c.quality, value: CHEST_VALUE[c.quality] || 0 }); });
+    if (filters.chest) chests.forEach((c) => { const q = QUALITY[c.quality] || QUALITY.unknown; if (sub.chestQ[c.quality] !== false) push('chest', c, { color: q.color, icon: '🎁', label: q.es + ' chest', quality: c.quality, kind: c.kind, raw: c.name, value: CHEST_VALUE[c.quality] || 0 }); });
     if (filters.resource) harvestables.forEach((h) => { if ((h.size || 0) >= 1 && okType(h.type) && okTier(h.tier) && okEnch(h.ench)) push('resource', h, { color: RES_COLOR[h.type] || '#4169E1', icon: RES_ICON[h.type] || '◆', label: RES_ES[h.type] || h.type, tier: h.tier, ench: h.ench, size: h.size, sizeMax: Math.max(h.sizeMax || 0, h.size || 0), value: resourceValue(h.type, h.tier, h.ench, h.size), priced: isPriced(h.type, h.tier, h.ench) }); });
     if (filters.living) {
       mobs.forEach((m) => {
@@ -538,9 +567,12 @@
       let charges = '';
       if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
       const sel = e.id === selectedId ? ' selected' : '';
+      // en cofres el tooltip lleva el nombre CRUDO del juego: es lo que permite ver por qué
+      // uno sale sin clasificar y añadir su palabra clave.
+      const tip = e.cat === 'chest' && e.raw ? ` title="${esc(e.raw)}${e.kind ? ' · ' + e.kind : ''}"` : '';
       return `<div class="rad-row cat-${e.cat}${sel}" data-id="${e.id}">
         <span class="ri" style="color:${e.color}">${e.icon}</span>
-        <span class="rl">${esc(e.label)}${tier}</span>
+        <span class="rl"${tip}>${esc(e.label)}${tier}</span>
         ${charges}${val}
         <span class="rd">${arrow} ${dm}m</span>
       </div>`;
@@ -602,7 +634,7 @@
 
   // ---- sub-filters (resource types + chest qualities) ----
   const RES_ORDER = ['Ore', 'Wood', 'Fiber', 'Hide', 'Rock'];
-  const QUAL_ORDER = ['green', 'blue', 'purple', 'gold'];
+  const QUAL_ORDER = ['green', 'blue', 'purple', 'gold', 'unknown'];
   const subEl = document.getElementById('rad-subfilters');
   function renderSubFilters() {
     if (!subEl) return;
@@ -662,7 +694,7 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
+  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, unknownChests: () => [...unknownChests.entries()].sort((a, b) => b[1] - a[1]), state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }

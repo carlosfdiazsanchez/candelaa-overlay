@@ -17,7 +17,7 @@
     b.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
     b.title = lang === 'es' ? 'Cambiar el overlay a inglés' : 'Switch the overlay to Spanish';
     b.addEventListener('click', () => window.__setLang(lang === 'es' ? 'en' : 'es'));
-    const ref = document.getElementById('btn-token') || document.getElementById('quit');
+    const ref = document.getElementById('quit');
     if (ref && ref.parentNode) ref.parentNode.insertBefore(b, ref); else bar.appendChild(b);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountButton);
@@ -29,7 +29,6 @@
   "Click through to the game — the overlay ignores clicks (Ctrl+Alt+O)": "Pasar clics al juego — atraviesa el overlay (Ctrl+Alt+O)",
   "Token owner": "Usuario del token",
   "Manage tokens (admin)": "Gestionar tokens (admin)",
-  "Change access token": "Cambiar token de acceso",
   "Close overlay": "Cerrar overlay",
   "Close — reopen it with 🔑 in the top bar": "Cerrar — reábrelo con 🔑 en la barra superior",
   "user name…": "nombre del usuario…",
@@ -50,7 +49,6 @@
   "Market": "Mercado",
   "Notes": "Notas",
   "Display": "Monitor",
-  "Opacity": "Opacidad",
   "🎮 Click to game": "🎮 Clic al juego",
   "Nearby players": "Jugadores cercanos",
   "Connecting to the data engine…": "Conectando con el motor de datos…",
@@ -411,6 +409,12 @@
   "Blue": "Azul",
   "Purple": "Morado",
   "Gold": "Dorado",
+  "Unclassified": "Sin clasificar",
+  "Green chest": "Cofre verde",
+  "Blue chest": "Cofre azul",
+  "Purple chest": "Cofre morado",
+  "Gold chest": "Cofre dorado",
+  "Unclassified chest": "Cofre sin clasificar",
   "Mists solo": "Bruma solo",
   "Mists duo": "Bruma dúo",
   "Corrupted": "Corrupta",
