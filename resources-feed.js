@@ -156,16 +156,21 @@
   // (window.__radar.unknownChests). Un cofre mal leído sale como "sin clasificar", NUNCA
   // como verde: marcarlo del color más pobre es justo lo que hace que te lo saltes.
   const unknownChests = new Map();
-  function chestQuality(name, rarity) {
-    const n = (name || '').toLowerCase();
-    if (n) {
+  // El nombre del cofre no siempre trae el color, pero el CONTEXTO sí puede: en mazmorras
+  // llega como HERETIC_VETERAN_LOOTCHEST_STANDARD (capturado en vivo), donde la última parte
+  // es la calidad. En Caminos el contexto es AVALON_SMALL_SOLO_BASE y ahí no hay color: por
+  // eso se mira primero el nombre, después el contexto, y solo si ninguno dice nada, unknown.
+  function chestQuality(name, rarity, ctx) {
+    for (const fuente of [name, ctx]) {
+      const n = (fuente || '').toLowerCase();
+      if (!n) continue;
       for (const [quality, words] of QUALITY_WORDS) {
         if (words.some((w) => n.includes(w))) return quality;
       }
     }
     const byRarity = RARITY_QUALITY[rarity];
     if (byRarity) return byRarity;
-    const key = name || '(sin nombre)';
+    const key = `${name || '(sin nombre)'} @ ${ctx || '?'}`;
     unknownChests.set(key, (unknownChests.get(key) || 0) + 1);
     return 'unknown';
   }
@@ -437,10 +442,11 @@
     // el mapeo por entero habría pintado de morado. Ahí manda solo el nombre; el entero se
     // reserva para el formato antiguo, donde sí venía la rareza.
     const rarity = CHEST_NAME_RE.test(name) ? null : (p['5'] == null ? null : num(p['5']));
-    const quality = chestQuality(name, rarity);
-    // contexto de la mazmorra: en Caminos TODOS los cofres se llaman LOOTCHEST_REGULAR_xx sin
-    // importar el color, así que esto es lo único informativo que trae el evento hoy.
-    const ctx = typeof p['18'] === 'string' ? p['18'] : (typeof p['3'] === 'string' ? p['3'] : '');
+    // Contexto: [3] es el más informativo (en mazmorras trae facción + nivel + CALIDAD, como
+    // HERETIC_VETERAN_LOOTCHEST_STANDARD); [18] es la versión corta y se usa de respaldo.
+    const ctx3 = typeof p['3'] === 'string' ? p['3'] : '';
+    const ctx = ctx3 || (typeof p['18'] === 'string' ? p['18'] : '');
+    const quality = chestQuality(name, rarity, ctx);
     sampleChest(name, ctx, p);
     const ex = chests.get(id);
     // un reenvío del evento puede traer el nombre que la primera vez llegó vacío: si ahora
@@ -678,12 +684,20 @@
     return getComputedStyle(el).display !== 'none';
   }
 
-  // stale cleanup: drop entities not refreshed in 90s
+  // Limpieza de entidades caducadas, por tipo.
+  // Los mobs se mueven y mueren: si dejan de refrescarse, fuera a los 90s.
+  // Lo ESTÁTICO (recursos, cofres, portales, jaulas) solo emite evento al ENTRAR en tu radio
+  // y no vuelve a emitir mientras te quedas al lado: con 90s desaparecía del panel justo
+  // mientras lo mirabas (visto en vivo con un cofre de jefe). Para eliminarlos ya está el
+  // Leave (evt1), que sí llega cuando el objeto desaparece de verdad, y el borrado al cambiar
+  // de mapa; este plazo largo es solo una red por si se perdiera un Leave.
+  const STALE_MOVIL = 90000;
+  const STALE_ESTATICO = 15 * 60000;
   setInterval(() => {
-    const now = Date.now(); const max = 90000;
-    [harvestables, mobs, mists, chests, portals, cages].forEach((m) => {
-      m.forEach((v, k) => { if (now - v.last > max) m.delete(k); });
-    });
+    const now = Date.now();
+    [[mobs, STALE_MOVIL], [mists, STALE_MOVIL], [harvestables, STALE_ESTATICO],
+     [chests, STALE_ESTATICO], [portals, STALE_ESTATICO], [cages, STALE_ESTATICO]]
+      .forEach(([m, max]) => { m.forEach((v, k) => { if (now - v.last > max) m.delete(k); }); });
   }, 5000);
 
   // ---- filter chips ----
