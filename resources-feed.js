@@ -174,17 +174,46 @@
     unknownChests.set(key, (unknownChests.get(key) || 0) + 1);
     return 'unknown';
   }
-  // Recolector: cada combinación cofre+contexto vista queda registrada con su cuenta, para
-  // poder mapear el color con datos reales de partidas (window.__radar.chestSamples()).
-  // En Caminos el nombre no distingue el color, así que sin esto no hay forma de aprenderlo.
-  const chestSamples = new Map();
+  // Recolector PERSISTENTE: cada combinación cofre+contexto vista queda registrada con su
+  // cuenta y sobrevive a los reinicios (window.__radar.chestSamples()). Así el mapeo del color
+  // se aprende jugando, sin tener que estar capturando el tráfico en directo: los cofres raros
+  // (un LEGENDARY, por ejemplo) aparecen cuando aparecen, y lo importante es no perderlos.
+  const CSKEY = 'albion-overlay-chest-samples-v1';
+  const MAX_SAMPLES = 300;   // techo: son combinaciones distintas, no cofres
+  const chestSamples = (() => {
+    const m = new Map();
+    try {
+      const raw = JSON.parse(localStorage.getItem(CSKEY)) || {};
+      for (const k of Object.keys(raw)) {
+        const v = raw[k];
+        m.set(k, { name: v.name, ctx: v.ctx, n: v.n || 0, p5: new Set(v.p5 || []), p23: new Set(v.p23 || []) });
+      }
+    } catch (_) {}
+    return m;
+  })();
+  let samplesDirty = false;
+  function saveSamples() {
+    if (!samplesDirty) return;
+    samplesDirty = false;
+    try {
+      const o = {};
+      for (const [k, v] of chestSamples) o[k] = { name: v.name, ctx: v.ctx, n: v.n, p5: [...v.p5], p23: [...v.p23] };
+      localStorage.setItem(CSKEY, JSON.stringify(o));
+    } catch (_) {}
+  }
+  setInterval(saveSamples, 30000);
+  window.addEventListener('beforeunload', saveSamples);
+
   function sampleChest(name, ctx, p) {
     const key = `${name} @ ${ctx || '?'}`;
-    const rec = chestSamples.get(key) || { name, ctx, n: 0, p5: new Set(), p23: new Set() };
-    rec.n++;
-    if (p['5'] != null) rec.p5.add(num(p['5']));
-    if (p['23'] != null) rec.p23.add(num(p['23']));
-    chestSamples.set(key, rec);
+    const rec = chestSamples.get(key);
+    if (!rec && chestSamples.size >= MAX_SAMPLES) return;
+    const r = rec || { name, ctx, n: 0, p5: new Set(), p23: new Set() };
+    r.n++;
+    if (p['5'] != null) r.p5.add(num(p['5']));
+    if (p['23'] != null) r.p23.add(num(p['23']));
+    chestSamples.set(key, r);
+    samplesDirty = true;
   }
 
   // nivel de la mazmorra a partir del contexto: hoy es el único dato fiable que acompaña al
@@ -787,7 +816,7 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, unknownChests: () => [...unknownChests.entries()].sort((a, b) => b[1] - a[1]), chestSamples: () => [...chestSamples.values()].sort((a, b) => b.n - a.n).map((r) => ({ cofre: r.name, mazmorra: r.ctx, vistos: r.n, p5: [...r.p5], p23: [...r.p23] })), state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
+  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, unknownChests: () => [...unknownChests.entries()].sort((a, b) => b[1] - a[1]), chestSamples: () => [...chestSamples.values()].sort((a, b) => b.n - a.n).map((r) => ({ cofre: r.name, mazmorra: r.ctx, calidad: chestQuality(r.name, null, r.ctx), nivel: dungeonTier(r.ctx) || '-', vistos: r.n, p5: [...r.p5], p23: [...r.p23] })), sinResolver: () => [...chestSamples.values()].filter((r) => chestQuality(r.name, null, r.ctx) === 'unknown').sort((a, b) => b.n - a.n).map((r) => `${r.ctx || '(sin contexto)'}  x${r.n}`), state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }
