@@ -33,12 +33,15 @@
   "Close overlay": "Cerrar overlay",
   "Close — reopen it with 🔑 in the top bar": "Cerrar — reábrelo con 🔑 en la barra superior",
   "user name…": "nombre del usuario…",
-  "OpenRadar connection": "Conexión con OpenRadar",
+  "Data engine connection": "Conexión con el motor de datos",
+  "Data engine: connected": "Motor de datos: conectado",
+  "Data engine: disconnected": "Motor de datos: desconectado",
+  "Data engine: connecting…": "Motor de datos: conectando…",
   "Enter your access token": "Introduce tu token de acceso",
   "Sign in": "Entrar",
   "Drag me to move · ✕ to close and keep playing": "Arrástrame para moverme · ✕ para cerrar y seguir usando el juego",
   "⚠️ Missing": "⚠️ Falta",
-  "(required for the radar)": "(necesario para el radar)",
+  "(required for the finder)": "(necesario para el buscador)",
   "Install now": "Instalar ahora",
   "+ Issue": "+ Emitir",
   "Loading tokens…": "Cargando tokens…",
@@ -50,8 +53,9 @@
   "Opacity": "Opacidad",
   "🎮 Click to game": "🎮 Clic al juego",
   "Nearby players": "Jugadores cercanos",
-  "Connecting to OpenRadar…": "Conectando con OpenRadar…",
-  "Resource radar": "Radar recursos",
+  "Connecting to the data engine…": "Conectando con el motor de datos…",
+  "Resource finder": "Buscador de recursos",
+  "Finder": "Buscador",
   "hide ally/party by name (never shown)…": "ocultar aliado/grupo por nombre (nunca se muestra)…",
   "Hide this name in every zone": "Ocultar este nombre en todas las zonas",
   "Flip order (high/low)": "Invertir orden (mayor/menor)",
@@ -407,9 +411,6 @@
   "Blue": "Azul",
   "Purple": "Morado",
   "Gold": "Dorado",
-  "Fish shoal": "Cardumen",
-  "Epic fishing": "Pesca épica",
-  "Fishing": "Pesca",
   "Mists solo": "Bruma solo",
   "Mists duo": "Bruma dúo",
   "Corrupted": "Corrupta",
@@ -426,7 +427,6 @@
   "Nothing in range.": "Nada en rango.",
   "Move around the world, or check the filters.": "Muévete por el mundo, o revisa los filtros.",
   "Estimated market value of the node": "Valor de mercado estimado del nodo",
-  "Fish available / total": "Peces disponibles / total",
   "Charges left": "Cargas restantes",
   "Ascending (lowest first) — click to flip": "Ascendente (menor primero) — clic para invertir",
   "Descending (highest first) — click to flip": "Descendente (mayor primero) — clic para invertir",
@@ -484,13 +484,12 @@
   "🎁 Chests": "🎁 Cofres",
   "◆ Resources": "◆ Recursos",
   "🐾 Living/Mobs": "🐾 Vivos/Mobs",
-  "🎣 Fishing": "🎣 Pesca",
   "/unit": "/ud",
   "Buy with order (+2.5%)": "Compra con orden (+2,5%)",
   "Sell with order (+2.5%)": "Venta con orden (+2,5%)"
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#rad-tier option", "Todas", "Todos"], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Fiber", "Fishing", "Gold", "Good", "Green", "Hammer", "Healer", "Hide", "Level", "Living", "Mace", "Market", "Mode", "Normal", "Notes", "Offer", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools"]);
+  const NO_SUB = new Set(["All", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Fiber", "Finder", "Gold", "Good", "Green", "Hammer", "Healer", "Hide", "Level", "Living", "Mace", "Market", "Mode", "Normal", "Notes", "Offer", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);
   // en inputs y textareas se traducen los atributos pero NUNCA el contenido (es dato del usuario)
   const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, CANVAS: 1 };

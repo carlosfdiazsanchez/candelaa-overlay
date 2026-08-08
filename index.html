@@ -453,7 +453,7 @@
   <div class="sep"></div>
   <div class="toggles" id="toggles">
     <button class="tg" aria-pressed="true" data-p="players">Players</button>
-    <button class="tg" aria-pressed="true" data-p="radar">Radar</button>
+    <button class="tg" aria-pressed="true" data-p="radar">Finder</button>
     <button class="tg" aria-pressed="true" data-p="item">Market</button>
     <button class="tg" aria-pressed="true" data-p="notes">Notes</button>
   </div>
@@ -482,7 +482,7 @@
 </div>
 
 <!-- Aviso de Npcap faltante -->
-<div id="npcap-notice" hidden>⚠️ Missing <b>Npcap</b> (required for the radar) <button id="npcap-btn">Install now</button><span id="npcap-state"></span></div>
+<div id="npcap-notice" hidden>⚠️ Missing <b>Npcap</b> (required for the finder) <button id="npcap-btn">Install now</button><span id="npcap-state"></span></div>
 
 <div class="panel" id="p-admin" hidden style="top:78px;left:340px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Tokens (admin)</span>
@@ -498,20 +498,20 @@
 <div class="panel" id="p-players" style="bottom:20px;left:20px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Nearby players</span>
     <span class="panel__spacer"></span><span class="panel__count" id="pl-count">0</span>
-    <span class="conn" id="pl-conn" title="OpenRadar connection"></span>
+    <span class="conn" id="pl-conn" title="Data engine connection"></span>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
     <div class="ally-add"><input id="ally-input" placeholder="hide ally/party by name (never shown)…" autocomplete="off"><button id="ally-btn" title="Hide this name in every zone">+</button></div>
     <div class="plist" id="plist">
-      <div class="pl-empty" id="pl-empty">Connecting to OpenRadar…</div>
+      <div class="pl-empty" id="pl-empty">Connecting to the data engine…</div>
     </div>
   </div>
 </div>
 
 <div class="panel" id="p-radar" style="top:78px;left:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Resource radar</span>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Resource finder</span>
     <span class="panel__spacer"></span><span class="panel__count" id="rad-count">0</span>
-    <span class="conn" id="rad-conn" title="OpenRadar connection"></span>
+    <span class="conn" id="rad-conn" title="Data engine connection"></span>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
     <div class="rad-filters" id="rad-filters"></div>
@@ -535,7 +535,7 @@
         </select>
       </label>
     </div>
-    <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to OpenRadar…</div></div>
+    <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to the data engine…</div></div>
   </div>
 </div>
 

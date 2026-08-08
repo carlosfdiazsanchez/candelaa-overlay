@@ -10,8 +10,7 @@
 // Event codes:  39/38 harvestable batch · 40 harvestable single · 46 harvestable change ·
 //               123 NewMob (living resource / mob / mist portal) · 47 MobChangeState ·
 //               391 NewLootChest · 323 NewRandomDungeonExit (dungeon / mists portal) ·
-//               530 NewCagedObject · 531 CagedObjectStateUpdated · 359 NewFishingZoneObject ·
-//               356 FishingFinished · 3 Move · 1 Leave
+//               530 NewCagedObject · 531 CagedObjectStateUpdated · 3 Move · 1 Leave
 // Op codes:     22/21 Move (local player pos) · 2 Join · 41 ChangeCluster
 
 (function () {
@@ -35,7 +34,6 @@
   const chests = new Map();       // loot chests
   const portals = new Map();      // dungeon / mists-dungeon portals (event 323)
   const cages = new Map();        // wisp cages
-  const fishes = new Map();       // fishing zones
   let lpX = 0, lpY = 0, haveLp = false;
   let selectedId = null;          // entidad fijada: el radar solo la muestra a ella
   let currentMapId = null;
@@ -46,7 +44,7 @@
   // ---- filters (persisted) ----
   const FKEY = 'albion-overlay-radar-filters-v1';
   const filters = (() => {
-    const def = { chest: true, resource: true, living: true, avalon: true, fish: true };
+    const def = { chest: true, resource: true, living: true, avalon: true };
     try { return Object.assign(def, JSON.parse(localStorage.getItem(FKEY)) || {}); } catch (_) { return def; }
   })();
   const saveFilters = () => { try { localStorage.setItem(FKEY, JSON.stringify(filters)); } catch (_) {} };
@@ -208,7 +206,7 @@
   function setConn(s) {
     if (!connEl) return;
     connEl.className = 'conn ' + (s === 'ok' ? 'ok' : s === 'bad' ? 'bad' : '');
-    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
+    connEl.title = 'Data engine: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
   }
   function connect() {
     setConn('...');
@@ -237,33 +235,13 @@
 
     if (kind === 'request') return onRequest(p, op);
     if (kind === 'response') return onResponse(p, op);
-    if (window.__fishDiag) fishDiag(p, p['252']);
     onEvent(p, p['252']);
-  }
-
-  // ---- live fishing diagnostic (window.__fishDiag = true to enable) ----
-  // Detecta eventos "con forma de pesca" por su PAYLOAD, sin depender del código,
-  // para descubrir en vivo qué código real trae la pool (los códigos de Albion se
-  // desplazan por parche). Ver window.__radar.diag tras pararte junto a una pool.
-  const diag = { codeHist: new Map(), fishy: [] };
-  function fishDiag(p, code) {
-    diag.codeHist.set(code, (diag.codeHist.get(code) || 0) + 1);
-    const pos = p['1'];
-    const looksFishy =
-      Object.values(p).some((v) => typeof v === 'string' && /fish/i.test(v)) ||
-      (Array.isArray(pos) && pos.length === 2 && typeof pos[0] === 'number' &&
-        Number.isInteger(p['2']) && p['2'] >= 0 && p['2'] <= 60 && p['4'] !== undefined);
-    if (looksFishy && diag.fishy.length < 60) {
-      diag.fishy.push({ code, id: p['0'], p1: p['1'], p2: p['2'], p3: p['3'], p4: p['4'] });
-      // eslint-disable-next-line no-console
-      console.log('[fishDiag] code', code, 'id', p['0'], 'pos', p['1'], 'spawned', p['2'], 'left', p['3'], 'type', p['4']);
-    }
   }
 
   function onMapChange(mapId) {
     if (!mapId || mapId === currentMapId) return;
     currentMapId = mapId;
-    harvestables.clear(); mobs.clear(); mists.clear(); chests.clear(); portals.clear(); cages.clear(); fishes.clear();
+    harvestables.clear(); mobs.clear(); mists.clear(); chests.clear(); portals.clear(); cages.clear();
     selectedId = null;
     haveLp = false;
   }
@@ -283,11 +261,6 @@
 
   function onEvent(p, code) {
     const id = p['0'];
-    // Zonas de pesca: se detectan por su PAYLOAD (tipo "FishingNode*"), no por el
-    // número de código de evento — los códigos de Albion se DESPLAZAN cada parche
-    // (visto: era 359 en OpenRadar v2.2.0, hoy llega como 361). El prefijo del tipo
-    // es inequívoco y sobrevive a esos cambios.
-    if (typeof p['4'] === 'string' && p['4'].indexOf('FishingNode') === 0 && Array.isArray(p['1'])) { newFish(p); return; }
     switch (code) {
       case 1: removeEverywhere(id); break;
       case 3: { // Move: update mob / mist / cage positions
@@ -312,7 +285,7 @@
 
   function removeEverywhere(id) {
     harvestables.delete(id); mobs.delete(id); mists.delete(id);
-    chests.delete(id); portals.delete(id); cages.delete(id); fishes.delete(id);
+    chests.delete(id); portals.delete(id); cages.delete(id);
   }
 
   // ---- harvestables (static resource nodes) ----
@@ -406,28 +379,6 @@
     cages.set(id, { id, posX: pos[0], posY: pos[1], name: p['4'] || '', last: Date.now() });
   }
 
-  // ---- fishing zones (NewFishingZoneObject) ----
-  // Params: [0]=id, [1]=[x,y], [2]=peces disponibles, [3]=por aparecer, [4]=tipo
-  // (string "FishingNode*"). total = [2]+[3]. Igual que OpenRadar, solo son pools reales
-  // las que traen tipo; se enrutan aquí por el tipo (ver onEvent).
-  function newFish(p) {
-    const id = p['0']; if (id === undefined) return;
-    const pos = p['1']; if (!Array.isArray(pos) || pos.length < 2 || typeof pos[0] !== 'number') return;
-    const type = p['4']; if (typeof type !== 'string' || !type) return;
-    const spawned = num(p['2'], 0), left = num(p['3'], 0);
-    const total = spawned + left;
-    const ex = fishes.get(id);
-    if (ex) { ex.posX = pos[0]; ex.posY = pos[1]; ex.spawned = spawned; ex.left = left; ex.total = total; ex.type = type; ex.last = Date.now(); return; }
-    fishes.set(id, { id, posX: pos[0], posY: pos[1], type, spawned, left, total, last: Date.now() });
-  }
-  // clasificación de la pool por tipo (banco normal vs cardumen/rico)
-  function fishInfo(type) {
-    const u = String(type || '').toUpperCase();
-    if (u.includes('SWARM')) return { es: 'Fish shoal', color: '#ffb02e' };   // más peces / mejor
-    if (u.includes('EPIC') || u.includes('LEGEND')) return { es: 'Epic fishing', color: '#b96bff' };
-    return { es: 'Fishing', color: '#33c9ff' };
-  }
-
   // ---- portal classification (label + colour) ----
   const ENCH_COLOR = ['#c9d1d9', '#46d160', '#4aa3ff', '#b96bff', '#ffcc33'];
   function portalInfo(pt) {
@@ -481,7 +432,6 @@
       portals.forEach((pt) => { const inf = portalInfo(pt); push('avalon', pt, { color: inf.color, icon: inf.icon, label: inf.es, ench: pt.ench }); });
       cages.forEach((c) => push('avalon', c, { color: '#ff7ac6', icon: '🧚', label: 'Wisp cage' }));
     }
-    if (filters.fish) fishes.forEach((f) => { if ((f.total || 0) >= 1) { const inf = fishInfo(f.type); push('fish', f, { color: inf.color, icon: '🎣', label: inf.es, spawned: f.spawned, total: f.total, fishType: f.type }); } });
     // selección: si hay un recurso fijado, el radar solo muestra ese (la lista sigue completa)
     let radar = out;
     if (selectedId != null) { const sel = out.find((e) => e.id === selectedId); radar = sel ? [sel] : out; if (!sel) selectedId = null; }
@@ -584,10 +534,9 @@
       const tier = e.tier ? ` <b class="rt">T${e.tier}${e.ench ? '.' + e.ench : ''}</b>` : (e.ench ? ` <b class="rt">✨${e.ench}</b>` : '');
       const dm = e.d < 1 ? '0' : Math.round(e.d);
       const val = e.priced ? `<span class="rv" title="Estimated market value of the node">≈${fmtK(e.value)}</span>` : '';
-      // cargas: recursos "x/max" · pesca "disponibles/total" (p. ej. 4/5)
+      // cargas del nodo: "x/max"
       let charges = '';
-      if (e.cat === 'fish') charges = `<span class="rc ${e.spawned >= e.total ? 'full' : e.spawned <= 1 ? 'low' : ''}" title="Fish available / total${e.fishType != null ? ' · spot type ' + esc(String(e.fishType)) : ''}">🐟 ${e.spawned}/${e.total}</span>`;
-      else if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
+      if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
       const sel = e.id === selectedId ? ' selected' : '';
       return `<div class="rad-row cat-${e.cat}${sel}" data-id="${e.id}">
         <span class="ri" style="color:${e.color}">${e.icon}</span>
@@ -628,14 +577,14 @@
   // stale cleanup: drop entities not refreshed in 90s
   setInterval(() => {
     const now = Date.now(); const max = 90000;
-    [harvestables, mobs, mists, chests, portals, cages, fishes].forEach((m) => {
+    [harvestables, mobs, mists, chests, portals, cages].forEach((m) => {
       m.forEach((v, k) => { if (now - v.last > max) m.delete(k); });
     });
   }, 5000);
 
   // ---- filter chips ----
   const FILTER_DEFS = [
-    ['chest', '🎁 Chests'], ['resource', '◆ Resources'], ['living', '🐾 Living/Mobs'], ['fish', '🎣 Fishing'], ['avalon', '🌀 Avalon'],
+    ['chest', '🎁 Chests'], ['resource', '◆ Resources'], ['living', '🐾 Living/Mobs'], ['avalon', '🌀 Avalon'],
   ];
   function renderFilters() {
     if (!filtersEl) return;
@@ -713,7 +662,7 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, chests, portals, cages, fishes, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, diag, fishDiagOn: (on = true) => { window.__fishDiag = on; if (on) { diag.codeHist.clear(); diag.fishy.length = 0; } return 'fishDiag ' + (on ? 'ON' : 'OFF'); }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
+  window.__radar = { harvestables, mobs, mists, chests, portals, cages, filters, sub, priceMap, collect, handleMessage, render, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, zoom, selectedId }) };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }

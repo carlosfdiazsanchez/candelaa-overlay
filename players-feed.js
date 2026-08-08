@@ -229,7 +229,7 @@
   let ws = null, reconnectT = null;
   function setConn(s) {
     connEl.className = 'conn ' + (s === 'ok' ? 'ok' : s === 'bad' ? 'bad' : '');
-    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
+    connEl.title = 'Data engine: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
   }
   function connect() {
     setConn('...');
