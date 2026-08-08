@@ -102,7 +102,7 @@ function ensureRadar() {
     const args = ip ? ['-ip', ip] : [];
     try {
       radarProc = spawn(OPENRADAR_EXE, args, { cwd: OPENRADAR_CWD, windowsHide: true, stdio: 'ignore' });
-      radarProc.on('error', (e) => { console.error('[overlay] radar no arrancó:', e.message); radarStarting = false; radarProc = null; });
+      radarProc.on('error', (e) => { console.error('[overlay] radar failed to start:', e.message); radarStarting = false; radarProc = null; });
       radarProc.on('exit', () => { radarStarting = false; radarProc = null; }); // murió -> el watchdog lo revivirá
     } catch (e) { console.error('[overlay] spawn radar:', e.message); radarStarting = false; }
     // margen para que empiece a escuchar antes de permitir otro intento
@@ -137,7 +137,7 @@ function ensureMarket() {
   try {
     marketProc = spawn(MARKET_EXE, [], { cwd: app.getPath('userData'), windowsHide: true, stdio: 'ignore',
       env: { ...process.env, CANDELAA_API: API_BASE, CANDELAA_TOKEN_FILE: tokenFile() } });
-    marketProc.on('error', (e) => { console.error('[overlay] market no arrancó:', e.message); marketProc = null; });
+    marketProc.on('error', (e) => { console.error('[overlay] market failed to start:', e.message); marketProc = null; });
     marketProc.on('exit', () => { marketProc = null; }); // el watchdog lo revivirá
   } catch (e) { console.error('[overlay] spawn market:', e.message); marketProc = null; }
 }
@@ -160,9 +160,12 @@ function stopChildrenSync() {
   cleanupStrays();
 }
 
-// mapId de zona -> ciudad de mercado (para etiquetar las ordenes capturadas del cliente).
-// El Black Market lo detecta el capturador por BuyerName; esto es solo para mercados de ciudad.
+// mapId de zona -> mercado (para etiquetar las ordenes capturadas del cliente).
+// El Black Market lo detecta el capturador por BuyerName; esto cubre los mercados de ciudad,
+// las tres Rests de las Outlands y las 35 zonas negras con contrabandista (Smuggler's Den,
+// que en zones.json vive como BLACKBANK-<id de la zona>).
 const MARKET_CITY_NAMES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'Fort Sterling', 'Brecilien'];
+const canonMarket = (nm) => String(nm || '').replace(/'/g, '');
 let zoneCityMap = null;
 function mapIdToCity(mapId) {
   if (!mapId) return null;
@@ -172,6 +175,14 @@ function mapIdToCity(mapId) {
       const z = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zones.json'), 'utf8'));
       for (const [id, v] of Object.entries(z)) {
         const nm = (v && v.name) || '';
+        const type = (v && v.type) || '';
+        if (type === 'PLAYERCITY_BLACK_REST') { zoneCityMap[id] = canonMarket(nm); continue; }
+        if (type === 'PLAYERCITY_BLACK_SMUGGLERSDEN') {
+          const zoneId = id.split('-')[1];
+          const zone = zoneId && (z[zoneId] || z[String(+zoneId)]);
+          if (zone && zone.name) { zoneCityMap[id] = canonMarket(zone.name); zoneCityMap[zoneId] = canonMarket(zone.name); }
+          continue;
+        }
         const c = MARKET_CITY_NAMES.find((city) => nm.includes(city));
         if (c) zoneCityMap[id] = c;
       }
@@ -326,8 +337,11 @@ ipcMain.handle('get-version', () => app.getVersion());
 const fs = require('fs');
 const https = require('https');
 
-ipcMain.handle('items-index', () => {
-  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-es.json'), 'utf8')); }
+// Nombres de items en el idioma del overlay (el renderer manda el suyo). Por defecto inglés:
+// son los que casan con el buscador del cliente cuando se juega en inglés.
+ipcMain.handle('items-index', (_e, lang) => {
+  const file = lang === 'es' ? 'items-es.json' : 'items-en.json';
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', file), 'utf8')); }
   catch (_) { return []; }
 });
 
@@ -370,6 +384,13 @@ ipcMain.handle('market-live', async (_e, itemId, quality) => {
   } catch (_) { return null; }
 });
 
+// Catálogo de mercados que sirve el backend (ciudades + Rests + contrabandistas), con
+// cuántas órdenes vivas tiene cada uno para no ofrecer mercados muertos.
+ipcMain.handle('markets', async () => {
+  const r = await apiCall('/api/markets', { token: readStoredToken() });
+  return (r.data && r.data.markets) || [];
+});
+
 ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
   catch (_) { return {}; }
@@ -382,15 +403,19 @@ ipcMain.handle('focus-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-focus.json'), 'utf8')); }
   catch (_) { return {}; }
 });
+// Consultas por lotes: agregan miles de órdenes en el servidor, así que no pueden
+// compartir el timeout corto del resto de llamadas (a 15s se cortaban a media faena).
+const BULK_TIMEOUT = 45000;
+
 // Crafteo: precios por el backend (gateado por token).
 ipcMain.handle('craft-prices', async (_e, ids, locations, quality) => {
-  const r = await apiCall('/api/craft-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality } });
+  const r = await apiCall('/api/craft-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality }, timeout: BULK_TIMEOUT });
   return (r.data && r.data.rows) || [];
 });
 
-// Escáner: precios por el backend (paginado en servidor, gateado por token).
+// Escáner: precios por el backend (el cliente trocea en lotes, gateado por token).
 ipcMain.handle('scan-prices', async (_e, ids, locations, quality) => {
-  const r = await apiCall('/api/scan-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality } });
+  const r = await apiCall('/api/scan-prices', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality }, timeout: BULK_TIMEOUT });
   return (r.data && r.data.rows) || [];
 });
 
@@ -402,7 +427,7 @@ ipcMain.handle('top-volume', async (_e, opts) => {
 });
 
 ipcMain.handle('history', async (_e, ids, locations, days, quality) => {
-  const r = await apiCall('/api/history', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, days, quality } });
+  const r = await apiCall('/api/history', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, days, quality }, timeout: BULK_TIMEOUT });
   return (r.data && r.data.rows) || [];
 });
 
@@ -436,12 +461,12 @@ function scheduleHeartbeat() {
 scheduleHeartbeat();
 function clearStoredToken() { try { fs.unlinkSync(tokenFile()); } catch (_) {} }
 
-async function apiCall(pathname, { method = 'GET', token, body } = {}) {
+async function apiCall(pathname, { method = 'GET', token, body, timeout = 15000 } = {}) {
   const headers = {};
   if (token) headers['x-candelaa-token'] = token;
   let payload;
   if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
-  const res = await fetch(API_BASE + pathname, { method, headers, body: payload, signal: AbortSignal.timeout(15000) });
+  const res = await fetch(API_BASE + pathname, { method, headers, body: payload, signal: AbortSignal.timeout(timeout) });
   let data = null; try { data = await res.json(); } catch (_) {}
   return { status: res.status, ok: res.ok, data };
 }

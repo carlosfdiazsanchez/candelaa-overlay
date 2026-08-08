@@ -108,31 +108,33 @@
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
   let esMap = {};
-  try { window.overlay.itemsIndex().then((arr) => { (arr || []).forEach((x) => { esMap[x.id] = x.n; }); }); } catch (_) {}
-  const RANKS = /\s+de(l| la)\s+(principiante|novato|aprendiz|iniciado|oficial|adepto|experto|gran maestro|maestro|anciano|veterano)$/i;
+  try { window.overlay.itemsIndex(window.__lang).then((arr) => { (arr || []).forEach((x) => { esMap[x.id] = x.n; }); }); } catch (_) {}
+  const RANKS = window.__lang === 'es'
+    ? /\s+de(l| la)\s+(principiante|novato|aprendiz|iniciado|oficial|adepto|experto|gran maestro|maestro|anciano|veterano)$/i
+    : /^(beginner|novice|journeyman|adept|expert|master|grandmaster|elder)'s\s+/i;
   const cleanTier = (s) => (s || '').replace(RANKS, '');
 
   const WEAP = [
-    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'B. sagrado', 'heal', '✚'],
-    [/NATURESTAFF|WILDSTAFF|DRUIDIC|BLIGHTSTAFF|RAMPANTSTAFF/, 'B. natural', 'heal', '🌿'],
-    [/ARCANESTAFF|ENIGMATICSTAFF|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'B. arcano', 'sup', '✨'],
-    [/FROSTSTAFF|GLACIALSTAFF|HOARFROST|ICICLESTAFF|PERMAFROST/, 'B. escarcha', 'sup', '❄'],
-    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|DAWNSONG/, 'B. fuego', 'dps', '🔥'],
-    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSESTAFF|CURSEDSKULL|DAMNATION/, 'B. maldito', 'dps', '💀'],
-    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Ballesta', 'dps', '🎯'],
-    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Arco', 'dps', '🏹'],
-    [/DAGGER|CLAWPAIR|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Daga', 'dps', '🔪'],
-    [/_SPEAR|_PIKE|GLAIVE|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Lanza', 'dps', '🔱'],
-    [/BATTLEAXE|HALBERD|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE|_AXE/, 'Hacha', 'dps', '🪓'],
-    [/CLAYMORE|DUALSWORD|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD|SWORD/, 'Espada', 'dps', '⚔'],
-    [/QUARTERSTAFF|IRONCLADSTAFF|DOUBLEBLADEDSTAFF|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'B. pesado', 'tank', '🥍'],
-    [/POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|GROVEKEEPER|HAMMER/, 'Martillo', 'tank', '🛠'],
-    [/HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN|_MACE/, 'Maza', 'tank', '🔨'],
+    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'Holy staff', 'heal', '✚'],
+    [/NATURESTAFF|WILDSTAFF|DRUIDIC|BLIGHTSTAFF|RAMPANTSTAFF/, 'Nature staff', 'heal', '🌿'],
+    [/ARCANESTAFF|ENIGMATICSTAFF|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'Arcane staff', 'sup', '✨'],
+    [/FROSTSTAFF|GLACIALSTAFF|HOARFROST|ICICLESTAFF|PERMAFROST/, 'Frost staff', 'sup', '❄'],
+    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|DAWNSONG/, 'Fire staff', 'dps', '🔥'],
+    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSESTAFF|CURSEDSKULL|DAMNATION/, 'Cursed staff', 'dps', '💀'],
+    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Crossbow', 'dps', '🎯'],
+    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Bow', 'dps', '🏹'],
+    [/DAGGER|CLAWPAIR|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Dagger', 'dps', '🔪'],
+    [/_SPEAR|_PIKE|GLAIVE|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Spear', 'dps', '🔱'],
+    [/BATTLEAXE|HALBERD|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE|_AXE/, 'Axe', 'dps', '🪓'],
+    [/CLAYMORE|DUALSWORD|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD|SWORD/, 'Sword', 'dps', '⚔'],
+    [/QUARTERSTAFF|IRONCLADSTAFF|DOUBLEBLADEDSTAFF|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'Heavy staff', 'tank', '🥍'],
+    [/POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|GROVEKEEPER|HAMMER/, 'Hammer', 'tank', '🛠'],
+    [/HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN|_MACE/, 'Mace', 'tank', '🔨'],
   ];
-  const ROLE = { heal: ['Sanador', '#2ecc71'], sup: ['Apoyo', '#3498db'], tank: ['Tanque', '#f1c40f'], dps: ['DPS', '#ed4245'] };
+  const ROLE = { heal: ['Healer', '#2ecc71'], sup: ['Support', '#3498db'], tank: ['Tank', '#f1c40f'], dps: ['DPS', '#ed4245'] };
   function weaponOf(eq) {
     const it = eq && itemInfo(eq[0]); if (!it || !it.name) return null;
-    let role = 'dps', emoji = '⚔', cat = 'Arma';
+    let role = 'dps', emoji = '⚔', cat = 'Weapon';
     for (const [re, c, r, em] of WEAP) if (re.test(it.name)) { cat = c; role = r; emoji = em; break; }
     const es = cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || cat);
     return { es, role, emoji, tier: it.tier, ench: it.ench };
@@ -184,20 +186,20 @@
     });
     countEl.textContent = String(arr.length);
     const partyN = partyNames.size;
-    const chips = [...hidden].map((n) => `<span class="hchip">${esc(n)}<button data-unhide="${esc(n)}" title="Dejar de ocultar">✕</button></span>`).join('');
+    const chips = [...hidden].map((n) => `<span class="hchip">${esc(n)}<button data-unhide="${esc(n)}" title="Stop hiding">✕</button></span>`).join('');
     const hideBar = (hidden.size || partyN)
-      ? `<div class="hidden-bar">${partyN ? `<span class="hparty" title="Miembros de tu grupo detectados automáticamente">👥 grupo ×${partyN}</span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">mostrar todos</button>` : ''}</div>`
+      ? `<div class="hidden-bar">${partyN ? `<span class="hparty" title="Party members detected automatically">👥 party ×${partyN}</span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
       : '';
     if (!arr.length) {
-      plist.innerHTML = hideBar + '<div class="pl-empty">Sin jugadores en rango.<br>Muévete por el mundo para detectarlos.</div>';
+      plist.innerHTML = hideBar + '<div class="pl-empty">No players in range.<br>Move around the world to spot them.</div>';
       return;
     }
     const inDanger = !!(window.__ovZone && window.__ovZone !== 'safe');
     const hostiles = arr.filter((p) => threatOf(p) === 'hostil').length;
     const squads = Object.entries(guildCount).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]);
     const bits = [];
-    if (hostiles) bits.push(`<b class="s-host">${hostiles} hostil${hostiles > 1 ? 'es' : ''}</b>`);
-    if (squads.length) bits.push(`${inDanger ? '⚠ ' : ''}escuadrón <b>${esc(squads[0][0])}</b> ×${squads[0][1]}`);
+    if (hostiles) bits.push(`<b class="s-host">${hostiles} hostile${hostiles > 1 ? 's' : ''}</b>`);
+    if (squads.length) bits.push(`${inDanger ? '⚠ ' : ''}squad <b>${esc(squads[0][0])}</b> ×${squads[0][1]}`);
     const danger = inDanger && (squads.length > 0 || hostiles >= 3);
     const summary = bits.length ? `<div class="pl-summary${danger ? ' danger' : ''}">${bits.join(' · ')}</div>` : '';
     plist.innerHTML = hideBar + summary + arr.map((p) => {
@@ -208,17 +210,17 @@
       const w = weaponOf(p.equip);
       const wTier = (w && w.tier) ? `${w.tier}.${w.ench || 0}` : '';
       const wTag = w
-        ? `<span class="wtype" style="color:${ROLE[w.role][1]}" title="Rol: ${ROLE[w.role][0]}">${w.emoji} ${esc(w.es)}${wTier ? ' <b class="wtier">' + wTier + '</b>' : ''} · ${ROLE[w.role][0]}</span>`
-        : '<span class="wtype wt-unk">arma ?</span>';
-      const flag = p.faction === 255 ? '<span class="pflag" title="Marcado PvP (facción hostil)">⚔</span>' : '';
-      const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} de este gremio en rango">×${guildCount[p.guild]}</span>` : '';
+        ? `<span class="wtype" style="color:${ROLE[w.role][1]}" title="Role: ${ROLE[w.role][0]}">${w.emoji} ${esc(w.es)}${wTier ? ' <b class="wtier">' + wTier + '</b>' : ''} · ${ROLE[w.role][0]}</span>`
+        : '<span class="wtype wt-unk">weapon ?</span>';
+      const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
+      const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}" data-id="${p.id}">
         <div class="prow"><span class="pname">${esc(p.name || '???')}</span>
           <span class="pguild">${p.guild ? '· ' + esc(p.guild) + squad : ''}</span>
-          ${flag}${p.mounted ? '<span class="mount" title="Montado">🐎</span>' : ''}
-          <button class="phide" data-hide="${esc(p.name || '')}" title="Ocultar (marcar aliado)">✕</button></div>
+          ${flag}${p.mounted ? '<span class="mount" title="Mounted">🐎</span>' : ''}
+          <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
         <div class="prow2">${wTag}</div>
-        <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Valor de mercado estimado del equipo">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
+        <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Estimated market value of the gear">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
       </div>`;
     }).join('');
   }
@@ -227,7 +229,7 @@
   let ws = null, reconnectT = null;
   function setConn(s) {
     connEl.className = 'conn ' + (s === 'ok' ? 'ok' : s === 'bad' ? 'bad' : '');
-    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'conectado' : s === 'bad' ? 'desconectado' : 'conectando…');
+    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
   }
   function connect() {
     setConn('...');

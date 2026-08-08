@@ -5,7 +5,7 @@
 <title>Candelaa Overlay</title>
 <style>
   :root{
-    --panel-alpha:0.72;
+    --panel-alpha:1;
     --panel:rgba(22,23,27,var(--panel-alpha));
     --panel-solid:#16171b;
     --elev:rgba(255,255,255,0.04);
@@ -63,6 +63,7 @@
   #p-item .cmp-note{font-size:12.5px;}
   #p-item .cmp-city{font-size:13px;max-width:150px;}
   #p-item .scan-scroll{max-height:460px;}
+  #p-item .mkt-scroll{max-height:330px;}
   #p-item .scan-prog .lbl{font-size:12.5px;}
   #p-item .market-results{max-height:230px;}
   #p-item .best-hint{background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:10px 12px;line-height:1.8;text-align:left;color:var(--dim);margin-top:11px;}
@@ -342,13 +343,13 @@
   .scan-prog .lbl b{color:#cdeaf2;font-variant-numeric:tabular-nums;}
   .scan-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;}
   .scan-bar>i{display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,#3ba55d,#5fc88a);transition:width .22s ease;}
-  .scan-scroll{max-height:340px;overflow-y:auto;}
+  .scan-scroll,.mkt-scroll{max-height:340px;overflow-y:auto;}
   .scan-scroll td .chip{margin-left:5px;padding:1px 5px;font-size:10px;}
   .scan-scroll td.scan-price{white-space:nowrap;}
-  .scan-scroll thead th{position:sticky;top:0;background:var(--panel-solid);z-index:1;}
-  .scan-scroll::-webkit-scrollbar{width:8px;}
-  .scan-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
-  .scan-scroll{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  .scan-scroll thead th,.mkt-scroll thead th{position:sticky;top:0;background:var(--panel-solid);z-index:1;}
+  .scan-scroll::-webkit-scrollbar,.mkt-scroll::-webkit-scrollbar{width:8px;}
+  .scan-scroll::-webkit-scrollbar-thumb,.mkt-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  .scan-scroll,.mkt-scroll{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
   .enchtag{font-family:var(--mono);font-size:10px;color:var(--accent);}
   .scan-item{display:flex;align-items:center;gap:8px;}
   .scan-ico{width:36px;height:36px;flex:0 0 auto;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.05);}
@@ -451,171 +452,173 @@
   <div class="brand"><span class="dot"></span>Candelaa&nbsp;Overlay<span class="ver" id="app-ver"></span></div>
   <div class="sep"></div>
   <div class="toggles" id="toggles">
-    <button class="tg" aria-pressed="true" data-p="players">Jugadores</button>
+    <button class="tg" aria-pressed="true" data-p="players">Players</button>
     <button class="tg" aria-pressed="true" data-p="radar">Radar</button>
-    <button class="tg" aria-pressed="true" data-p="item">Mercado</button>
-    <button class="tg" aria-pressed="true" data-p="notes">Notas</button>
+    <button class="tg" aria-pressed="true" data-p="item">Market</button>
+    <button class="tg" aria-pressed="true" data-p="notes">Notes</button>
   </div>
   <div class="sep"></div>
-  <div class="ctl"><span>Monitor</span><select id="mon"></select></div>
-  <div class="ctl"><span>Opacidad</span><input type="range" id="op" min="0" max="100" value="100"></div>
+  <div class="ctl"><span>Display</span><select id="mon"></select></div>
   <div class="sep"></div>
-  <button class="tg" id="passthrough" aria-pressed="false" title="Pasar clics al juego — atraviesa el overlay (Ctrl+Alt+O)">🎮 Clic al juego</button>
-  <span class="auth-user" id="auth-user" title="Usuario del token"></span>
-  <button class="tg" id="btn-admin" title="Gestionar tokens (admin)" hidden>🛡️ Tokens</button>
-  <button class="tg" id="btn-token" title="Cambiar token de acceso">🔑</button>
+  <button class="tg" id="passthrough" aria-pressed="false" title="Click through to the game — the overlay ignores clicks (Ctrl+Alt+O)">🎮 Click to game</button>
+  <span class="auth-user" id="auth-user" title="Token owner"></span>
+  <button class="tg" id="btn-admin" title="Manage tokens (admin)" hidden>🛡️ Tokens</button>
   <button class="upd-box" id="app-upd" hidden></button>
-  <button class="tg" id="quit" title="Cerrar overlay">✕</button>
+  <button class="tg" id="quit" title="Close overlay">✕</button>
 </div>
 
 <!-- Pantalla de acceso por token (bloquea todo hasta validar) -->
 <div id="auth-gate" hidden>
   <div class="gate-card">
-    <button id="gate-close" title="Cerrar — reábrelo con 🔑 en la barra superior">✕</button>
+    <button id="gate-close" title="Close — reopen it with 🔑 in the top bar">✕</button>
     <div class="gate-logo">🔥</div>
     <div class="gate-title">Candelaa&nbsp;Overlay</div>
-    <div class="gate-msg" id="gate-msg">Introduce tu token de acceso</div>
+    <div class="gate-msg" id="gate-msg">Enter your access token</div>
     <input id="gate-input" type="text" placeholder="CDL-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false">
-    <button id="gate-btn">Entrar</button>
+    <button id="gate-btn">Sign in</button>
     <div class="gate-err" id="gate-err"></div>
-    <div class="gate-hint">Arrástrame para moverme · ✕ para cerrar y seguir usando el juego</div>
+    <div class="gate-hint">Drag me to move · ✕ to close and keep playing</div>
   </div>
 </div>
 
 <!-- Aviso de Npcap faltante -->
-<div id="npcap-notice" hidden>⚠️ Falta <b>Npcap</b> (necesario para el radar) <button id="npcap-btn">Instalar ahora</button><span id="npcap-state"></span></div>
+<div id="npcap-notice" hidden>⚠️ Missing <b>Npcap</b> (required for the radar) <button id="npcap-btn">Install now</button><span id="npcap-state"></span></div>
 
 <div class="panel" id="p-admin" hidden style="top:78px;left:340px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Tokens (admin)</span>
     <span class="panel__spacer"></span><span class="panel__count" id="admin-count">0</span>
-    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="admin-issue"><input id="admin-name" placeholder="nombre del usuario…" autocomplete="off"><button id="admin-add">+ Emitir</button></div>
+    <div class="admin-issue"><input id="admin-name" placeholder="user name…" autocomplete="off"><button id="admin-add">+ Issue</button></div>
     <div id="admin-new"></div>
-    <div class="alist" id="alist"><div class="pl-empty">Cargando tokens…</div></div>
+    <div class="alist" id="alist"><div class="pl-empty">Loading tokens…</div></div>
   </div>
 </div>
 
 <div class="panel" id="p-players" style="bottom:20px;left:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Jugadores cercanos</span>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Nearby players</span>
     <span class="panel__spacer"></span><span class="panel__count" id="pl-count">0</span>
-    <span class="conn" id="pl-conn" title="Conexión con OpenRadar"></span>
-    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+    <span class="conn" id="pl-conn" title="OpenRadar connection"></span>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="ally-add"><input id="ally-input" placeholder="ocultar aliado/grupo por nombre (nunca se muestra)…" autocomplete="off"><button id="ally-btn" title="Ocultar este nombre en todas las zonas">+</button></div>
+    <div class="ally-add"><input id="ally-input" placeholder="hide ally/party by name (never shown)…" autocomplete="off"><button id="ally-btn" title="Hide this name in every zone">+</button></div>
     <div class="plist" id="plist">
-      <div class="pl-empty" id="pl-empty">Conectando con OpenRadar…</div>
+      <div class="pl-empty" id="pl-empty">Connecting to OpenRadar…</div>
     </div>
   </div>
 </div>
 
 <div class="panel" id="p-radar" style="top:78px;left:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Radar recursos</span>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Resource radar</span>
     <span class="panel__spacer"></span><span class="panel__count" id="rad-count">0</span>
-    <span class="conn" id="rad-conn" title="Conexión con OpenRadar"></span>
-    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+    <span class="conn" id="rad-conn" title="OpenRadar connection"></span>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
     <div class="rad-filters" id="rad-filters"></div>
     <div class="rad-subfilters" id="rad-subfilters"></div>
     <canvas id="radar-canvas"></canvas>
     <div class="rad-zoomrow"><span>Zoom</span><input type="range" id="rad-zoom" min="0.5" max="3" step="0.1" value="1"></div>
     <div class="rad-controls">
-      <label>Orden
+      <label>Sort
         <select id="rad-sort">
-          <option value="dist">Distancia</option>
-          <option value="value">Valor</option>
+          <option value="dist">Distance</option>
+          <option value="value">Value</option>
           <option value="tier">Tier</option>
         </select>
-        <button id="rad-dir" class="rad-dirbtn" title="Invertir orden (mayor/menor)">↓</button>
+        <button id="rad-dir" class="rad-dirbtn" title="Flip order (high/low)">↓</button>
       </label>
       <label>Tier ≥
         <select id="rad-tier">
-          <option value="0">Todos</option>
+          <option value="0">All</option>
           <option value="2">T2</option><option value="3">T3</option><option value="4">T4</option>
           <option value="5">T5</option><option value="6">T6</option><option value="7">T7</option><option value="8">T8</option>
         </select>
       </label>
     </div>
-    <div class="rad-list" id="radar-list"><div class="rad-empty">Conectando con OpenRadar…</div></div>
+    <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to OpenRadar…</div></div>
   </div>
 </div>
 
 <div class="panel" id="p-notes" style="bottom:20px;right:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Notas</span>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Notes</span>
     <span class="panel__spacer"></span><span class="panel__count" id="notes-state"></span>
-    <button class="icon-btn" id="notes-clear" title="Borrar todas las notas">🗑</button>
-    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+    <button class="icon-btn" id="notes-clear" title="Delete every note">🗑</button>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <textarea id="notes-text" class="notes-text" spellcheck="false" placeholder="Precios de referencia, a quién comprar, qué craftear mañana, nombres de gente a evitar…"></textarea>
+    <textarea id="notes-text" class="notes-text" spellcheck="false" placeholder="Reference prices, who to buy from, what to craft tomorrow, names to avoid…"></textarea>
   </div>
 </div>
 
 <div class="panel" id="p-item" style="top:78px;right:20px;">
-  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Mercado</span>
-    <span class="panel__spacer"></span><span class="panel__count" id="item-sub">compra barato · vende caro · con datos de verdad</span>
-    <button class="icon-btn collapse" title="Minimizar">▁</button></div>
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Market</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="item-sub">buy low · sell high · with real data</span>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="search-row"><input class="search" id="item-search" placeholder="Buscar item… (capa, arco, estofado)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Buscar lo que tengas copiado en el portapapeles">📋</button></div>
+    <div class="search-row"><input class="search" id="item-search" placeholder="Search item… (cape, bow, stew)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Search whatever you have copied">📋</button></div>
     <div class="fav-row" id="item-favs" hidden></div>
     <div class="filter-row">
     <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
       <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
-    <div class="cfg-row" id="item-quality"><span class="cfg-lbl">Calidad</span><div class="minitoggles">
-      <button data-q="0" aria-pressed="true">Todas</button><button data-q="1">Normal</button><button data-q="2">Bueno</button><button data-q="3">Notable</button><button data-q="4">Sobresal.</button><button data-q="5">Obra M.</button></div></div>
-    <div class="cfg-row" id="item-fresh"><span class="cfg-lbl" title="Frescura: los precios más viejos que esto se marcan en gris y NO se usan para elegir la mejor jugada. Nunca se ocultan: los sigues viendo, pero no cuentan.">⏱</span><select id="mkt-fresh">
-      <option value="0">Sin límite</option>
+    <div class="cfg-row" id="item-quality"><span class="cfg-lbl">Quality</span><div class="minitoggles">
+      <button data-q="0" aria-pressed="true">All</button><button data-q="1">Normal</button><button data-q="2">Good</button><button data-q="3">Outstanding</button><button data-q="4">Excellent</button><button data-q="5">Master.</button></div></div>
+    <div class="cfg-row" id="item-fresh"><span class="cfg-lbl" title="Freshness: prices older than this are greyed out and are NOT used to pick the best play. They are never hidden: you still see them, they just don't count.">⏱</span><select id="mkt-fresh">
+      <option value="0" selected>No limit</option>
       <option value="1">&lt; 1 h</option>
       <option value="2">&lt; 2 h</option>
-      <option value="6" selected>&lt; 6 h</option>
+      <option value="6">&lt; 6 h</option>
       <option value="24">&lt; 24 h</option></select></div>
+    <div class="cfg-row" id="item-markets"><span class="cfg-lbl" title="Which markets show up in the price table and the Scanner. The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.">🏪</span><select id="mkt-scope">
+      <option value="city">Cities only</option>
+      <option value="rest" selected>Cities + Rests</option>
+      <option value="all">All (+ smugglers)</option></select></div>
     </div>
     <div class="market-results" id="item-results"></div>
     <div class="tabs" id="item-tabs">
-      <button class="tab-btn active" data-tab="market">Precios</button>
-      <button class="tab-btn" data-tab="craft">Crafteo</button>
-      <button class="tab-btn" data-tab="scan">Escáner</button>
-      <button class="tab-btn" data-tab="level">Nivel</button>
-      <button class="tab-btn" data-tab="config" title="Ajustes que se ponen una vez y afectan a todo el panel">⚙</button>
+      <button class="tab-btn active" data-tab="market">Prices</button>
+      <button class="tab-btn" data-tab="craft">Crafting</button>
+      <button class="tab-btn" data-tab="scan">Scanner</button>
+      <button class="tab-btn" data-tab="level">Level</button>
+      <button class="tab-btn" data-tab="config" title="Set once, applies to the whole panel">⚙</button>
     </div>
     <div id="tab-market"></div>
     <div id="tab-config" hidden>
-      <label class="cfg-check" title="Con premium el impuesto de venta es 4%; sin premium, 8%. Afecta a todos los cálculos de beneficio del panel."><input type="checkbox" id="premium-toggle" checked> Cuenta premium — impuesto de venta <b>4%</b> (sin premium, 8%)</label>
+      <label class="cfg-check" title="With premium the sales tax is 4%; without it, 8%. Affects every profit calculation in the panel."><input type="checkbox" id="premium-toggle" checked> Premium account — sales tax <b>4%</b> (without premium, 8%)</label>
     </div>
     <div id="tab-craft" hidden>
       <div class="craft-cfg">
-        <div class="cfg-row"><span class="cfg-lbl">Cantidad</span><input type="number" id="craft-qty" value="1" min="1"></div>
-        <div class="cfg-row"><span class="cfg-lbl">Craftear en</span><select id="craft-station-city" title="Ciudad donde vas a craftear/refinar. Si coincide con la del bono de este item, el retorno se calcula solo.">
-          <option value="">— sin bono</option>
+        <div class="cfg-row"><span class="cfg-lbl">Quantity</span><input type="number" id="craft-qty" value="1" min="1"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Craft in</span><select id="craft-station-city" title="City where you'll craft/refine. If it matches this item's bonus city, the return rate is worked out for you.">
+          <option value="">— no bonus</option>
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
-        <label class="cfg-check"><input type="checkbox" id="craft-focus"> Usar <b>foco</b> (+59% al bono de producción)</label>
-        <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Cada día dos familias de items tienen +10% de bono de producción. Elige las dos de hoy: el bono se aplica solo cuando el item que miras pertenece a una de ellas.">Bono hoy</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
-        <div class="cfg-row"><span class="cfg-lbl">Foco disp.</span><input type="number" id="craft-focus-avail" value="10000" min="0" step="500" title="Foco que piensas gastar en la sesión. Con premium se regeneran 10.000/día."></div>
-        <div class="cfg-row"><span class="cfg-lbl">Foco/ud</span><input type="number" id="craft-focus-cost" min="0" title="Coste de foco por unidad. Se estima desde los datos del juego y tu eficiencia; escribe el valor EXACTO que ves en la estación y tu spec queda calibrada para toda esta línea de items."><button class="mini-btn" id="craft-focus-auto" title="Volver al coste estimado (borra la calibración de este item)">auto</button></div>
-        <div class="cfg-row"><span class="cfg-lbl">Sesión</span><select id="craft-session-mode" title="Cómo gastas el material que te devuelve la estación: volver a craftearlo con foco (más beneficio por punto) o seguir sin foco hasta agotarlo (más volumen).">
-          <option value="focus" selected>Todo con foco</option><option value="mixed">Foco + resto sin foco</option></select></div>
-        <div class="cfg-row"><span class="cfg-lbl">Retorno %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% de recursos que te devuelve la estación. Se calcula solo desde ciudad + foco + bono diario; si escribes a mano, manda tu valor (toca cualquier ajuste para volver al automático)."><button class="mini-btn" id="craft-return-auto" title="Volver al retorno calculado">auto</button></div>
-        <label class="cfg-check" title="Dejando orden de compra pagas 1 de plata por encima de la mejor puja actual, mas un 2,5% de tasa por crear la orden. Sale mas barato que comprar al instante, pero tardas en que te la llenen."><input type="checkbox" id="craft-mat-order"> Mats con orden (puja+1 y +2,5%)</label>
-        <label class="cfg-check" title="Con orden: te pones en la cola al precio de la orden de venta mas barata de ese mercado (tambien en el Black Market) y pagas impuesto mas 2,5% de tasa. Sin orden: vendes al instante a la mejor puja y solo pagas impuesto."><input type="checkbox" id="craft-sell-order" checked> Vender con orden (+2,5%)</label>
+        <label class="cfg-check"><input type="checkbox" id="craft-focus"> Use <b>focus</b> (+59% to the production bonus)</label>
+        <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Every day two item families get a +10% production bonus. Pick today's two: the bonus only applies when the item you're looking at belongs to one of them.">Today's bonus</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
+        <div class="cfg-row"><span class="cfg-lbl">Focus avail.</span><input type="number" id="craft-focus-avail" value="10000" min="0" step="500" title="Focus you plan to spend this session. With premium you regenerate 10,000/day."></div>
+        <div class="cfg-row"><span class="cfg-lbl">Focus/unit</span><input type="number" id="craft-focus-cost" min="0" title="Focus cost per unit. Estimated from game data and your efficiency; type the EXACT value you see at the station and your spec is calibrated for this whole item line."><button class="mini-btn" id="craft-focus-auto" title="Back to the estimated cost (clears this item's calibration)">auto</button></div>
+        <div class="cfg-row"><span class="cfg-lbl">Session</span><select id="craft-session-mode" title="How you spend the materials the station returns: craft them again with focus (more profit per point) or keep going without focus until they run out (more volume).">
+          <option value="focus" selected>Everything with focus</option><option value="mixed">Focus + the rest without</option></select></div>
+        <div class="cfg-row"><span class="cfg-lbl">Return %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% of resources the station returns. Worked out from city + focus + daily bonus; if you type it by hand, your value wins (change any setting to go back to automatic)."><button class="mini-btn" id="craft-return-auto" title="Back to the calculated return">auto</button></div>
+        <label class="cfg-check" title="Placing a buy order costs 1 silver above the current best bid, plus a 2.5% setup fee. Cheaper than buying instantly, but it takes time to get filled."><input type="checkbox" id="craft-mat-order"> Mats via buy order (bid+1 and +2.5%)</label>
+        <label class="cfg-check" title="With an order: you queue at the cheapest sell price in that market (Black Market included) and pay tax plus a 2.5% fee. Without: you sell instantly to the best bid and only pay tax."><input type="checkbox" id="craft-sell-order" checked> Sell via order (+2.5%)</label>
       </div>
       <div id="craft-out"></div>
     </div>
     <div id="tab-scan" hidden>
       <div class="craft-cfg">
-      <div class="cfg-row"><span class="cfg-lbl">Modo</span><select id="scan-mode" title="Revender: compras el item hecho y lo mueves. Craftear: compras los materiales y lo fabricas, asumiendo que crafteas en la ciudad con el bono de cada item y con la configuración de foco de la pestaña Crafteo."><option value="flip" selected>Comprar y revender</option><option value="craft">Craftear</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Vender a</span><select id="scan-sell" title="Inmediato: cobras la puja de ese mercado al momento y solo pagas impuesto. Con orden: te pones en la cola al precio de la venta mas barata, pagas impuesto mas 2,5% y esperas a que te la llenen."><option value="bm" selected>Black Market — inmediato</option><option value="bmorder">Black Market — con orden</option><option value="market">Ciudades — con orden</option><option value="cityfast">Ciudades — inmediato</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl" title="Ventana de historico con la que se calculan el volumen y el precio medio. Menos dias = mas reciente; mas dias = mas estable.">Ventana</span><select id="scan-days">
-        <option value="3">3 dias</option><option value="7">7 dias</option><option value="14">14 dias</option><option value="21" selected>21 dias</option><option value="30">30 dias</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>Todos (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="scan-city" title="Ciudad donde compras. Dejalo en Cualquiera para que use el precio mas barato de todas las ciudades (puede implicar varios viajes)."><option value="" selected>Cualquiera (la mas barata)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
-      <label class="cfg-check" title="Descarta las filas donde el precio de venta de ahora es más de 3× el precio medio histórico: son picos u órdenes troll, no oportunidades reales."><input type="checkbox" id="scan-hide-spikes" checked> Ocultar picos (venta &gt; 3× el medio)</label>
+      <div class="cfg-row"><span class="cfg-lbl">Mode</span><select id="scan-mode" title="Resell: you buy the finished item and move it. Craft: you buy the materials and make it, assuming you craft in each item's bonus city with the focus setup from the Crafting tab."><option value="flip" selected>Buy and resell</option><option value="craft">Craft</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Sell to</span><select id="scan-sell" title="Instant: you take that market's bid right away and only pay tax. With order: you queue at the cheapest sell price, pay tax plus 2.5% and wait to get filled. Market destinations follow the 🏪 filter: cities only, + Rests or + smugglers."><option value="bm" selected>Black Market — instant</option><option value="bmorder">Black Market — with order</option><option value="market">Markets — with order</option><option value="cityfast">Markets — instant</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl" title="History window used for volume and average price. Fewer days = more recent; more days = more stable.">Window</span><select id="scan-days">
+        <option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="21" selected>21 days</option><option value="30">30 days</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>All (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Buy in</span><select id="scan-city" title="City where you buy. Leave it on Anywhere to use the cheapest price across every city (may mean several trips)."><option value="" selected>Anywhere (the cheapest)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+      <label class="cfg-check" title="Drops rows where the current sell price is more than 3× the historical average: those are spikes or troll orders, not real opportunities."><input type="checkbox" id="scan-hide-spikes" checked> Hide spikes (sell &gt; 3× the average)</label>
       </div>
-      <button class="scan-btn" id="scan-btn">🔍 Buscar oportunidades</button>
+      <button class="scan-btn" id="scan-btn">🔍 Find opportunities</button>
       <div id="scan-result"></div>
     </div>
     <div id="tab-level" hidden>
       <div class="craft-cfg">
-      <div class="cfg-row"><span class="cfg-lbl">Nivel</span><select id="level-target"><option>4</option><option>5</option><option>6</option><option>7</option><option value="8" selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
-      <div class="cfg-row"><span class="cfg-lbl">Comprar en</span><select id="level-city"><option value="">Todas (más barata)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Level</span><select id="level-target"><option>4</option><option>5</option><option>6</option><option>7</option><option value="8" selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Buy in</span><select id="level-city"><option value="">All (cheapest)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
       </div>
       <div id="level-result"></div>
     </div>
@@ -624,6 +627,7 @@
 </div>
 
 <div id="radar-alert"></div>
+<script src="i18n.js"></script>
 <script src="renderer.js"></script>
 <script src="players-feed.js"></script>
 <script src="resources-feed.js"></script>

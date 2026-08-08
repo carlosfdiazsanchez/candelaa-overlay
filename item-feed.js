@@ -53,7 +53,7 @@
   }
   function copyText(txt) {
     if (!txt) return;
-    const done = () => toast('📋 Copiado: ' + txt);
+    const done = () => toast('📋 Copied: ' + txt);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fallback); }
       else fallback();
@@ -130,9 +130,9 @@
 
   const QAB = ['', '', 'B', 'Not', 'Sob', 'OM'];
   const qBadge = (qv) => (currentQuality === 0 && qv > 1 && QAB[qv])
-    ? ` <span class="qbadge" title="Ojo: este precio NO es de calidad Normal, es ${QNAMES[qv]}">${QAB[qv]}</span>` : '';
+    ? ` <span class="qbadge" title="Careful: this price is NOT Normal quality, it is ${QNAMES[qv]}">${QAB[qv]}</span>` : '';
 
-  Promise.all([window.overlay.itemsIndex(), window.overlay.recipesIndex(), window.overlay.focusIndex()]).then(([it, rc, fx]) => {
+  Promise.all([window.overlay.itemsIndex(window.__lang), window.overlay.recipesIndex(), window.overlay.focusIndex()]).then(([it, rc, fx]) => {
     items = it || []; recipes = rc || {}; focusData = fx || {};
     nameById = Object.fromEntries(items.map((x) => [x.id, x.n]));
     initDailyBonus();
@@ -144,19 +144,19 @@
 
   // ---------- bono diario de producción (dos familias al día, +10%) ----------
   const CAT_ES = {
-    arcanestaff: 'bastón arcano', axe: 'hachas', bag: 'bolsas', bow: 'arcos', cape: 'capas',
-    cloth_armor: 'pecho de tela', cloth_helmet: 'casco de tela', cloth_shoes: 'botas de tela',
-    crossbow: 'ballestas', cursestaff: 'bastón maldito', dagger: 'dagas', fiber: 'tela (refino)',
-    firestaff: 'bastón de fuego', food: 'comida', froststaff: 'bastón de escarcha',
-    gatherergear: 'equipo de recolector', hammer: 'martillos', hide: 'cuero (refino)',
-    holystaff: 'bastón sagrado', knuckles: 'puños', leather_armor: 'pecho de cuero',
-    leather_helmet: 'casco de cuero', leather_shoes: 'botas de cuero', mace: 'mazas',
-    meat_chicken: 'carne de pollo', meat_cow: 'carne de vaca', meat_goat: 'carne de cabra',
-    meat_goose: 'carne de oca', meat_pig: 'carne de cerdo', meat_sheep: 'carne de oveja',
-    naturestaff: 'bastón natural', offhand: 'secundarias', ore: 'lingotes (refino)',
-    plate_armor: 'pecho de placas', plate_helmet: 'casco de placas', plate_shoes: 'botas de placas',
-    potion: 'pociones', quarterstaff: 'varas', rock: 'piedra (refino)', spear: 'lanzas',
-    sword: 'espadas', tools: 'herramientas', wood: 'tablas (refino)',
+    arcanestaff: 'arcane staff', axe: 'axes', bag: 'bags', bow: 'bows', cape: 'capes',
+    cloth_armor: 'cloth armor', cloth_helmet: 'cloth helmet', cloth_shoes: 'cloth shoes',
+    crossbow: 'crossbows', cursestaff: 'cursed staff', dagger: 'daggers', fiber: 'cloth (refining)',
+    firestaff: 'fire staff', food: 'food', froststaff: 'frost staff',
+    gatherergear: 'gatherer gear', hammer: 'hammers', hide: 'leather (refining)',
+    holystaff: 'holy staff', knuckles: 'knuckles', leather_armor: 'leather armor',
+    leather_helmet: 'leather helmet', leather_shoes: 'leather shoes', mace: 'maces',
+    meat_chicken: 'chicken meat', meat_cow: 'beef', meat_goat: 'goat meat',
+    meat_goose: 'goose meat', meat_pig: 'pork', meat_sheep: 'mutton',
+    naturestaff: 'nature staff', offhand: 'off-hands', ore: 'bars (refining)',
+    plate_armor: 'plate armor', plate_helmet: 'plate helmet', plate_shoes: 'plate shoes',
+    potion: 'potions', quarterstaff: 'quarterstaffs', rock: 'stone (refining)', spear: 'spears',
+    sword: 'swords', tools: 'tools', wood: 'planks (refining)',
   };
   const DAILY_KEY = 'candelaa-daily-v1';
   const DAILY_PCT = 10;
@@ -167,7 +167,7 @@
     if (!s1 || !s2) return;
     const cats = [...new Set(Object.values(focusData).map((v) => v.c).filter(Boolean))]
       .map((c) => ({ c, n: CAT_ES[c] || c })).sort((a, b) => a.n.localeCompare(b.n, 'es'));
-    const opts = '<option value="">— ninguna</option>' + cats.map((x) => `<option value="${x.c}">${esc(x.n)}</option>`).join('');
+    const opts = '<option value="">— none</option>' + cats.map((x) => `<option value="${x.c}">${esc(x.n)}</option>`).join('');
     s1.innerHTML = opts; s2.innerHTML = opts;
     try { dailyCfg = JSON.parse(localStorage.getItem(DAILY_KEY) || '{}') || {}; } catch (_) { dailyCfg = {}; }
     if (dailyCfg.d !== todayStr()) dailyCfg = { d: todayStr(), a: '', b: '' };
@@ -188,27 +188,27 @@
 
   // ---------- bono de ciudad (crafteo, +15% return) ----------
   const ARMOR = {
-    CLOTH_HEAD: ['Thetford', 'casco de tela'], CLOTH_ARMOR: ['Fort Sterling', 'pecho de tela'], CLOTH_SHOES: ['Bridgewatch', 'botas de tela'],
-    LEATHER_HEAD: ['Lymhurst', 'casco de cuero'], LEATHER_ARMOR: ['Thetford', 'pecho de cuero'], LEATHER_SHOES: ['Lymhurst', 'botas de cuero'],
-    PLATE_HEAD: ['Fort Sterling', 'casco de placas'], PLATE_ARMOR: ['Bridgewatch', 'pecho de placas'], PLATE_SHOES: ['Martlock', 'botas de placas'],
+    CLOTH_HEAD: ['Thetford', 'cloth helmet'], CLOTH_ARMOR: ['Fort Sterling', 'cloth armor'], CLOTH_SHOES: ['Bridgewatch', 'cloth shoes'],
+    LEATHER_HEAD: ['Lymhurst', 'leather helmet'], LEATHER_ARMOR: ['Thetford', 'leather armor'], LEATHER_SHOES: ['Lymhurst', 'leather shoes'],
+    PLATE_HEAD: ['Fort Sterling', 'plate helmet'], PLATE_ARMOR: ['Bridgewatch', 'plate armor'], PLATE_SHOES: ['Martlock', 'plate shoes'],
   };
   const WEAPON = [
-    [/SWORD|CLAYMORE|DUALSWORD|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD/, 'Lymhurst', 'espadas'],
-    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Lymhurst', 'arcos'],
-    [/ARCANESTAFF|ENIGMATICSTAFF|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'Lymhurst', 'bastón arcano'],
-    [/_AXE|BATTLEAXE|HALBERD|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE/, 'Martlock', 'hachas'],
-    [/QUARTERSTAFF|IRONCLADSTAFF|DOUBLEBLADEDSTAFF|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'Martlock', 'varas'],
-    [/FROSTSTAFF|GLACIALSTAFF|HOARFROST|ICICLESTAFF|PERMAFROST/, 'Martlock', 'bastón de escarcha'],
+    [/SWORD|CLAYMORE|DUALSWORD|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD/, 'Lymhurst', 'swords'],
+    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Lymhurst', 'bows'],
+    [/ARCANESTAFF|ENIGMATICSTAFF|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'Lymhurst', 'arcane staff'],
+    [/_AXE|BATTLEAXE|HALBERD|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE/, 'Martlock', 'axes'],
+    [/QUARTERSTAFF|IRONCLADSTAFF|DOUBLEBLADEDSTAFF|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'Martlock', 'quarterstaffs'],
+    [/FROSTSTAFF|GLACIALSTAFF|HOARFROST|ICICLESTAFF|PERMAFROST/, 'Martlock', 'frost staff'],
     [/_OFF_/, 'Martlock', 'off-hand'],
-    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Bridgewatch', 'ballestas'],
-    [/DAGGER|CLAWPAIR|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Bridgewatch', 'dagas'],
-    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSE|CURSEDSKULL|DAMNATION/, 'Bridgewatch', 'bastón maldito'],
-    [/HAMMER|POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|GROVEKEEPER/, 'Fort Sterling', 'martillos'],
-    [/_SPEAR|_PIKE|GLAIVE|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Fort Sterling', 'lanzas'],
-    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'Fort Sterling', 'bastón sagrado'],
-    [/_MACE|HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN/, 'Thetford', 'mazas'],
-    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|DAWNSONG/, 'Thetford', 'bastón de fuego'],
-    [/NATURESTAFF|WILDSTAFF|DRUIDICSTAFF|BLIGHTSTAFF|RAMPANTSTAFF/, 'Thetford', 'bastón natural'],
+    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Bridgewatch', 'crossbows'],
+    [/DAGGER|CLAWPAIR|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Bridgewatch', 'daggers'],
+    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSE|CURSEDSKULL|DAMNATION/, 'Bridgewatch', 'cursed staff'],
+    [/HAMMER|POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|GROVEKEEPER/, 'Fort Sterling', 'hammers'],
+    [/_SPEAR|_PIKE|GLAIVE|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Fort Sterling', 'spears'],
+    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'Fort Sterling', 'holy staff'],
+    [/_MACE|HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN/, 'Thetford', 'maces'],
+    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|DAWNSONG/, 'Thetford', 'fire staff'],
+    [/NATURESTAFF|WILDSTAFF|DRUIDICSTAFF|BLIGHTSTAFF|RAMPANTSTAFF/, 'Thetford', 'nature staff'],
   ];
   function cityBonus(id) {
     const a = id.match(/(HEAD|ARMOR|SHOES)_(CLOTH|LEATHER|PLATE)/);
@@ -224,7 +224,7 @@
   const REFINED_ID = /^T\d+_(PLANKS|METALBAR|CLOTH|LEATHER|STONEBLOCK)(_LEVEL\d+@\d+)?$/;
   const REFINE_CITY = { PLANKS: ['FortSterling', 'tablas'], METALBAR: ['Thetford', 'lingotes'], CLOTH: ['Lymhurst', 'tela'], LEATHER: ['Martlock', 'cuero'], STONEBLOCK: ['Bridgewatch', 'bloques de piedra'] };
   // Brecilien es la ÚNICA ciudad con bono de bolsas, capas y pociones (+15%).
-  const BRECILIEN_ONLY = [[/^T\d+_BAG/, 'bolsas'], [/^T\d+_CAPE/, 'capas'], [/_POTION/, 'pociones']];
+  const BRECILIEN_ONLY = [[/^T\d+_BAG/, 'bags'], [/^T\d+_CAPE/, 'capes'], [/_POTION/, 'potions']];
   function productionBonus(baseId) {
     const id = baseId || '';
     const m = REFINED_ID.exec(id);
@@ -261,19 +261,19 @@
   function renderFavs() {
     const box = document.getElementById('item-favs'); if (!box) return;
     box.hidden = !favs.length;
-    box.innerHTML = favs.map((f) => `<span class="fav-chip" data-fav="${esc(f.id)}" data-favn="${esc(f.n)}" title="Abrir ${esc(f.n)}"><b>${esc(f.n)}</b><span class="fav-x" data-favx="${esc(f.id)}" title="Quitar de favoritos">✕</span></span>`).join('');
+    box.innerHTML = favs.map((f) => `<span class="fav-chip" data-fav="${esc(f.id)}" data-favn="${esc(f.n)}" title="Open ${esc(f.n)}"><b>${esc(f.n)}</b><span class="fav-x" data-favx="${esc(f.id)}" title="Remove from favourites">✕</span></span>`).join('');
   }
   function refreshFavStars() {
     document.querySelectorAll('[data-favstar]').forEach((el) => {
       const on = isFav(currentBase);
       el.classList.toggle('on', on); el.textContent = on ? '★' : '☆';
-      el.title = on ? 'Quitar de favoritos' : 'Guardar en favoritos';
+      el.title = on ? 'Remove from favourites' : 'Save to favourites';
     });
   }
   function toggleFav() {
     if (!currentBase) return;
-    if (isFav(currentBase)) { favs = favs.filter((f) => f.id !== currentBase); toast('☆ Quitado de favoritos'); }
-    else { favs = [{ id: currentBase, n: currentName }, ...favs.filter((f) => f.id !== currentBase)].slice(0, FAV_MAX); toast('★ Guardado en favoritos'); }
+    if (isFav(currentBase)) { favs = favs.filter((f) => f.id !== currentBase); toast('☆ Removed from favourites'); }
+    else { favs = [{ id: currentBase, n: currentName }, ...favs.filter((f) => f.id !== currentBase)].slice(0, FAV_MAX); toast('★ Saved to favourites'); }
     saveFavs(); renderFavs(); refreshFavStars();
   }
   renderFavs();
@@ -302,9 +302,9 @@
   search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(doSearch, 180); });
   { const pb = document.getElementById('item-paste'); if (pb) pb.addEventListener('click', async () => {
       let txt = '';
-      try { txt = await navigator.clipboard.readText(); } catch (_) { toast('No he podido leer el portapapeles'); return; }
+      try { txt = await navigator.clipboard.readText(); } catch (_) { toast('Could not read the clipboard'); return; }
       txt = String(txt || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-      if (!txt) { toast('Portapapeles vacío'); return; }
+      if (!txt) { toast('Clipboard empty'); return; }
       search.value = txt; search.focus(); doSearch();
     }); }
   // "Bolsa de visión del maestro .1" o "vara 6.2": el sufijo dice el encantamiento (y el tier)
@@ -324,7 +324,7 @@
       && (!parsed.tier || it.id.startsWith('T' + parsed.tier + '_'))).slice(0, 14);
     results.innerHTML = matches.length
       ? matches.map((m) => `<div class="mres" data-id="${esc(m.id)}"><img class="ires-icon" src="icon://item/${encodeURIComponent(m.id)}?size=40" loading="lazy" alt=""><span class="ires-name">${esc(m.n)}</span><span class="mid">${recipes[m.id] ? '🔨' : ''}</span></div>`).join('')
-      : '<div class="mempty">Sin resultados</div>';
+      : '<div class="mempty">No results</div>';
   }
   results.addEventListener('click', (e) => {
     const r = e.target.closest('.mres'); if (!r) return;
@@ -365,25 +365,25 @@
     });
   });
 
-  const QNAMES = ['Todas', 'Normal', 'Bueno', 'Notable', 'Sobresaliente', 'Obra maestra'];
+  const QNAMES = ['All', 'Normal', 'Good', 'Outstanding', 'Excellent', 'Masterpiece'];
   function itemHeadHtml(sub) {
     const qid = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="icon://item/${encodeURIComponent(qid)}?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
+    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="icon://item/${encodeURIComponent(qid)}?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Remove from favourites' : 'Save to favourites'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
   }
 
   // ================= MERCADO =================
   async function loadMarket(silent) {
     const queryId = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    if (!silent) tabMarket.innerHTML = '<div class="mempty">Cargando precios…</div>';
+    if (!silent) tabMarket.innerHTML = '<div class="mempty">Loading prices…</div>';
     const [prices, vol, live] = await Promise.all([
       window.overlay.marketPrices(queryId, currentQuality),
-      window.overlay.history([queryId], ALL_CITIES, 21, currentQuality),
+      window.overlay.history([queryId], scopeCities(), 21, currentQuality),
       window.overlay.marketLive(queryId, currentQuality).catch(() => null),
     ]);
-    marketData = prices || [];
+    marketData = (prices || []).filter((r) => inScope(r.city));
     if (Array.isArray(live)) {
       live.forEach((lr) => {
-        if (!lr || !lr.city) return;
+        if (!lr || !lr.city || !inScope(lr.city)) return;
         const ck = cityKey(lr.city);
         const row = marketData.find((r) => cityKey(r.city) === ck);
         if (row) {
@@ -415,7 +415,7 @@
       ]);
       marketQuality = QS.map((q, i) => {
         const pr = qp[i] || [];
-        const cs = pr.filter((r) => r.city !== 'Black Market' && r.sell_price_min > 0).map((r) => r.sell_price_min);
+        const cs = pr.filter((r) => r.city !== 'Black Market' && inScope(r.city) && r.sell_price_min > 0).map((r) => r.sell_price_min);
         const bmr = pr.find((r) => r.city === 'Black Market');
         const hr = (qh[i] || [])[0] || {};
         let date = '';
@@ -430,11 +430,11 @@
     const r = bm / avg;
     const pico = r > 1.4, flojo = r < 0.7;
     const cls = pico ? 'chip-pico' : flojo ? 'chip-flojo' : 'chip-ok';
-    const title = pico ? `Pico: pagan ${fmt(bm)} ahora pero lo normal es ~${fmt(avg)}; cuenta con el medio`
-      : flojo ? `Pagan menos de lo normal ahora (~${fmt(avg)} de media); suele recuperarse`
-      : `El precio de ahora va en línea con el medio histórico (~${fmt(avg)}): fiable`;
+    const title = pico ? `Spike: they pay ${fmt(bm)} right now but ~${fmt(avg)} is normal; plan with the average`
+      : flojo ? `Paying below normal right now (~${fmt(avg)} average); it usually recovers`
+      : `The current price is in line with the historical average (~${fmt(avg)}): reliable`;
     const txt = short ? (pico ? '⚠' : flojo ? '↓' : '✅')
-      : (pico ? `⚠ PICO ${r.toFixed(1)}×` : flojo ? '↓ flojo' : '✅ sostenido');
+      : (pico ? `⚠ SPIKE ${r.toFixed(1)}×` : flojo ? '↓ weak' : '✅ steady');
     return `<span class="chip ${cls}" title="${title}">${txt}</span>`;
   }
   // el Black Market solo compra EQUIPO (lo que dropean los mobs): ni comida, ni pociones,
@@ -446,7 +446,7 @@
   const bmBuys = (baseId) => BM_CATS.has(catOf(baseId));
   function renderMarket(silent) {
     const rows = (marketData || []).filter((r) => r.sell_price_min > 0 || r.buy_price_max > 0);
-    if (!rows.length) { if (!silent) tabMarket.innerHTML = '<div class="mempty">Sin datos de mercado.</div>'; return; }
+    if (!rows.length) { if (!silent) tabMarket.innerHTML = '<div class="mempty">No market data.</div>'; return; }
     const cityRows = rows.filter((r) => r.city !== 'Black Market' && r.sell_price_min > 0);
     const citySells = cityRows.map((r) => r.sell_price_min);
     const isSellOutlier = (sp) => isHiOutlier(sp, citySells) || isLoOutlier(sp, citySells);
@@ -459,56 +459,41 @@
     const usableSells = scoreSells.length ? scoreSells : scoreRows.map((r) => r.sell_price_min);
     const minSell = usableSells.length ? Math.min(...usableSells) : null;
     const maxSell = usableSells.length ? Math.max(...usableSells) : null;
-    // Black Market al final (es venta inmediata al NPC, no sitio para comprar)
-    rows.sort((a, b) => (a.city === 'Black Market' ? 1 : 0) - (b.city === 'Black Market' ? 1 : 0));
+    // ciudades primero, luego Rests y contrabandistas; el Black Market al final
+    // (es venta inmediata al NPC, no sitio para comprar)
+    const MKT_ORDER = { royal: 0, rest: 1, smuggler: 2 };
+    const mktRank = (c) => (c === 'Black Market' ? 3 : (MKT_ORDER[marketTypeOf(c)] || 0));
+    rows.sort((a, b) => mktRank(a.city) - mktRank(b.city));
     const queryId = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    const itemHead = itemHeadHtml(`calidad: ${QNAMES[currentQuality] || 'Todas'} · precios por ciudad · se actualiza solo cada 60s`);
+    const itemHead = itemHeadHtml(`quality: ${QNAMES[currentQuality] || 'All'} · prices by market · auto-refreshes every 60s`);
     const bmRowX = rows.find((r) => r.city === 'Black Market');
     const bmAvg = (marketVolMap['Black Market'] || {}).avg || 0;
     const bmStale = !!bmRowX && isStale(bmRowX.buy_price_max_date);
-    const bmActual = (bmRowX && !bmStale) ? bmRowX.buy_price_max || 0 : 0;
-    const bmEff = bmActual > 0 ? (bmAvg > 0 ? Math.min(bmActual, bmAvg) : bmActual) : 0;
-    const minRow = scoreRows.find((r) => r.sell_price_min === minSell);
-    const maxRow = scoreRows.find((r) => r.sell_price_min === maxSell);
     let bestHtml = '';
-    if (minSell && minRow) {
-      const taxN = salesTax();
-      const opts = [];
-      if (bmEff > 0) opts.push({ label: 'véndelo YA al 🏴 Black Market', gross: bmEff, net: bmEff * (1 - taxN), order: 0, q: bmRowX && bmRowX.buy_price_max_quality });
-      if (maxSell && maxRow && maxRow.city !== minRow.city) opts.push({ label: 'pon orden de venta en ' + esc(maxRow.city), gross: maxSell, net: maxSell * (1 - taxN - 0.025), order: 1, q: maxRow.sell_price_min_quality });
-      opts.sort((a, b) => b.net - a.net);
-      if (opts.length) {
-        const b = opts[0];
-        const gain = b.net - minSell;
-        const roi = minSell > 0 ? (gain / minSell) * 100 : 0;
-        const dest = b.order ? cityShort(maxRow.city) : '🏴 BM';
-        bestHtml = gain > 0
-          ? `<div id="mkt-best" class="clickable" data-buy="${Math.round(minSell)}" data-sell="${Math.round(b.gross)}" data-order="${b.order}" title="Clic para volcar estos números a la calculadora">🛒 ${esc(cityShort(minRow.city))} <b>${fmt(minSell)}</b>${qBadge(minRow.sell_price_min_quality)} → ${dest} <b>${fmt(b.gross)}</b>${qBadge(b.q)} → neto ${fmt(b.net)} · <b>+${fmt(gain)}/ud</b> (${roiTxt(roi)})</div>`
-          : `<div id="mkt-best" class="neg">🛒 ${fmt(minSell)} → neto ${fmt(b.net)} · <b>${fmt(gain)}/ud</b> (${roiTxt(roi)})</div>`;
-      }
-    }
     if (freshFilterActive || (freshMaxH() > 0 && !freshRows.length && cityRows.length)) {
       bestHtml += freshRows.length
-        ? `<div class="fresh-note" title="Excluidos del cálculo por antigüedad; siguen visibles en gris">⏳ ${staleDropped} de +${freshMaxH()}h fuera${bmStale ? ' · BM rancio' : ''}</div>`
-        : `<div class="fresh-note warn" title="Ningún precio baja del umbral de frescura: el cálculo usa datos viejos">⚠ todo +${freshMaxH()}h</div>`;
+        ? `<div class="fresh-note" title="Left out of the calculation for being old; still visible in grey">⏳ ${staleDropped} over +${freshMaxH()}h left out${bmStale ? ' · stale BM' : ''}</div>`
+        : `<div class="fresh-note warn" title="No price is under the freshness limit: the calculation is using old data">⚠ everything +${freshMaxH()}h</div>`;
     }
-    const QN2 = ['', 'Normal', 'Bueno', 'Notable', 'Sobresaliente', 'Obra maestra'];
+    const QN2 = ['', 'Normal', 'Good', 'Outstanding', 'Excellent', 'Masterpiece'];
     let qualHtml = '';
     if (Array.isArray(marketQuality) && marketQuality.some((x) => x.buy || x.bm)) {
-      qualHtml = '<div class="mkt-quality"><div class="mkt-q-title" title="A cuánto la compras y a cuánto te la paga el Black Market, por calidad">💎 Por calidad</div>'
-        + '<table><thead><tr><th style="text-align:left">Calidad</th><th>Comprar</th><th>BM paga</th><th>Vol/día</th><th>Visto</th></tr></thead><tbody>'
+      qualHtml = '<div class="mkt-quality"><div class="mkt-q-title" title="What you pay for it and what the Black Market pays you, by quality">💎 By quality</div>'
+        + '<table><thead><tr><th style="text-align:left">Quality</th><th>Buy</th><th>BM pays</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
         + marketQuality.map((x) => { const age = agoStr(x.date); const stale = ageHours(x.date) > (freshMaxH() || 24); return `<tr><td class="name">${QN2[x.q]}</td><td class="silver">${x.buy ? fmt(x.buy) : '—'}</td><td class="${x.bm ? 'best-sell' : 'faint'}">${x.bm ? fmt(x.bm) : '—'} ${sostChip(x.bm, x.avg)}</td><td class="${x.vol ? '' : 'faint'}">${x.vol ? fmtInt(x.vol) : '—'}</td><td class="${stale ? 'down' : 'faint'}">${stale ? '⚠ ' : ''}${age || '—'}</td></tr>`; }).join('')
         + '</tbody></table></div>';
     }
-    const tableHtml = '<table><thead><tr><th style="text-align:left">Ciudad</th><th title="La oferta de venta más barata: esto pagas si lo compras ya">Comprarlo cuesta</th><th title="La mejor orden de compra: esto te pagan si lo vendes al instante">Venderlo ya te da</th><th title="A cuánto se cierra de verdad (histórico)">Precio medio</th><th>Vol/día</th><th>Visto</th></tr></thead><tbody>'
+    // con Rests y contrabandistas la lista de mercados se va a ~46 filas: scroll propio para que
+    // el panel no crezca sin fin (la mejor jugada y la tabla por calidad se quedan fuera del scroll)
+    const tableHtml = '<div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Market</th><th title="The cheapest sell offer: this is what you pay if you buy it now">Buying it costs</th><th title="The best buy order: this is what you get if you sell instantly">Selling now pays</th><th title="What it actually closes at (historical)">Average price</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
       + rows.map((r) => {
         const isBM = r.city === 'Black Market';
         const sp = r.sell_price_min;
         const outlier = !isBM && sp > 0 && isSellOutlier(sp);
         const sellStale = !isBM && sp > 0 && freshFilterActive && isStale(r.sell_price_min_date);
         let cls = 'silver', mark = '', tip = '';
-        if (outlier) { cls = 'faint'; mark = '⚠ '; tip = ' title="Precio atípico (posible orden troll o dato erróneo): excluido del cálculo"'; }
-        else if (sellStale) { cls = 'faint'; mark = '⏳ '; tip = ` title="Precio de hace ${agoStr(r.sell_price_min_date) || '?'}, por encima del límite de frescura: excluido del cálculo"`; }
+        if (outlier) { cls = 'faint'; mark = '⚠ '; tip = ' title="Outlier price (possible troll order or bad data): left out of the calculation"'; }
+        else if (sellStale) { cls = 'faint'; mark = '⏳ '; tip = ` title="Price from ${agoStr(r.sell_price_min_date) || '?'} ago, over the freshness limit: left out of the calculation"`; }
         else if (!isBM && sp > 0 && sp === minSell) { cls = 'best-buy'; mark = '🛒 '; }
         else if (!isBM && sp > 0 && sp === maxSell) { cls = 'best-sell'; mark = '💰 '; }
         const sellCell = (!isBM && sp > 0) ? `<td class="${cls}"${tip}>${mark}${fmt(sp)}${qBadge(r.sell_price_min_quality)}</td>` : '<td class="faint">—</td>';
@@ -517,18 +502,18 @@
         // el chip solo tiene sentido con una calidad concreta: en "Todas" el buy_max coge
         // la calidad más cara y el medio es la mezcla → daría un pico falso.
         const chip = (isBM && currentQuality) ? sostChip(r.buy_price_max, avg) : '';
-        const fast = r.buy_price_max > 0 ? `<td class="${isBM && !bmStale ? 'best-sell' : 'faint'}" title="la mejor orden de compra: te pagan esto al instante · vista hace ${bAge || '—'}${isBM && bmStale ? ' · por encima del límite de frescura: excluido del cálculo' : ''}">${isBM ? (bmStale ? '⏳🏴 ' : '🏴 ') : ''}${fmt(r.buy_price_max)}${qBadge(r.buy_price_max_quality)}${chip}</td>` : '<td class="faint">—</td>';
-        const volCell = vd > 0 ? `<td title="Unidades que se venden al día aquí (estimado, datos de la comunidad)">${fmtInt(vd)}</td>` : '<td class="faint">—</td>';
-        const avgCell = avg > 0 ? `<td class="cr-vol-avg" title="Precio medio al que se cierra de verdad (histórico). Aunque la orden esté alta o baja, a esto se vende.">~${fmt(avg)}</td>` : '<td class="faint">—</td>';
+        const fast = r.buy_price_max > 0 ? `<td class="${isBM && !bmStale ? 'best-sell' : 'faint'}" title="the best buy order: paid to you instantly · seen ${bAge || '—'} ago${isBM && bmStale ? ' · over the freshness limit: left out of the calculation' : ''}">${isBM ? (bmStale ? '⏳🏴 ' : '🏴 ') : ''}${fmt(r.buy_price_max)}${qBadge(r.buy_price_max_quality)}${chip}</td>` : '<td class="faint">—</td>';
+        const volCell = vd > 0 ? `<td title="Units sold per day here (estimated, community data)">${fmtInt(vd)}</td>` : '<td class="faint">—</td>';
+        const avgCell = avg > 0 ? `<td class="cr-vol-avg" title="Average price it really closes at (historical). However high or low the order sits, this is what it sells for.">~${fmt(avg)}</td>` : '<td class="faint">—</td>';
         const sAge = agoStr(r.sell_price_min_date);
         const shownAge = isBM ? (bAge || sAge) : (sAge || bAge);
         const shownDate = isBM ? (r.buy_price_max_date || r.sell_price_min_date) : (r.sell_price_min_date || r.buy_price_max_date);
         const staleLimit = freshMaxH() || 24;
         const stale = !!shownAge && ageHours(shownDate) > staleLimit;
-        const liveDot = r._live ? ' <span class="live-dot" title="Visto por TU cliente ahora mismo (captura en vivo)">🟢</span>' : '';
-        return `<tr><td class="name">${isBM ? '🏴 Black Market' : esc(r.city)}${liveDot}</td>${sellCell}${fast}${avgCell}${volCell}<td class="${stale ? 'down' : 'faint'}" title="venta ${sAge || '—'} · compra ${bAge || '—'}${stale ? ` · dato de +${staleLimit} h, verifícalo en el juego` : ''}">${stale ? '⚠ ' : ''}${shownAge}</td></tr>`;
+        const liveDot = r._live ? ' <span class="live-dot" title="Seen by YOUR client right now (live capture)">🟢</span>' : '';
+        return `<tr><td class="name">${cityLabel(r.city)}${liveDot}</td>${sellCell}${fast}${avgCell}${volCell}<td class="${stale ? 'down' : 'faint'}" title="sell ${sAge || '—'} · buy ${bAge || '—'}${stale ? ` · data older than ${staleLimit}h, check it in game` : ''}">${stale ? '⚠ ' : ''}${shownAge}</td></tr>`;
       }).join('')
-      + '</tbody></table>'
+      + '</tbody></table></div>'
       + bestHtml + qualHtml;
     const holder = document.getElementById('mkt-table');
     if (silent && holder) { holder.innerHTML = tableHtml; return; }
@@ -536,21 +521,14 @@
     bindFlip();
   }
   function flipHtml(buy, sell) {
-    return '<div class="flip"><div class="flip-title">Calculadora de flip</div>'
-      + '<div class="cfg-row"><span class="cfg-lbl">Cantidad</span><input type="number" id="flip-qty" value="100" min="1"></div>'
-      + `<div class="cfg-row"><span class="cfg-lbl">Comprar a</span><input type="number" id="flip-buy" value="${Math.round(buy)}" min="0"></div>`
-      + `<div class="cfg-row"><span class="cfg-lbl">Vender a</span><input type="number" id="flip-sell" value="${Math.round(sell)}" min="0"></div>`
-      + '<label class="cfg-check"><input type="checkbox" id="flip-buy-order"> Compra con orden (+2,5%)</label>'
-      + '<label class="cfg-check"><input type="checkbox" id="flip-sell-order" checked> Venta con orden (+2,5%)</label>'
+    return '<div class="flip"><div class="flip-title">Flip calculator</div>'
+      + '<div class="cfg-row"><span class="cfg-lbl">Quantity</span><input type="number" id="flip-qty" value="100" min="1"></div>'
+      + `<div class="cfg-row"><span class="cfg-lbl">Buy at</span><input type="number" id="flip-buy" value="${Math.round(buy)}" min="0"></div>`
+      + `<div class="cfg-row"><span class="cfg-lbl">Sell at</span><input type="number" id="flip-sell" value="${Math.round(sell)}" min="0"></div>`
+      + '<label class="cfg-check"><input type="checkbox" id="flip-buy-order"> Buy with order (+2.5%)</label>'
+      + '<label class="cfg-check"><input type="checkbox" id="flip-sell-order" checked> Sell with order (+2.5%)</label>'
       + '<div id="flip-result" class="flip-result"></div></div>';
   }
-  tabMarket.addEventListener('click', (e) => {
-    const b = e.target.closest('#mkt-best.clickable'); if (!b) return;
-    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-    set('flip-buy', b.dataset.buy); set('flip-sell', b.dataset.sell);
-    const so = document.getElementById('flip-sell-order'); if (so) so.checked = b.dataset.order === '1';
-    calcFlip();
-  });
   function bindFlip() {
     ['flip-qty', 'flip-buy', 'flip-sell'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('input', calcFlip); });
     ['flip-buy-order', 'flip-sell-order'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', calcFlip); });
@@ -570,8 +548,8 @@
     const gan = neto - gasto;
     const roi = gasto > 0 ? (gan / gasto) * 100 : 0;
     const res = document.getElementById('flip-result'); if (!res) return;
-    res.innerHTML = `Gastas <b class="silver">${fmt(gasto)}</b> · recibes neto <b class="silver">${fmt(neto)}</b>`
-      + `<div class="flip-break">impuesto venta ${fmt(tax)}${(buySetup + sellSetup) ? ' · órdenes ' + fmt(buySetup + sellSetup) : ''}</div>`
+    res.innerHTML = `You spend <b class="silver">${fmt(gasto)}</b> · you net <b class="silver">${fmt(neto)}</b>`
+      + `<div class="flip-break">sales tax ${fmt(tax)}${(buySetup + sellSetup) ? ' · orders ' + fmt(buySetup + sellSetup) : ''}</div>`
       + `<div class="flip-gain ${gan >= 0 ? 'up' : 'down'}">${gan >= 0 ? '+' : ''}${fmt(gan)} &nbsp;(ROI ${roiTxt(roi)})</div>`;
   }
 
@@ -615,14 +593,98 @@
     return rec.r.map((m) => ({ nameId: m.id, priceId: ench(m.id, e), c: m.c }));
   };
 
-  const ALL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien', 'Black Market'];
+  const BASE_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien', 'Black Market'];
   const CRAFT_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien']; // mats: sin Black Market
+
+  // Mercados secundarios: las 3 Rests de las Outlands y las zonas negras con contrabandista.
+  // El backend los ingiere igual que las ciudades y su catálogo dice cuáles tienen órdenes
+  // vivas, así que no se ofrecen mercados muertos. Crafteo se queda siempre en CRAFT_CITIES:
+  // allí no hay estaciones ni bono de ciudad, y falsearía "la ciudad más barata".
+  const extraMarkets = { rest: [], smuggler: [] };
+  let marketTypes = {};
+  const SCOPE_KEY = 'albion-overlay-markets-v1';
+  const marketScope = () => {
+    const el = document.getElementById('mkt-scope');
+    return (el && el.value) || localStorage.getItem(SCOPE_KEY) || 'rest';
+  };
+  // sin catálogo (backend caído) se asume lo restrictivo: solo las de siempre son de ciudad
+  const BASE_SET = new Set(BASE_CITIES.map((c) => String(c).replace(/\s+/g, '')));
+  const marketTypeOf = (city) => marketTypes[cityKey(city)] || (BASE_SET.has(cityKey(city)) ? 'royal' : 'smuggler');
+  function scopeCities() {
+    const s = marketScope();
+    if (s === 'city') return BASE_CITIES;
+    if (s === 'all') return [...BASE_CITIES, ...extraMarkets.rest, ...extraMarkets.smuggler];
+    return [...BASE_CITIES, ...extraMarkets.rest];
+  }
+  function inScope(city) {
+    const t = marketTypeOf(city), s = marketScope();
+    if (t === 'rest') return s !== 'city';
+    if (t === 'smuggler') return s === 'all';
+    return true;
+  }
+  const MARKET_ICON = { rest: '🌀', smuggler: '🕶' };
+  const marketIcon = (city) => MARKET_ICON[marketTypeOf(city)] || '';
+  const cityLabel = (c) => (c === 'Black Market' ? '🏴 Black Market' : ((marketIcon(c) ? marketIcon(c) + ' ' : '') + esc(c)));
+  async function loadMarketCatalog() {
+    if (!window.overlay.markets) return;
+    let rows = [];
+    try { rows = await window.overlay.markets(); } catch (_) { return; }
+    if (!Array.isArray(rows) || !rows.length) return;
+    marketTypes = {}; extraMarkets.rest = []; extraMarkets.smuggler = [];
+    rows.forEach((m) => {
+      if (!m || !m.city) return;
+      marketTypes[cityKey(m.city)] = m.type;
+      if (m.type === 'rest') extraMarkets.rest.push(m.city);
+      else if (m.type === 'smuggler' && m.orders > 0) extraMarkets.smuggler.push(m.city);
+    });
+    extraMarkets.smuggler.sort();
+    fillScanCityOptions();
+  }
+  // "Comprar en" del escáner y de Nivel: ciudades siempre; Rests y contrabandistas según el filtro
+  function fillScanCityOptions() {
+    const s = marketScope();
+    ['scan-city', 'level-city'].forEach((selId) => {
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      const keep = sel.value;
+      sel.querySelectorAll('optgroup[data-extra]').forEach((g) => g.remove());
+      const add = (label, list) => {
+        if (!list.length) return;
+        const g = document.createElement('optgroup');
+        g.label = label; g.setAttribute('data-extra', '1');
+        list.forEach((c) => { const o = document.createElement('option'); o.value = c; o.textContent = c; g.appendChild(o); });
+        sel.appendChild(g);
+      };
+      if (s !== 'city') add('🌀 Rests', extraMarkets.rest);
+      if (s === 'all') add('🕶 Smugglers', extraMarkets.smuggler);
+      if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+      else if (keep) {
+        sel.value = '';
+        if (selId === 'scan-city') onScanFilterChange();
+      }
+    });
+  }
+  {
+    const sel = document.getElementById('mkt-scope');
+    if (sel) {
+      const saved = localStorage.getItem(SCOPE_KEY);
+      if (saved && [...sel.options].some((o) => o.value === saved)) sel.value = saved;
+      sel.addEventListener('change', () => {
+        localStorage.setItem(SCOPE_KEY, sel.value);
+        fillScanCityOptions();
+        if (currentBase) loadMarket();
+        onScanFilterChange();
+        { const lv = document.getElementById('tab-level'); if (lv && !lv.hidden) loadLevel(); }
+      });
+    }
+    loadMarketCatalog();
+  }
   async function loadCraft() {
     const rec = recipes[currentBase];
     { const q = document.getElementById('craft-qty'); if (q) q.dataset.auto = '1'; }
-    if (!rec) { craftOut.innerHTML = '<div class="mempty">Este item no es crafteable.</div>'; return; }
+    if (!rec) { craftOut.innerHTML = '<div class="mempty">This item cannot be crafted.</div>'; return; }
     applyAutoReturn();
-    craftOut.innerHTML = '<div class="mempty">Cargando precios…</div>';
+    craftOut.innerHTML = '<div class="mempty">Loading prices…</div>';
     // materiales y productos por separado: los materiales son recursos (sin calidad),
     // el producto usa la calidad que crafteas (Normal por defecto), no el máx de todas.
     const matSet = new Set();
@@ -635,9 +697,9 @@
     const prodIds = []; for (let e = 0; e <= 4; e++) prodIds.push(prodEnch(currentBase, e));
     const prodQ = currentQuality || 1;
     const [matRows, prodRows, vol] = await Promise.all([
-      window.overlay.craftPrices([...matSet], ALL_CITIES, 0),
-      window.overlay.craftPrices(prodIds, ALL_CITIES, prodQ),
-      window.overlay.history(prodIds, ALL_CITIES, 21, 0),
+      window.overlay.craftPrices([...matSet], BASE_CITIES, 0),
+      window.overlay.craftPrices(prodIds, BASE_CITIES, prodQ),
+      window.overlay.history(prodIds, BASE_CITIES, 21, 0),
     ]);
     craftPriceMap = {};
     [...(matRows || []), ...(prodRows || [])].forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
@@ -755,21 +817,21 @@
         const diff = det > 0 ? Math.round((subC / det - 1) * 100) : null;
         const rr = returnRate(m.nameId);
         subChip = `<span class="cr-sub-chip ${better ? 'win' : 'lose'}" data-sub="${Math.round(subC)}"`
-          + ` title="Fabricarlo tú cuesta ${fmt(subC)}/ud (retorno ${rr.pct.toFixed(1)}% en ${rr.match ? cityShort(rr.bon.city) : 'estación sin bono'} + taller). Comprarlo cuesta ${det ? fmt(det) : '—'}. Clic para usar este coste.">`
+          + ` title="Making it yourself costs ${fmt(subC)}/unit (return ${rr.pct.toFixed(1)}% in ${rr.match ? cityShort(rr.bon.city) : 'a station with no bonus'} + station fee). Buying it costs ${det ? fmt(det) : '—'}. Click to use this cost.">`
           + `🔨 ${fmt(subC)}${diff != null ? ` (${diff >= 0 ? '+' : ''}${diff}%)` : ''}</span>`;
       }
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}" data-id="${esc(id)}" data-name="${esc(copyName)}">`
-        + `<span class="cr-name copyable" data-copy="${esc(copyName)}" title="Clic para copiar «${esc(copyName)}» (el nombre exacto que buscar en el juego)">${m.c}× ${esc(mnm)}${enchTag}</span>`
+        + `<span class="cr-name copyable" data-copy="${esc(copyName)}" title="Click to copy «${esc(copyName)}» (the exact name to search in game)">${m.c}× ${esc(mnm)}${enchTag}</span>`
         + subChip
-        + `<span class="cr-buy" title="Unidades exactas a comprar de este material para la cantidad indicada">🛒 ${fmtInt(m.c * craftQty)}</span>`
-        + `<select class="cr-city" title="Ciudad de compra de este material">${opts}</select>`
+        + `<span class="cr-buy" title="Exact units of this material to buy for the given quantity">🛒 ${fmtInt(m.c * craftQty)}</span>`
+        + `<select class="cr-city" title="Market where you buy this material">${opts}</select>`
         + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" value="${Math.round(det)}">`
-        + `<span class="cr-subtot silver" title="Subtotal (precio × cantidad)">${fmt(det * m.c)}</span>`
+        + `<span class="cr-subtot silver" title="Subtotal (price × quantity)">${fmt(det * m.c)}</span>`
         + `</div>`;
     }).join('');
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodPriceMap = craftPriceMap[prodEnch(currentBase, e)] || {};
-    const prodCityRows = ALL_CITIES.filter((c) => c !== 'Black Market' || bmBuys(currentBase)).map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
+    const prodCityRows = BASE_CITIES.filter((c) => c !== 'Black Market' || bmBuys(currentBase)).map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
     const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
@@ -783,13 +845,13 @@
     const vsorted = Object.entries(vmap).filter((x) => (x[1].daily || 0) > 0).sort((a, b) => (b[1].daily || 0) - (a[1].daily || 0));
     const sellCk = cityKey(bs.city || '');
     const volLine = vsorted.length
-      ? `<div class="cr-vol" title="Unidades/día que absorbe cada mercado · ~ = precio medio realizado">Absorbe/día: ${vsorted.map((x) => `<span class="${x[0] === sellCk ? 'cr-vol-best' : ''}">${cityShort(x[0])} <b>${fmtInt(x[1].daily)}</b>${x[1].avg ? ` <span class="cr-vol-avg" title="precio medio realizado">~${fmt(x[1].avg)}</span>` : ''}</span>`).join(' · ')}</div>`
-      : '<div class="cr-vol faint">Volumen/día: sin datos</div>';
+      ? `<div class="cr-vol" title="Units/day each market absorbs · ~ = average realised price">Absorbs/day: ${vsorted.map((x) => `<span class="${x[0] === sellCk ? 'cr-vol-best' : ''}">${cityShort(x[0])} <b>${fmtInt(x[1].daily)}</b>${x[1].avg ? ` <span class="cr-vol-avg" title="average realised price">~${fmt(x[1].avg)}</span>` : ''}</span>`).join(' · ')}</div>`
+      : '<div class="cr-vol faint">Volume/day: no data</div>';
 
-    craftOut.innerHTML = itemHeadHtml('crafteo · elige materiales y dónde vender')
+    craftOut.innerHTML = itemHeadHtml('crafting · pick materials and where to sell')
       + `<div class="cr-mini-row">${mini}</div>`
-      + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Receta E${e} <button class="mini-btn" id="cr-cheapest" title="Pone cada material al precio de la ciudad donde esté más barato (ojo: puede implicar varios viajes)">💸 más barato</button></div>${matRows}</div>`
-      + `<div class="cr-row cr-prod"><span class="cr-name">Vender en ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Ciudad de venta del producto · precio por ciudad (🏴 Black Market = venta inmediata a su orden de compra)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
+      + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Recipe E${e} <button class="mini-btn" id="cr-cheapest" title="Sets every material to the price of the market where it is cheapest (careful: may mean several trips)">💸 cheapest</button></div>${matRows}</div>`
+      + `<div class="cr-row cr-prod"><span class="cr-name">Sell in ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Market where you sell the product · price per market (🏴 Black Market = instant sale to its buy order)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
       + volLine
       + '<div id="craft-result" class="craft-total"></div>'
       + '<div id="craft-budget-out"></div>';
@@ -832,7 +894,7 @@
     const roi = netCost > 0 ? (profit / netCost) * 100 : 0;
     const pc = profit >= 0 ? 'up' : 'down';
     const suspicious = netCost > 0 && roi > SCAN_MAX_ROI;   // rentabilidad imposible => precio de venta troll/podrido
-    const warnHtml = suspicious ? `<div class="cmp-verdict down" style="margin-top:8px" title="Rentabilidad imposible: casi seguro un precio de venta erróneo. Verifícalo en el juego">⚠ precio de venta atípico (${roiTxt(roi)})</div>` : '';
+    const warnHtml = suspicious ? `<div class="cmp-verdict down" style="margin-top:8px" title="Impossible profit: almost certainly a bad sell price. Check it in game">⚠ outlier sell price (${roiTxt(roi)})</div>` : '';
     // comparación contra una oferta manual (antigua pestaña Comparar, ahora integrada)
     const offer = +(document.getElementById('cmp-offer') || {}).value || 0;
     let offerHtml = '';
@@ -841,10 +903,10 @@
       const oGain = offerNet - netCost;
       const oRoi = netCost > 0 ? (oGain / netCost) * 100 : 0;
       const opc = oGain >= 0 ? 'up' : 'down';
-      offerHtml = `<div class="cmp-verdict ${opc}" style="margin-top:8px">${oGain >= 0 ? '✅' : '❌'} oferta <b>${fmt(offer)}</b> (neto ${fmt(offerNet)}) → <b>${oGain >= 0 ? '+' : ''}${fmt(oGain)}/ud</b> (${roiTxt(oRoi)})</div>`;
+      offerHtml = `<div class="cmp-verdict ${opc}" style="margin-top:8px">${oGain >= 0 ? '✅' : '❌'} offer <b>${fmt(offer)}</b> (net ${fmt(offerNet)}) → <b>${oGain >= 0 ? '+' : ''}${fmt(oGain)}/unit</b> (${roiTxt(oRoi)})</div>`;
     }
-    result.innerHTML = `1 ud → coste <span class="silver">${fmt(netCost)}</span> · venta neta <span class="silver">${fmt(ventaNeta)}</span> · <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit)}</b> (ROI ${roiTxt(roi)})`
-      + `<div style="margin-top:5px">Para <b>${qty}</b> uds → inviertes <b class="silver">${fmt(netCost * qty)}</b> · recuperas <b class="silver">${fmt(ventaNeta * qty)}</b> · beneficio <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`
+    result.innerHTML = `1 unit → cost <span class="silver">${fmt(netCost)}</span> · net sale <span class="silver">${fmt(ventaNeta)}</span> · <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit)}</b> (ROI ${roiTxt(roi)})`
+      + `<div style="margin-top:5px">For <b>${qty}</b> units → you invest <b class="silver">${fmt(netCost * qty)}</b> · you get back <b class="silver">${fmt(ventaNeta * qty)}</b> · profit <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`
       + warnHtml
       + offerHtml;
     renderPlan({ mats, returnR, tax, fee, qty, matOrder, sellFee, netCost, ventaNeta, sellPrice, profit, instant });
@@ -873,7 +935,7 @@
     const inp = document.getElementById('craft-focus-cost'); if (!inp || !currentBase) return;
     const c = focusCostOf(currentBase, currentEnch);
     inp.value = c ? Math.round(c) : '';
-    inp.placeholder = c ? '' : 'sin datos';
+    inp.placeholder = c ? '' : 'no data';
   }
 
   // ---------- plan de sesión, punto de equilibrio y compra de materiales ----------
@@ -919,7 +981,7 @@
     const breakEven = netSell > 0 ? ctx.netCost / netSell : 0;
     const cushion = breakEven > 0 ? (ctx.sellPrice / breakEven - 1) * 100 : 0;
     const cc = cushion >= 0 ? 'up' : 'down';
-    let extra = `<div style="margin-top:5px" title="Por debajo de ese precio pierdes silver: ya incluye impuesto de venta y, si la marcaste, la tasa de orden.">Pierdes por debajo de <b>${fmtInt(breakEven)}</b> · vendes a <b>${fmtInt(ctx.sellPrice)}</b> <span class="${cc}">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% de colchón)</span></div>`;
+    let extra = `<div style="margin-top:5px" title="Below that price you lose silver: it already includes sales tax and, if you ticked it, the order fee.">You lose below <b>${fmtInt(breakEven)}</b> · you sell at <b>${fmtInt(ctx.sellPrice)}</b> <span class="${cc}">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% cushion)</span></div>`;
 
     // sesión de foco, otra línea
     if (useFocus && focusCost > 0) {
@@ -931,8 +993,8 @@
       const invest = ctx.mats.reduce((s, m) => s + m.price * m.c * (m.ret ? matCrafts : totalUnits), 0) * mo + ctx.fee * totalUnits;
       const gain = ctx.ventaNeta * totalUnits - invest;
       const gc = gain >= 0 ? 'up' : 'down';
-      const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="Sin calibrar: se usa el coste de foco sin especialización, así que sale peor de lo real. Escribe en Foco/ud lo que ves en la estación.">⚠ spec sin calibrar</span>';
-      extra += `<div style="margin-top:5px" title="El foco es lo limitado, no el silver: la plata por punto es la que decide qué craftear.">${fmtInt(focusAvail)} de foco → <b>${fmtInt(totalUnits)}</b> uds · <b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b>/foco · sesión <b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b>${warn}</div>`;
+      const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="Not calibrated: it uses the unspecialised focus cost, so it looks worse than reality. Type what the station shows into Focus/unit.">⚠ spec not calibrated</span>';
+      extra += `<div style="margin-top:5px" title="Focus is the scarce resource, not silver: profit per point is what decides what to craft.">${fmtInt(focusAvail)} focus → <b>${fmtInt(totalUnits)}</b> units · <b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b>/focus · session <b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b>${warn}</div>`;
     }
     result.insertAdjacentHTML('beforeend', extra);
 
@@ -969,25 +1031,25 @@
     const wtbEn = wanted.map((r) => `${num(r.need)}x ${enNameOf(r.m.id)} @ ${num(r.offer)}`).join(' + ');
     const msgEn = `WTB ${wtbEn} — ${num(totOffer)} total`;
     bEl.className = 'cr-block';
-    bEl.innerHTML = '<div class="cr-b-title">🛒 Comprar materiales'
-      + ` <span class="faint">· para ${fmtInt(buyUnits)} uds${matCraftsBudget !== buyUnits ? ' (material de ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
-      + '<table class="cr-tbl"><thead><tr><th>Material</th><th title="Unidades que necesitas comprar">Uds</th>'
-      + '<th title="Mejor orden de COMPRA ahora mismo: lo que ya está pujando otro jugador. Para ser el mejor postor tienes que superarla.">Puja</th>'
-      + '<th title="Precio más barato en TODAS las ciudades y dónde está. Es tu tope: por encima de eso te sale mejor ir a comprarlo allí.">Techo (más barato)</th>'
-      + '<th title="Precio sugerido para trade directo por chat: por encima de lo que el vendedor sacaría vendiendo al mercado y por debajo de lo que te cuesta a ti.">Ofrecer</th></tr></thead><tbody>'
-      + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.id)}" title="Clic para copiar el ID">${esc(r.m.name)}</td>`
+    bEl.innerHTML = '<div class="cr-b-title">🛒 Buy materials'
+      + ` <span class="faint">· for ${fmtInt(buyUnits)} units${matCraftsBudget !== buyUnits ? ' (materials for ' + fmtInt(matCraftsBudget) + ')' : ''}</span></div>`
+      + '<table class="cr-tbl"><thead><tr><th>Material</th><th title="Units you need to buy">Units</th>'
+      + '<th title="Best BUY order right now: what another player is already bidding. To be top bidder you have to beat it.">Bid</th>'
+      + '<th title="Cheapest price across ALL markets and where it is. That is your ceiling: above it you are better off going there.">Ceiling (cheapest)</th>'
+      + '<th title="Suggested price for a direct chat trade: above what the seller would net on the market and below what it costs you.">Offer</th></tr></thead><tbody>'
+      + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.id)}" title="Click to copy the ID">${esc(r.m.name)}</td>`
         + `<td><b>${fmtInt(r.need)}</b></td>`
-        + `<td class="${r.over ? 'down' : ''}" title="Pon tu orden a ${fmtInt(r.orderPrice)} para ser el mejor postor${r.over ? ' — ojo, eso ya pasa de lo que puedes pagar sin perder (' + fmtInt(r.maxPay) + ')' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
-        + `<td title="${r.maxPay > 0 ? 'Sin perder dinero podrías llegar hasta ' + fmtInt(r.maxPay) : ''}">${r.ask ? fmtInt(r.ask) : '—'}${r.cheap.city ? ` <span class="faint">${cityShort(r.cheap.city)}</span>` : ''}</td>`
+        + `<td class="${r.over ? 'down' : ''}" title="Set your order at ${fmtInt(r.orderPrice)} to be top bidder${r.over ? ' — careful, that is already past what you can pay without losing (' + fmtInt(r.maxPay) + ')' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
+        + `<td title="${r.maxPay > 0 ? 'Without losing money you could go up to ' + fmtInt(r.maxPay) : ''}">${r.ask ? fmtInt(r.ask) : '—'}${r.cheap.city ? ` <span class="faint">${cityShort(r.cheap.city)}</span>` : ''}</td>`
         + `<td class="silver">${r.offer > 0 ? fmtInt(r.offer) : '—'}</td></tr>`).join('')
       + '</tbody></table>'
-      + `<div class="cr-kv" style="margin-top:6px"><span>Comprando al instante</span><span><b class="silver">${fmt(totInstant)}</b></span></div>`
-      + `<div class="cr-kv"><span title="Superando la puja actual en 1 silver, más el 2,5% de tasa por crear la orden. Es más barato pero tardas en que te la llenen.">Dejando órdenes de compra</span><span><b class="silver">${fmt(totOrder)}</b></span></div>`
-      + `<div class="cr-kv"><span title="Trade directo por chat: ni tú pagas tasa de orden ni el vendedor paga impuesto de venta. El ahorro se reparte.">Por trade directo</span><span><b class="silver">${fmt(totOffer)}</b> <span class="up">−${fmt(totInstant - totOffer)}</span></span></div>`
-      + `<div class="cr-wtb-lbl">🇪🇸 para el chat en español<span class="faint"> · clic para copiar</span></div>`
-      + `<textarea class="cr-wtb" id="cr-wtb" rows="2" readonly title="Clic para copiar el mensaje en español">${esc(msgEs)}</textarea>`
-      + `<div class="cr-wtb-lbl">🇬🇧 para el chat global<span class="faint"> · clic para copiar</span></div>`
-      + `<textarea class="cr-wtb" id="cr-wtb-en" rows="2" readonly title="Clic para copiar el mensaje en inglés">${esc(msgEn)}</textarea>`;
+      + `<div class="cr-kv" style="margin-top:6px"><span>Buying instantly</span><span><b class="silver">${fmt(totInstant)}</b></span></div>`
+      + `<div class="cr-kv"><span title="Beating the current bid by 1 silver, plus the 2.5% order setup fee. Cheaper, but it takes time to fill.">Placing buy orders</span><span><b class="silver">${fmt(totOrder)}</b></span></div>`
+      + `<div class="cr-kv"><span title="Direct chat trade: you skip the order fee and the seller skips the sales tax. You split the saving.">Direct trade</span><span><b class="silver">${fmt(totOffer)}</b> <span class="up">−${fmt(totInstant - totOffer)}</span></span></div>`
+      + `<div class="cr-wtb-lbl">🇪🇸 for Spanish chat<span class="faint"> · click to copy</span></div>`
+      + `<textarea class="cr-wtb" id="cr-wtb" rows="2" readonly title="Click to copy the Spanish message">${esc(msgEs)}</textarea>`
+      + `<div class="cr-wtb-lbl">🇬🇧 for global chat<span class="faint"> · click to copy</span></div>`
+      + `<textarea class="cr-wtb" id="cr-wtb-en" rows="2" readonly title="Click to copy the English message">${esc(msgEn)}</textarea>`;
     ['cr-wtb', 'cr-wtb-en'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', () => { el.select(); copyText(el.value); });
@@ -999,21 +1061,24 @@
   { const co = document.getElementById('cmp-offer'); if (co) co.addEventListener('input', () => { if (currentBase) calcResult(); }); }
 
   // ================= ESCÁNER (flip: comprar hecho → revender) =================
-  const SELL_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien'];
   // dónde vendes y cómo: inmediato cobra la puja y solo paga impuesto; con orden te pones
-  // en la cola al precio de la venta más barata y pagas impuesto + 2,5%
+  // en la cola al precio de la venta más barata y pagas impuesto + 2,5%.
+  // Los destinos de ciudad siguen al filtro de mercados: con Rests/contrabandistas activos
+  // también se busca la mejor venta allí.
+  const sellCities = () => scopeCities().filter((c) => c !== 'Black Market');
   const SELL_MODES = {
-    bm: { locs: ['Black Market'], order: false, hdr: 'BM ⚡', txt: '🏴 BM inmediato' },
-    bmorder: { locs: ['Black Market'], order: true, hdr: 'BM ord.', txt: '🏴 BM con orden' },
-    market: { locs: SELL_CITIES, order: true, hdr: 'Venta', txt: 'orden en ciudad' },
-    cityfast: { locs: SELL_CITIES, order: false, hdr: 'Puja', txt: 'inmediato en ciudad' },
+    bm: { locs: ['Black Market'], order: false, hdr: 'BM ⚡', txt: '🏴 BM instant' },
+    bmorder: { locs: ['Black Market'], order: true, hdr: 'BM ord.', txt: '🏴 BM with order' },
+    market: { get locs() { return sellCities(); }, order: true, hdr: 'Sell', txt: 'order in market' },
+    cityfast: { get locs() { return sellCities(); }, order: false, hdr: 'Bid', txt: 'instant in market' },
   };
   const sellModeOf = (k) => SELL_MODES[k] || SELL_MODES.bm;
   const SCAN_ENCHANTS = [0, 1, 2, 3, 4]; // el escáner prueba todos y muestra el mejor por item
   const SCAN_CAPTURE = 1;   // volumen completo: el recorte mental lo pone el usuario, no el panel
   const SCAN_MAX_ROI = 500; // guarda anti-outlier: un ROI > 500% es casi siempre un precio troll de la API, no una oportunidad real
   const cityKey = (c) => (c === 'Black Market' ? 'Black Market' : String(c).replace(/\s+/g, ''));
-  const cityShort = (c) => (c === 'Black Market' ? '🏴 BM' : (c === 'FortSterling' ? 'F.Sterling' : esc(c)));
+  const cityShort = (c) => (c === 'Black Market' ? '🏴 BM'
+    : (marketIcon(c) ? marketIcon(c) + ' ' : '') + (c === 'FortSterling' ? 'F.Sterling' : esc(c)));
   const scanStore = {};   // cache por configuración (cat|sell|tier|city) -> datos crudos
   let scanCache = null;    // configuración mostrada ahora mismo
   // el escáner calcula y recorta en el cliente sobre el dataset cacheado, así que
@@ -1025,27 +1090,47 @@
   const scanKey = () => [
     scanMode(),
     'd' + scanDays(),
+    'm' + marketScope(),
     (document.getElementById('scan-sell') || {}).value || 'bm',
     document.getElementById('scan-tier').value,
     document.getElementById('scan-city').value,
     'q' + currentQuality,
   ].join('|');
-  // barra de progreso: el backend escanea en un lote (no hay progreso por item),
-  // así que es un indicador de actividad que avanza y se completa al llegar los datos.
-  let scanProgT = null;
-  function startScanProgress() {
-    let p = 6;
+  // el escaneo va por lotes, así que la barra mide trabajo REAL: un lote entregado = un tick.
+  const SCAN_BATCH = 300;
+  const batches = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+  // lotes a la vez. La API resuelve cada consulta de forma síncrona, así que pedir más en
+  // paralelo no la acelera: solo alarga la cola y arriesga que el lote de turno agote el timeout.
+  const SCAN_LANES = 2;
+  async function runBatches(jobs, onDone) {
+    const out = new Array(jobs.length);
+    let next = 0;
+    const lane = async () => {
+      while (next < jobs.length) {
+        const i = next++;
+        // un 502 suelto del proxy no puede tirar un escaneo entero: se reintenta el lote.
+        try { out[i] = await jobs[i](); }
+        catch (_) { out[i] = await jobs[i](); }
+        onDone();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SCAN_LANES, jobs.length) }, lane));
+    return out;
+  }
+  function startScanProgress(total) {
+    let done = 0;
     const apply = () => {
+      const p = Math.min(99, Math.round((done / Math.max(1, total)) * 100));
       const f = document.getElementById('scan-bar-fill'); if (f) f.style.width = p + '%';
-      const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = Math.round(p) + '%';
+      const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = p + '%';
     };
     apply();
-    clearInterval(scanProgT);
-    scanProgT = setInterval(() => { p += Math.max(0.7, (93 - p) * 0.09); if (p > 93) p = 93; apply(); }, 170);
-    return () => {
-      clearInterval(scanProgT); scanProgT = null;
-      const f = document.getElementById('scan-bar-fill'); if (f) f.style.width = '100%';
-      const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = '100%';
+    return {
+      tick: () => { done += 1; apply(); },
+      stop: () => {
+        const f = document.getElementById('scan-bar-fill'); if (f) f.style.width = '100%';
+        const t = document.getElementById('scan-prog-pct'); if (t) t.textContent = '100%';
+      },
     };
   }
   async function runScan() {
@@ -1056,11 +1141,16 @@
     const tiers = tier === 'all' ? ['4', '5', '6', '7', '8'] : [tier];
     const tierOk = (id) => tiers.some((t) => id.startsWith('T' + t + '_'));
     const onlyBM = sellModeOf((document.getElementById('scan-sell') || {}).value || 'bm').locs[0] === 'Black Market';
-    const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && tierOk(id) && recipes[id] && recipes[id].r && (!onlyBM || bmBuys(id)));
-    if (!targets.length) { out.innerHTML = '<div class="mempty">Sin items para ese tier.</div>'; return; }
-    out.innerHTML = `<div class="scan-prog"><div class="lbl"><span>Escaneando ${targets.length} items…</span><b id="scan-prog-pct">0%</b></div><div class="scan-bar"><i id="scan-bar-fill"></i></div></div>`;
-    const btn = document.getElementById('scan-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Escaneando…'; }
-    const stopProg = startScanProgress();
+    // fuera las variantes _LEVEL (son el refinado YA encantado: el escáner encanta el base por
+    // su cuenta, así que aquí solo duplican y salen con doble encantamiento) y todo lo que no
+    // tenga nombre en el índice (tradepacks, tokens, quest items): saldrían con el id crudo.
+    const scannable = (id) => !/_LEVEL\d/.test(id) && !!nameById[id];
+    const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && tierOk(id) && scannable(id)
+      && recipes[id] && recipes[id].r && (!onlyBM || bmBuys(id)));
+    if (!targets.length) { out.innerHTML = '<div class="mempty">No items for that tier.</div>'; return; }
+    out.innerHTML = `<div class="scan-prog"><div class="lbl"><span>Scanning ${targets.length} items…</span><b id="scan-prog-pct">0%</b></div><div class="scan-bar"><i id="scan-bar-fill"></i></div></div>`;
+    const btn = document.getElementById('scan-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning…'; }
+    let prog = null;
     const prodSet = new Set();
     targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => prodSet.add(prodEnch(id, e))));
     const prodIds = [...prodSet];
@@ -1075,11 +1165,16 @@
       // "Comprar en" vacío = cualquier ciudad: se piden todas y se queda la más barata de cada cosa
       const buyLocs = city ? [city] : CRAFT_CITIES;
       const inBuyLocs = (ck) => buyLocs.some((c) => cityKey(c) === ck);
-      const [prodRows, volRows, matRows] = await Promise.all([
-        window.overlay.scanPrices(prodIds, [...new Set([...buyLocs, ...sellLocs])], q),
-        window.overlay.history(prodIds, sellLocs, scanDays(), q),
-        mode === 'craft' ? window.overlay.scanPrices([...matSet], buyLocs, 1) : Promise.resolve([]),
-      ]);
+      const priceLocs = [...new Set([...buyLocs, ...sellLocs])];
+      const prodJobs = batches(prodIds, SCAN_BATCH).map((b) => () => window.overlay.scanPrices(b, priceLocs, q));
+      const volJobs = batches(prodIds, SCAN_BATCH).map((b) => () => window.overlay.history(b, sellLocs, scanDays(), q));
+      const matJobs = mode === 'craft' ? batches([...matSet], SCAN_BATCH).map((b) => () => window.overlay.scanPrices(b, buyLocs, 1)) : [];
+      prog = startScanProgress(prodJobs.length + volJobs.length + matJobs.length);
+      const done = await runBatches([...prodJobs, ...volJobs, ...matJobs], prog.tick);
+      const joined = (from, n) => done.slice(from, from + n).reduce((a, r) => a.concat(r || []), []);
+      const prodRows = joined(0, prodJobs.length);
+      const volRows = joined(prodJobs.length, volJobs.length);
+      const matRows = joined(prodJobs.length + volJobs.length, matJobs.length);
       const matP = {}, matCityM = {};
       (matRows || []).forEach((r) => {
         if (!inBuyLocs(cityKey(r.city))) return;
@@ -1101,13 +1196,12 @@
       const volM = {}; (volRows || []).forEach((r) => { (volM[r.item_id] = volM[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
       scanStore[scanKey()] = { targets, buyP, buyDateM, buyCityM, sellP, dateM, volM, sellMode, sellLocs, city, mode, matP, matCityM };
       scanCache = scanStore[scanKey()];
-      stopProg();
+      prog.stop();
       renderScanResults(false);
     } catch (err) {
-      stopProg();
-      out.innerHTML = '<div class="mempty">Error al escanear (¿límite de la API o sin conexión?). Inténtalo de nuevo en un momento.</div>';
+      out.innerHTML = '<div class="mempty">Scan failed (API limit or no connection?). Try again in a moment.</div>';
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '🔍 Buscar oportunidades'; }
+      if (btn) { btn.disabled = false; btn.textContent = '🔍 Find opportunities'; }
     }
   }
   function renderScanResults(fromCache) {
@@ -1119,8 +1213,8 @@
     // con "cualquiera" cada material puede venir de una ciudad distinta
     const matsCityLabel = (id, e) => {
       const cities = [...new Set(recipeRows(id, e).map((m) => (matCityM || {})[m.priceId]).filter(Boolean))];
-      if (!cities.length) return 'la más barata';
-      return cities.length === 1 ? cityShort(cities[0]) : cities.length + ' ciudades';
+      if (!cities.length) return 'the cheapest';
+      return cities.length === 1 ? cityShort(cities[0]) : cities.length + ' markets';
     };
     const useFocus = isCraft && !!(document.getElementById('craft-focus') || {}).checked;
     // en modo crafteo se asume que fabricas cada item en la ciudad que tiene su bono
@@ -1171,45 +1265,52 @@
       .sort((a, b) => (SCAN_SORTS[skey](b) - SCAN_SORTS[skey](a)) * sdir)
       .slice(0, 50);
     if (!shown.length) {
-      out.innerHTML = `<div class="mempty">Sin oportunidades con datos completos.${spikes && hideSpikes ? ` Se han descartado ${spikes} pico${spikes === 1 ? '' : 's'} de precio; desmarca "Ocultar picos" para verlos.` : ' Prueba otro tier o canal de venta.'}</div>`;
+      out.innerHTML = `<div class="mempty">No opportunities with complete data.${spikes && hideSpikes ? ` ${spikes} price spike${spikes === 1 ? '' : 's'} were dropped; untick "Hide spikes" to see them.` : ' Try another tier or sell channel.'}</div>`;
       return;
     }
     const res2 = shown;
     const sellHdr = sellModeOf(sellMode).hdr;
     const buyCityShort = city ? cityShort(cityKey(city)) : '';
     const sArrow = sdir === -1 ? ' ▲' : ' ▼';
-    const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · clic para ordenar${skey === k ? ' al revés' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
+    const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · click to sort${skey === k ? ' the other way' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
     out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
-      + sSort('cost', isCraft ? 'Craftear' : 'Compra', isCraft ? 'Coste de fabricarlo: materiales menos el retorno de la estación, más la tarifa del taller' : 'Lo que te cuesta comprarlo en la ciudad de origen')
-      + sSort('price', sellHdr, 'Precio de venta que se usa (orden de ahora)')
-      + sSort('avg', 'Medio', 'Precio medio realmente vendido (histórico)')
-      + sSort('gain', 'Gana', 'Ganancia neta por unidad tras impuestos')
-      + sSort('vol', 'Vol/día', 'Unidades que se mueven al día')
-      + sSort('eurDay', 'Plata/día', 'Ganancia por unidad × TODO el volumen diario del mercado: el techo teórico si te llevaras el mercado entero')
-      + (useFocus ? sSort('perFocus', 'Plata/foco', 'Ganancia por punto de foco gastado. Con el foco limitado, esta es la columna que decide qué craftear') : '')
-      + '<th>Visto</th></tr></thead><tbody>'
+      + sSort('cost', isCraft ? 'Craft' : 'Buy', isCraft ? 'Cost to make it: materials minus the station return, plus the station fee' : 'What it costs you to buy it in the source market')
+      + sSort('price', sellHdr, 'Sell price used (current order)')
+      + sSort('avg', 'Avg', 'Average price actually sold (historical)')
+      + sSort('gain', 'Profit', 'Net profit per unit after tax')
+      + sSort('vol', 'Vol/day', 'Units moved per day')
+      + sSort('eurDay', 'Silver/day', 'Profit per unit × the WHOLE daily volume of the market: the theoretical ceiling if you took the entire market')
+      + (useFocus ? sSort('perFocus', 'Silver/focus', 'Profit per focus point spent. With focus being the limit, this is the column that decides what to craft') : '')
+      + '<th>Seen</th></tr></thead><tbody>'
       + res2.map((r) => {
         const pc = r.gain >= 0 ? 'up' : 'down';
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellModeOf(sellMode).locs.length === 1 ? '🏴 BM' : cityShort(r.city);
         const matsFrom = isCraft && !city ? matsCityLabel(r.id, r.e) : buyCityShort;
-        const buyFrom = buyCityShort || cityShort(buyCityM[prodEnch(r.id, r.e)] || '') || 'la más barata';
+        const buyFrom = buyCityShort || cityShort(buyCityM[prodEnch(r.id, r.e)] || '') || 'the cheapest';
+        // la antigüedad va pegada a CADA mercado: así se ve de un vistazo cuál de los dos
+        // precios es el viejo, en vez de un único "visto" que no dice de dónde sale
+        const buyAgeTxt = agoStr(r.buyDate) || '?';
+        const sellAgeTxt = agoStr(r.sellDate) || '?';
         const action = isCraft
-          ? `craftear en ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'estación sin bono'} · mats de ${matsFrom} → vender ${where}`
-          : `comprar en ${buyFrom} → vender ${where}`;
+          ? `craft in ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'station with no bonus'} · mats from ${matsFrom} → sell ${where} (${sellAgeTxt})`
+          : `buy in ${buyFrom} (${buyAgeTxt}) → sell ${where} (${sellAgeTxt})`;
+        // la columna enseña la PEOR de las dos patas: de nada sirve una venta fresquísima si el
+        // precio de compra que sostiene la operación es de hace horas
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
         const ageTxt = agoStr(staleDate); const stale = ageHours(staleDate) > 24;
+        const seenTip = `Buy price seen ${agoStr(r.buyDate) || '—'} ago · sell price seen ${agoStr(r.sellDate) || '—'} ago · the column shows the older of the two`;
         const iconId = prodEnch(r.id, r.e);
-        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(iconId)}?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(r.id, r.e, nm))}" title="Clic para copiar «${esc(copyNameOf(r.id, r.e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
+        return `<tr><td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(iconId)}?size=40" loading="lazy" alt=""><div class="scan-item-txt"><span class="copyable" data-copy="${esc(copyNameOf(r.id, r.e, nm))}" title="Click to copy «${esc(copyNameOf(r.id, r.e, nm))}»">${esc(nm)}</span> <span class="enchtag">.${r.e}</span><br><span class="faint" style="font-size:11px">${action} · ROI ${roiTxt(r.roi)}</span></div></div></td>`
           + `<td class="silver">${fmt(r.netCost)}</td><td class="silver scan-price">${fmt(r.price)}${sostChip(r.price, r.avg, true)}</td>`
-          + `<td class="cr-vol-avg" title="precio medio realmente vendido (histórico): con esto se calcula la ganancia, no con el pico de ahora">${r.avg ? '~' + fmt(r.avg) : '—'}</td>`
+          + `<td class="cr-vol-avg" title="average price actually sold (historical): profit is worked out with this, not with the current spike">${r.avg ? '~' + fmt(r.avg) : '—'}</td>`
           + `<td class="${pc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>`
-          + `<td class="${r.vol > 0 ? '' : 'faint'}" title="Unidades que se mueven al día (calidad Normal). Plata/día usa este volumen completo.">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
+          + `<td class="${r.vol > 0 ? '' : 'faint'}" title="Units moved per day (Normal quality). Silver/day uses this full volume.">${r.vol > 0 ? fmtInt(r.vol) : '—'}</td>`
           + `<td class="${pc}"><b>${r.eurDay >= 0 ? '+' : ''}${fmt(r.eurDay)}</b></td>`
-          + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' de foco por unidad' : 'sin datos de foco para este item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
-          + `<td class="${stale ? 'down' : 'faint'}" title="Hace cuánto se vio este precio">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
+          + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' focus per unit' : 'no focus data for this item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
+          + `<td class="${stale ? 'down' : 'faint'}" title="${seenTip}">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
       }).join('') + '</tbody></table></div>'
-      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cacheado</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} pico${spikes === 1 ? '' : 's'} ${hideSpikes ? 'oculto' + (spikes === 1 ? '' : 's') : 'visible' + (spikes === 1 ? '' : 's')}</b> · ` : ''}${res.length} con datos · ${isCraft ? 'crafteo' : 'reventa'} · ${sellModeOf(sellMode).txt}${useFocus ? ' · con foco' : ''}</div>`;
+      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cached</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} spike${spikes === 1 ? '' : 's'} ${hideSpikes ? 'hidden' : 'visible'}</b> · ` : ''}${res.length} with data · ${isCraft ? 'crafting' : 'reselling'} · ${sellModeOf(sellMode).txt}${useFocus ? ' · with focus' : ''}</div>`;
   }
   // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
   // si no, pedir pulsar Buscar. Solo el botón consulta la API.
@@ -1220,7 +1321,7 @@
     else {
       scanCache = null;
       const tier = document.getElementById('scan-tier').value;
-      out.innerHTML = `<div class="mempty">T${tier} sin cachear todavía — pulsa 🔍 Buscar para escanearlo.</div>`;
+      out.innerHTML = `<div class="mempty">T${tier} not cached yet — hit 🔍 Find to scan it.</div>`;
     }
   }
   ['scan-tier', 'scan-city', 'scan-sell', 'scan-mode', 'scan-days'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
@@ -1237,7 +1338,7 @@
   // ================= NIVEL (equipo equivalente más barato por precio × calidad) =================
   // En Albion, +1 encantamiento = +1 tier de item power. T8.0 = T7.1 = T6.2 = T5.3 = T4.4:
   // mismo poder, precios muy distintos. Buscamos la combinación más barata para un nivel dado.
-  const LVL_QNAMES = ['Normal', 'Bueno', 'Notable', 'Sobresal.', 'Obra M.'];
+  const LVL_QNAMES = ['Normal', 'Good', 'Outstanding', 'Excellent', 'Master.'];
   function levelCombos(target) {
     const out = [];
     for (let t = 8; t >= 4; t--) { const e = target - t; if (e >= 0 && e <= 4) out.push({ t, e }); }
@@ -1246,15 +1347,15 @@
   let levelCache = null;
   async function loadLevel() {
     const out = document.getElementById('level-result'); if (!out) return;
-    if (!currentBase) { out.innerHTML = '<div class="mempty">Busca un item arriba para ver sus versiones equivalentes.</div>'; return; }
+    if (!currentBase) { out.innerHTML = '<div class="mempty">Search an item above to see its equivalent versions.</div>'; return; }
     const body = currentBase.replace(/^T\d+_/, '');
     const target = +((document.getElementById('level-target') || {}).value) || 8;
     const cityFilter = (document.getElementById('level-city') || {}).value || '';   // '' = todas (la más barata)
     const combos = levelCombos(target);
     const idOf = (c) => 'T' + c.t + '_' + body + (c.e > 0 ? '@' + c.e : '');
     const ids = combos.map(idOf);
-    const locs = cityFilter ? [cityFilter] : ALL_CITIES;
-    out.innerHTML = '<div class="mempty">Buscando precios…</div>';
+    const locs = cityFilter ? [cityFilter] : scopeCities();
+    out.innerHTML = '<div class="mempty">Looking up prices…</div>';
     try {
       const QS = [1, 2, 3, 4, 5];
       const liveCalls = [];
@@ -1297,7 +1398,7 @@
       levelCache = { combos, idOf, cheapest, target, cityFilter };
       renderLevel();
     } catch (_) {
-      out.innerHTML = '<div class="mempty">Error al buscar precios. Reinténtalo.</div>';
+      out.innerHTML = '<div class="mempty">Price lookup failed. Try again.</div>';
     }
   }
   function renderLevel() {
@@ -1306,7 +1407,7 @@
     const QS = [1, 2, 3, 4, 5];
     let globalMin = Infinity; const colMin = [Infinity, Infinity, Infinity, Infinity, Infinity];
     combos.forEach((c) => { const m = cheapest[idOf(c)] || {}; QS.forEach((q, qi) => { const cell = m[q]; if (cell) { if (cell.price < colMin[qi]) colMin[qi] = cell.price; if (cell.price < globalMin) globalMin = cell.price; } }); });
-    if (!Number.isFinite(globalMin)) { out.innerHTML = '<div class="mempty">Sin precios para nivel ' + target + (cityFilter ? ' en ' + cityShort(cityFilter) : '') + '. Prueba otro nivel/ciudad o valida en el juego.</div>'; return; }
+    if (!Number.isFinite(globalMin)) { out.innerHTML = '<div class="mempty">No prices for level ' + target + (cityFilter ? ' en ' + cityShort(cityFilter) : '') + '. Try another level/market or check in game.</div>'; return; }
     // referencia = la versión de mayor tier (la "normal" del nivel, p.ej. T8.0): con qué comparas el ahorro
     const rowMin = (c) => { const m = cheapest[idOf(c)] || {}; const ps = QS.map((q) => (m[q] || {}).price).filter((p) => p > 0); return ps.length ? Math.min(...ps) : 0; };
     const refCombo = combos[0];
@@ -1316,21 +1417,21 @@
       const mine = rowMin(c);
       const diffPct = (refMin > 0 && mine > 0) ? Math.round((mine / refMin - 1) * 100) : null;
       const diffCell = c === refCombo
-        ? `<td class="lvl-diff faint" title="Es la referencia: la versión de tier más alto para este nivel">base</td>`
-        : `<td class="lvl-diff ${diffPct == null ? 'faint' : (diffPct < 0 ? 'up' : 'down')}" title="Comparado con ${refCombo.t}.${refCombo.e}, que cuesta ${refMin ? fmt(refMin) : '—'}">${diffPct == null ? '—' : (diffPct > 0 ? '+' : '') + diffPct + '%'}</td>`;
+        ? `<td class="lvl-diff faint" title="This is the reference: the highest-tier version for this level">base</td>`
+        : `<td class="lvl-diff ${diffPct == null ? 'faint' : (diffPct < 0 ? 'up' : 'down')}" title="Compared with ${refCombo.t}.${refCombo.e}, which costs ${refMin ? fmt(refMin) : '—'}">${diffPct == null ? '—' : (diffPct > 0 ? '+' : '') + diffPct + '%'}</td>`;
       const cells = QS.map((q, qi) => {
         const cell = m[q]; if (!cell) return '<td class="faint">—</td>';
         const cls = cell.price === globalMin ? 'lvl-best' : (cell.price === colMin[qi] ? 'lvl-colbest' : '');
         const stale = ageHours(cell.date) > (freshMaxH() || 24);
-        const age = agoStr(cell.date) || 'sin fecha';
-        const liveDot = cell.live ? ' <span class="live-dot" title="Visto por TU cliente ahora mismo (captura en vivo)">🟢</span>' : '';
+        const age = agoStr(cell.date) || 'no date';
+        const liveDot = cell.live ? ' <span class="live-dot" title="Seen by YOUR client right now (live capture)">🟢</span>' : '';
         const sub = (cityFilter ? age : (age + ' · ' + cityShort(cell.city))) + liveDot;
         return `<td class="${cls}"><div class="lvl-price">${fmt(cell.price)}${cell.price === globalMin ? ' ✅' : ''}</div><div class="lvl-age${stale ? ' stale' : ''}">${stale ? '⚠ ' : ''}${sub}</div></td>`;
       }).join('');
       return `<tr><td class="lvl-combo">${c.t}.${c.e}</td>${cells}${diffCell}</tr>`;
     }).join('');
-    out.innerHTML = itemHeadHtml('nivel ' + target + ' · ' + (cityFilter ? cityShort(cityFilter) : 'ciudad más barata'))
-      + '<div class="scan-scroll"><table class="lvl-table"><thead><tr><th>T.Ench</th>' + LVL_QNAMES.map((n) => `<th>${n}</th>`).join('') + `<th title="Diferencia de precio frente a la versión de tier más alto de este nivel">vs ${refCombo ? refCombo.t + '.' + refCombo.e : 'base'}</th>` + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    out.innerHTML = itemHeadHtml('level ' + target + ' · ' + (cityFilter ? cityShort(cityFilter) : 'cheapest market'))
+      + '<div class="scan-scroll"><table class="lvl-table"><thead><tr><th>T.Ench</th>' + LVL_QNAMES.map((n) => `<th>${n}</th>`).join('') + `<th title="Price difference against the highest-tier version of this level">vs ${refCombo ? refCombo.t + '.' + refCombo.e : 'base'}</th>` + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
   ['level-target', 'level-city'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) loadLevel(); }); });
 
@@ -1352,7 +1453,7 @@
     const chip = ev.target.closest('.cr-sub-chip');
     if (chip) {
       const row = chip.closest('.cr-row'); const inp = row && row.querySelector('.cr-price');
-      if (inp) { inp.value = chip.dataset.sub; calcResult(); toast('🔨 Usando el coste de fabricarlo'); }
+      if (inp) { inp.value = chip.dataset.sub; calcResult(); toast('🔨 Using the cost to make it'); }
       return;
     }
     if (ev.target.closest('#cr-cheapest')) {

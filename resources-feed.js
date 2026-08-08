@@ -128,14 +128,14 @@
   }
   const RES_COLOR = { Fiber: '#4CAF50', Hide: '#A1887F', Wood: '#8D6E63', Ore: '#42A5F5', Rock: '#9C27B0' };
   const RES_ICON = { Fiber: '🧵', Hide: '🐗', Wood: '🪵', Ore: '⛏️', Rock: '🪨' };
-  const RES_ES = { Fiber: 'Fibra', Hide: 'Piel', Wood: 'Madera', Ore: 'Mineral', Rock: 'Piedra' };
+  const RES_ES = { Fiber: 'Fiber', Hide: 'Hide', Wood: 'Wood', Ore: 'Ore', Rock: 'Rock' };
 
   // chest quality: keyword in name first (reliable in Avalon/Mists), else rarity int 0-4
   const QUALITY = {
-    green: { color: '#46d160', es: 'Verde', rank: 0 },
-    blue: { color: '#4aa3ff', es: 'Azul', rank: 1 },
-    purple: { color: '#b96bff', es: 'Morado', rank: 2 },
-    gold: { color: '#ffcc33', es: 'Dorado', rank: 3 },
+    green: { color: '#46d160', es: 'Green', rank: 0 },
+    blue: { color: '#4aa3ff', es: 'Blue', rank: 1 },
+    purple: { color: '#b96bff', es: 'Purple', rank: 2 },
+    gold: { color: '#ffcc33', es: 'Gold', rank: 3 },
   };
   function chestQuality(name, rarity) {
     const n = (name || '').toLowerCase();
@@ -208,7 +208,7 @@
   function setConn(s) {
     if (!connEl) return;
     connEl.className = 'conn ' + (s === 'ok' ? 'ok' : s === 'bad' ? 'bad' : '');
-    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'conectado' : s === 'bad' ? 'desconectado' : 'conectando…');
+    connEl.title = 'OpenRadar: ' + (s === 'ok' ? 'connected' : s === 'bad' ? 'disconnected' : 'connecting…');
   }
   function connect() {
     setConn('...');
@@ -423,20 +423,20 @@
   // clasificación de la pool por tipo (banco normal vs cardumen/rico)
   function fishInfo(type) {
     const u = String(type || '').toUpperCase();
-    if (u.includes('SWARM')) return { es: 'Cardumen', color: '#ffb02e' };   // más peces / mejor
-    if (u.includes('EPIC') || u.includes('LEGEND')) return { es: 'Pesca épica', color: '#b96bff' };
-    return { es: 'Pesca', color: '#33c9ff' };
+    if (u.includes('SWARM')) return { es: 'Fish shoal', color: '#ffb02e' };   // más peces / mejor
+    if (u.includes('EPIC') || u.includes('LEGEND')) return { es: 'Epic fishing', color: '#b96bff' };
+    return { es: 'Fishing', color: '#33c9ff' };
   }
 
   // ---- portal classification (label + colour) ----
   const ENCH_COLOR = ['#c9d1d9', '#46d160', '#4aa3ff', '#b96bff', '#ffcc33'];
   function portalInfo(pt) {
     const u = pt.name.toUpperCase();
-    if (u.startsWith('MISTS_')) return { es: u.includes('_SOLO') ? 'Bruma solo' : 'Bruma dúo', icon: '🌫️', color: ENCH_COLOR[pt.ench] || '#7ee3d0' };
-    if (u.includes('CORRUPTED')) return { es: 'Corrupta', icon: '🕳️', color: '#b96bff' };
+    if (u.startsWith('MISTS_')) return { es: u.includes('_SOLO') ? 'Mists solo' : 'Mists duo', icon: '🌫️', color: ENCH_COLOR[pt.ench] || '#7ee3d0' };
+    if (u.includes('CORRUPTED')) return { es: 'Corrupted', icon: '🕳️', color: '#b96bff' };
     if (u.includes('HELLGATE')) return { es: 'Hellgate', icon: '🔥', color: '#ff6644' };
-    if (u.includes('SOLO')) return { es: 'Mazmorra solo', icon: '🚪', color: ENCH_COLOR[pt.ench] || '#c9d1d9' };
-    return { es: 'Mazmorra grupo', icon: '🚪', color: ENCH_COLOR[pt.ench] || '#c9d1d9' };
+    if (u.includes('SOLO')) return { es: 'Solo dungeon', icon: '🚪', color: ENCH_COLOR[pt.ench] || '#c9d1d9' };
+    return { es: 'Group dungeon', icon: '🚪', color: ENCH_COLOR[pt.ench] || '#c9d1d9' };
   }
 
   // value (silver) of an entity, for the "Valor" sort + list display
@@ -468,18 +468,18 @@
     const okType = (t) => sub.resTypes[t] !== false;
     const okTier = (t) => !sub.minTier || (t || 0) >= sub.minTier;
     const okEnch = (e) => sub.ench[e || 0] !== false;
-    if (filters.chest) chests.forEach((c) => { if (sub.chestQ[c.quality] !== false) push('chest', c, { color: QUALITY[c.quality].color, icon: '🎁', label: 'Cofre ' + QUALITY[c.quality].es, quality: c.quality, value: CHEST_VALUE[c.quality] || 0 }); });
+    if (filters.chest) chests.forEach((c) => { if (sub.chestQ[c.quality] !== false) push('chest', c, { color: QUALITY[c.quality].color, icon: '🎁', label: QUALITY[c.quality].es + ' chest', quality: c.quality, value: CHEST_VALUE[c.quality] || 0 }); });
     if (filters.resource) harvestables.forEach((h) => { if ((h.size || 0) >= 1 && okType(h.type) && okTier(h.tier) && okEnch(h.ench)) push('resource', h, { color: RES_COLOR[h.type] || '#4169E1', icon: RES_ICON[h.type] || '◆', label: RES_ES[h.type] || h.type, tier: h.tier, ench: h.ench, size: h.size, sizeMax: Math.max(h.sizeMax || 0, h.size || 0), value: resourceValue(h.type, h.tier, h.ench, h.size), priced: isPriced(h.type, h.tier, h.ench) }); });
     if (filters.living) {
       mobs.forEach((m) => {
-        if (m.living) { if (okType(m.resType) && okTier(m.tier) && okEnch(m.ench)) push('living', m, { color: RES_COLOR[m.resType] || '#8bc34a', icon: RES_ICON[m.resType] || '🐾', label: (RES_ES[m.resType] || 'Recurso') + ' vivo', tier: m.tier, ench: m.ench, size: 1, value: resourceValue(m.resType, m.tier, m.ench, 1), priced: isPriced(m.resType, m.tier, m.ench), living: true }); }
-        else if (okTier(m.tier) && okEnch(m.ench)) push('mob', m, { color: m.ench > 0 ? (ENCH_COLOR[m.ench] || '#ed6a5a') : '#ed6a5a', icon: m.ench > 0 ? '✨' : '👹', label: m.ench > 0 ? 'Criatura encantada' : 'Criatura', tier: m.tier, ench: m.ench, enchMob: m.ench > 0 });
+        if (m.living) { if (okType(m.resType) && okTier(m.tier) && okEnch(m.ench)) push('living', m, { color: RES_COLOR[m.resType] || '#8bc34a', icon: RES_ICON[m.resType] || '🐾', label: 'Living ' + (RES_ES[m.resType] || 'resource').toLowerCase(), tier: m.tier, ench: m.ench, size: 1, value: resourceValue(m.resType, m.tier, m.ench, 1), priced: isPriced(m.resType, m.tier, m.ench), living: true }); }
+        else if (okTier(m.tier) && okEnch(m.ench)) push('mob', m, { color: m.ench > 0 ? (ENCH_COLOR[m.ench] || '#ed6a5a') : '#ed6a5a', icon: m.ench > 0 ? '✨' : '👹', label: m.ench > 0 ? 'Enchanted creature' : 'Creature', tier: m.tier, ench: m.ench, enchMob: m.ench > 0 });
       });
     }
     if (filters.avalon) {
-      mists.forEach((mi) => { const u = mi.name.toUpperCase(); push('avalon', mi, { color: ENCH_COLOR[mi.ench] || '#7ee3d0', icon: '🌀', label: u.includes('_SOLO') ? 'Portal bruma solo' : 'Portal bruma dúo', ench: mi.ench }); });
+      mists.forEach((mi) => { const u = mi.name.toUpperCase(); push('avalon', mi, { color: ENCH_COLOR[mi.ench] || '#7ee3d0', icon: '🌀', label: u.includes('_SOLO') ? 'Mists portal solo' : 'Mists portal duo', ench: mi.ench }); });
       portals.forEach((pt) => { const inf = portalInfo(pt); push('avalon', pt, { color: inf.color, icon: inf.icon, label: inf.es, ench: pt.ench }); });
-      cages.forEach((c) => push('avalon', c, { color: '#ff7ac6', icon: '🧚', label: 'Jaula wisp' }));
+      cages.forEach((c) => push('avalon', c, { color: '#ff7ac6', icon: '🧚', label: 'Wisp cage' }));
     }
     if (filters.fish) fishes.forEach((f) => { if ((f.total || 0) >= 1) { const inf = fishInfo(f.type); push('fish', f, { color: inf.color, icon: '🎣', label: inf.es, spawned: f.spawned, total: f.total, fishType: f.type }); } });
     // selección: si hay un recurso fijado, el radar solo muestra ese (la lista sigue completa)
@@ -564,10 +564,10 @@
 
     if (!haveLp) {
       ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText('muévete para ubicarte', c, size - 6);
+      ctx.fillText('move to get your bearings', c, size - 6);
     } else if (selectedId != null) {
       ctx.fillStyle = 'rgba(90,169,196,0.95)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText('foco: 1 seleccionado (clic en la lista para soltar)', c, size - 6);
+      ctx.fillText('focus: 1 selected (click the list to release)', c, size - 6);
     }
   }
 
@@ -575,7 +575,7 @@
   const fmtK = (n) => { const a = Math.abs(n || 0); if (a >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + 'M'; if (a >= 1e3) return Math.round(n / 1e3) + 'K'; return String(Math.round(n || 0)); };
   function drawList(entities) {
     if (!entities.length) {
-      listEl.innerHTML = '<div class="rad-empty">Nada en rango.<br>Muévete por el mundo, o revisa los filtros.</div>';
+      listEl.innerHTML = '<div class="rad-empty">Nothing in range.<br>Move around the world, or check the filters.</div>';
       return;
     }
     listEl.innerHTML = entities.slice(0, 40).map((e) => {
@@ -583,11 +583,11 @@
       const arrow = arrowFor(s.x - 50, s.y - 50);
       const tier = e.tier ? ` <b class="rt">T${e.tier}${e.ench ? '.' + e.ench : ''}</b>` : (e.ench ? ` <b class="rt">✨${e.ench}</b>` : '');
       const dm = e.d < 1 ? '0' : Math.round(e.d);
-      const val = e.priced ? `<span class="rv" title="Valor de mercado estimado del nodo">≈${fmtK(e.value)}</span>` : '';
+      const val = e.priced ? `<span class="rv" title="Estimated market value of the node">≈${fmtK(e.value)}</span>` : '';
       // cargas: recursos "x/max" · pesca "disponibles/total" (p. ej. 4/5)
       let charges = '';
-      if (e.cat === 'fish') charges = `<span class="rc ${e.spawned >= e.total ? 'full' : e.spawned <= 1 ? 'low' : ''}" title="Peces disponibles / total${e.fishType != null ? ' · tipo de zona ' + esc(String(e.fishType)) : ''}">🐟 ${e.spawned}/${e.total}</span>`;
-      else if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Cargas restantes">${e.size}/${e.sizeMax}</span>`;
+      if (e.cat === 'fish') charges = `<span class="rc ${e.spawned >= e.total ? 'full' : e.spawned <= 1 ? 'low' : ''}" title="Fish available / total${e.fishType != null ? ' · spot type ' + esc(String(e.fishType)) : ''}">🐟 ${e.spawned}/${e.total}</span>`;
+      else if ((e.cat === 'resource' || e.cat === 'living') && e.sizeMax > 0) charges = `<span class="rc ${e.size >= e.sizeMax ? 'full' : e.size <= 1 ? 'low' : ''}" title="Charges left">${e.size}/${e.sizeMax}</span>`;
       const sel = e.id === selectedId ? ' selected' : '';
       return `<div class="rad-row cat-${e.cat}${sel}" data-id="${e.id}">
         <span class="ri" style="color:${e.color}">${e.icon}</span>
@@ -635,7 +635,7 @@
 
   // ---- filter chips ----
   const FILTER_DEFS = [
-    ['chest', '🎁 Cofres'], ['resource', '◆ Recursos'], ['living', '🐾 Vivos/Mobs'], ['fish', '🎣 Pesca'], ['avalon', '🌀 Avalon'],
+    ['chest', '🎁 Chests'], ['resource', '◆ Resources'], ['living', '🐾 Living/Mobs'], ['fish', '🎣 Fishing'], ['avalon', '🌀 Avalon'],
   ];
   function renderFilters() {
     if (!filtersEl) return;
@@ -684,7 +684,7 @@
   const sortEl = document.getElementById('rad-sort');
   const dirEl = document.getElementById('rad-dir');
   const DIR_DEFAULT = { dist: 'asc', value: 'desc', tier: 'desc' };
-  function updateDirBtn() { if (dirEl) { dirEl.textContent = sub.dir === 'asc' ? '↑' : '↓'; dirEl.title = sub.dir === 'asc' ? 'Ascendente (menor primero) — clic para invertir' : 'Descendente (mayor primero) — clic para invertir'; } }
+  function updateDirBtn() { if (dirEl) { dirEl.textContent = sub.dir === 'asc' ? '↑' : '↓'; dirEl.title = sub.dir === 'asc' ? 'Ascending (lowest first) — click to flip' : 'Descending (highest first) — click to flip'; } }
   if (sortEl) {
     sortEl.value = sub.sort;
     sortEl.addEventListener('change', () => { sub.sort = sortEl.value; sub.dir = DIR_DEFAULT[sub.sort] || 'asc'; updateDirBtn(); saveSub(); render(true); });

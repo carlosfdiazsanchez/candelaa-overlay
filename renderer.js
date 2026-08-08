@@ -27,10 +27,10 @@
       if (!s) return;
       if (s.state === 'downloading') {
         updEl.hidden = false; updEl.className = 'upd-box dl';
-        updEl.textContent = `⬇ Actualizando ${s.percent || 0}%`;
+        updEl.textContent = `⬇ Updating ${s.percent || 0}%`;
       } else if (s.state === 'ready') {
         updEl.hidden = false; updEl.className = 'upd-box ready';
-        updEl.textContent = `✓ Reiniciar para actualizar${s.version ? ' a v' + s.version : ''}`;
+        updEl.textContent = `✓ Restart to update${s.version ? ' to v' + s.version : ''}`;
       } else if (s.state === 'error') {
         updEl.hidden = true;
       }
@@ -41,7 +41,7 @@
   const draggables = ['bar', 'p-players', 'p-radar', 'p-item', 'p-notes'];
   function loadState() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (_) { return {}; } }
   function saveState() {
-    const st = { panels: {}, opacity: document.getElementById('op').value, monitor: document.getElementById('mon').value, passthrough };
+    const st = { panels: {}, monitor: document.getElementById('mon').value, passthrough };
     draggables.forEach((id) => {
       const el = document.getElementById(id); if (!el) return;
       st.panels[id] = {
@@ -148,22 +148,18 @@
     const mark = (txt) => { if (!state) return; state.textContent = txt; clearTimeout(clearT); clearT = setTimeout(() => { state.textContent = ''; }, 1500); };
     ta.addEventListener('input', () => {
       clearTimeout(t);
-      t = setTimeout(() => { try { localStorage.setItem(NOTES_KEY, ta.value); mark('guardado'); } catch (_) { mark('no se pudo guardar'); } }, 400);
+      t = setTimeout(() => { try { localStorage.setItem(NOTES_KEY, ta.value); mark('saved'); } catch (_) { mark('could not save'); } }, 400);
     });
     const btn = document.getElementById('notes-clear');
     if (btn) btn.addEventListener('click', () => {
       if (!ta.value.trim()) return;
-      if (!window.confirm('¿Borrar todas las notas?')) return;
+      if (!window.confirm('Delete every note?')) return;
       ta.value = '';
       try { localStorage.setItem(NOTES_KEY, ''); } catch (_) {}
       mark('vaciado');
     });
   })();
 
-  document.getElementById('op').addEventListener('input', (e) => {
-    document.documentElement.style.setProperty('--panel-alpha', (e.target.value / 100).toFixed(2));
-  });
-  document.getElementById('op').addEventListener('change', saveState);
   document.getElementById('quit').addEventListener('click', () => window.overlay.quit());
 
   // ---- monitor selector ----
@@ -181,10 +177,6 @@
   // ---- restore saved layout ----
   (function restore() {
     const st = loadState();
-    if (st.opacity) {
-      document.getElementById('op').value = st.opacity;
-      document.documentElement.style.setProperty('--panel-alpha', (st.opacity / 100).toFixed(2));
-    }
     if (st.panels) {
       Object.entries(st.panels).forEach(([id, p]) => {
         const el = document.getElementById(id); if (!el) return;
@@ -248,16 +240,16 @@
     if (!isAdmin) { pAdmin.style.display = 'none'; pAdmin.dataset.open = '0'; }
   }
   const reasonText = (r) => ({
-    token_invalid: 'Token no válido.', token_revoked: 'Tu token ha sido revocado.',
-    token_blocked: 'Tu token está bloqueado.', no_token: 'Introduce tu token.',
-    network: 'No se pudo conectar con el servidor.',
+    token_invalid: 'Invalid token.', token_revoked: 'Your token has been revoked.',
+    token_blocked: 'Your token is blocked.', no_token: 'Enter your token.',
+    network: 'Could not reach the server.',
   }[r] || ('Error: ' + r));
   async function verify(token) { try { return await window.overlay.authVerify(token); } catch (_) { return { valid: false, reason: 'network' }; } }
 
   async function gateSubmit() {
     const t = (gateInput.value || '').trim();
-    if (!t) { gateErr.textContent = 'Introduce tu token.'; return; }
-    gateBtn.disabled = true; gateErr.textContent = 'Verificando…';
+    if (!t) { gateErr.textContent = 'Enter your token.'; return; }
+    gateBtn.disabled = true; gateErr.textContent = 'Checking…';
     const r = await verify(t);
     gateBtn.disabled = false;
     if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); hideGate(); gateInput.value = ''; }
@@ -266,20 +258,14 @@
   gateBtn.addEventListener('click', gateSubmit);
   gateInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateSubmit(); });
 
-  // botón "cambiar token" de la barra
-  document.getElementById('btn-token').addEventListener('click', async () => {
-    await window.overlay.clearToken(); isAdmin = false; setAuthUI('');
-    showGate('Introduce tu token de acceso');
-  });
-
   // arranque: la app trae su propia clave, así que no se pide nada. El gate solo aparece
   // si el servidor rechaza esa clave (revocada o build sin clave), nunca por un corte de red.
   (async function bootAuth() {
     const stored = await window.overlay.getToken();
-    if (!stored) { showGate('Introduce tu token de acceso'); return; }
+    if (!stored) { showGate('Enter your access token'); return; }
     const r = await verify(stored);
     if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); hideGate(); }
-    else if (r.reason !== 'network') { showGate(reasonText(r.reason) + ' Introduce un token válido.'); }
+    else if (r.reason !== 'network') { showGate(reasonText(r.reason) + ' Enter a valid token.'); }
   })();
 
   // re-verificación periódica: si revocas el token, se bloquea en ~10 min
@@ -287,23 +273,23 @@
     if (gateActive) return;
     const r = await verify(await window.overlay.getToken());
     if (r.valid) { isAdmin = !!r.is_admin; setAuthUI(r.name === 'app' ? '' : r.name); }
-    else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); if (!gateDismissed) showGate('Sesión cerrada: ' + reasonText(r.reason)); }
+    else if (r.reason !== 'network') { isAdmin = false; setAuthUI(''); if (!gateDismissed) showGate('Signed out: ' + reasonText(r.reason)); }
   }, 10 * 60 * 1000);
 
   // ================= PANEL ADMIN (solo is_admin) =================
   makeDraggable(pAdmin, pAdmin.querySelector('.panel__head'));
   const alist = document.getElementById('alist');
   const adminCount = document.getElementById('admin-count');
-  const ACT_LABEL = { revoke: 'Revocar', block: 'Bloquear', activate: 'Reactivar', delete: 'Borrar' };
+  const ACT_LABEL = { revoke: 'Revoke', block: 'Block', activate: 'Reactivate', delete: 'Delete' };
 
-  const agoR = (ds) => { if (!ds) return 'nunca'; const m = Math.round((Date.now() - new Date(ds).getTime()) / 60000); if (m < 1) return 'ahora'; return m < 60 ? m + 'm' : (m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd'); };
+  const agoR = (ds) => { if (!ds) return 'never'; const m = Math.round((Date.now() - new Date(ds).getTime()) / 60000); if (m < 1) return 'now'; return m < 60 ? m + 'm' : (m < 1440 ? Math.round(m / 60) + 'h' : Math.round(m / 1440) + 'd'); };
   const isOnline = (ds) => !!(ds && (Date.now() - new Date(ds).getTime()) < 40000);
   async function renderAdmin() {
     const res = await window.overlay.adminList();
     const tokens = (res && res.tokens) || [];
     const online = tokens.filter((t) => isOnline(t.last_seen_at)).length;
     adminCount.textContent = online ? `${tokens.length} · ${online} en línea` : String(tokens.length);
-    if (!tokens.length) { alist.innerHTML = '<div class="pl-empty">Sin tokens emitidos.</div>'; return; }
+    if (!tokens.length) { alist.innerHTML = '<div class="pl-empty">No tokens issued.</div>'; return; }
     tokens.sort((a, b) => (isOnline(b.last_seen_at) - isOnline(a.last_seen_at)) || String(b.last_seen_at || '').localeCompare(String(a.last_seen_at || '')));
     alist.innerHTML = tokens.map((t) => {
       const acts = [];
@@ -314,7 +300,7 @@
       const btns = acts.map((a) => `<button data-tok="${esc(t.token)}" data-act="${a}">${ACT_LABEL[a]}</button>`).join('');
       const on = isOnline(t.last_seen_at);
       const pres = `<span class="apres" title="${t.last_seen_at ? 'Última vez: ' + new Date(t.last_seen_at).toLocaleString('es-ES') : 'Nunca conectado'}"><span class="adot ${on ? 'on' : ''}"></span>${on ? 'en línea' : 'visto ' + agoR(t.last_seen_at)}</span>`;
-      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span>${pres}<span class="abadge ${t.status}">${t.status}</span></div><div class="atok copyable" data-copy="${esc(t.token)}" title="Clic para copiar el token">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
+      return `<div class="arow"><div class="atop"><span class="aname">${esc(t.name)}${t.is_admin ? ' 🛡️' : ''}</span>${pres}<span class="abadge ${t.status}">${t.status}</span></div><div class="atok copyable" data-copy="${esc(t.token)}" title="Click to copy the token">${esc(t.token)}</div><div class="aacts">${btns}</div></div>`;
     }).join('');
   }
   let adminTimer = null;
@@ -328,13 +314,13 @@
     const inp = document.getElementById('admin-name');
     const name = (inp.value || '').trim(); if (!name) return;
     const r = await window.overlay.adminIssue(name); inp.value = '';
-    if (r && r.token) document.getElementById('admin-new').innerHTML = `<div class="newtok">Token para <b>${esc(r.name)}</b>:<br><span class="copyable" data-copy="${esc(r.token)}" title="Clic para copiar">${esc(r.token)}</span><br><small>Clic en el token para copiarlo y pásaselo a esa persona.</small></div>`;
+    if (r && r.token) document.getElementById('admin-new').innerHTML = `<div class="newtok">Token for <b>${esc(r.name)}</b>:<br><span class="copyable" data-copy="${esc(r.token)}" title="Click to copy">${esc(r.token)}</span><br><small>Click the token to copy it and pass it on.</small></div>`;
     renderAdmin();
   });
   alist.addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-act]'); if (!b) return;
     const { tok, act } = b.dataset;
-    if (act === 'delete' && !window.confirm('¿Borrar este token? No se puede deshacer.')) return;
+    if (act === 'delete' && !window.confirm('Delete this token? This cannot be undone.')) return;
     await window.overlay.adminAction(tok, act);
     renderAdmin();
   });
@@ -348,7 +334,7 @@
   }
   function copyTok(txt) {
     if (!txt) return;
-    const done = () => copyToast('📋 Copiado: ' + txt);
+    const done = () => copyToast('📋 Copied: ' + txt);
     const fb = () => { const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (_) {} document.body.removeChild(ta); };
     try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb(); } catch (_) { fb(); }
   }
@@ -366,10 +352,10 @@
       if (await window.overlay.npcapStatus()) { notice.hidden = true; return; }
       notice.hidden = false;
       btn.addEventListener('click', async () => {
-        btn.disabled = true; state.textContent = ' descargando…';
+        btn.disabled = true; state.textContent = ' downloading…';
         const r = await window.overlay.npcapInstall();
-        if (r && r.launched) state.textContent = ' instalador abierto: acepta el UAC y dale a Siguiente';
-        else { state.textContent = ' falló; instala manual desde npcap.com'; btn.disabled = false; }
+        if (r && r.launched) state.textContent = ' installer opened: accept the UAC prompt and hit Next';
+        else { state.textContent = ' failed; install manually from npcap.com'; btn.disabled = false; }
       });
     } catch (_) {}
   })();
