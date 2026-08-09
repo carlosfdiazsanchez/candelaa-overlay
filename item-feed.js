@@ -89,6 +89,7 @@
     const fa = document.getElementById('craft-focus-avail'); if (fa && c.focusAvail != null) fa.value = String(c.focusAvail);
     const sm = document.getElementById('craft-session-mode'); if (sm && c.sessionMode) sm.value = c.sessionMode;
     const mg = document.getElementById('craft-margin'); if (mg && c.margin != null) mg.value = String(c.margin);
+    const sf = document.getElementById('scan-fresh'); if (sf && c.scanFreshH != null) sf.value = String(c.scanFreshH);
   })();
   function saveCfg() {
     const pt = document.getElementById('premium-toggle'); const sr = document.getElementById('station-rate');
@@ -101,6 +102,7 @@
         premium: !!(pt && pt.checked), stationRate: sr ? +sr.value || 0 : 400, freshMaxH: fr ? +fr.value || 0 : 6,
         stationCity: sc ? sc.value : '', focus: !!(fo && fo.checked),
         focusAvail: fa ? +fa.value || 0 : 10000, sessionMode: sm ? sm.value : 'focus', margin: mg ? +mg.value || 0 : 20,
+        scanFreshH: (() => { const sf = document.getElementById('scan-fresh'); return sf ? +sf.value || 0 : 24; })(),
       }));
     } catch (_) {}
   }
@@ -1259,13 +1261,24 @@
     const hideSpikes = !!(document.getElementById('scan-hide-spikes') || {}).checked;
     const isSpike = (r) => r.avg > 0 && r.price > r.avg * 3;
     const spikes = res.filter(isSpike).length;
+    // Antigüedad: manda el MÁS VIEJO de los dos precios (compra y venta). El margen sale de
+    // restar uno del otro, así que basta con que uno esté caducado para que la cifra sea humo.
+    const staleMaxH = +((document.getElementById('scan-fresh') || {}).value) || 0;
+    const worstAge = (r) => Math.max(ageHours(r.buyDate), ageHours(r.sellDate));
+    const isOld = (r) => staleMaxH > 0 && worstAge(r) > staleMaxH;
+    const olds = res.filter(isOld).length;
     const skey = SCAN_SORTS[scanSort] ? scanSort : 'eurDay';
     const sdir = scanDir === 'asc' ? -1 : 1;
-    const shown = (hideSpikes ? res.filter((r) => !isSpike(r)) : res)
+    const shown = res
+      .filter((r) => !(hideSpikes && isSpike(r)))
+      .filter((r) => !isOld(r))
       .sort((a, b) => (SCAN_SORTS[skey](b) - SCAN_SORTS[skey](a)) * sdir)
       .slice(0, 50);
     if (!shown.length) {
-      out.innerHTML = `<div class="mempty">No opportunities with complete data.${spikes && hideSpikes ? ` ${spikes} price spike${spikes === 1 ? '' : 's'} were dropped; untick "Hide spikes" to see them.` : ' Try another tier or sell channel.'}</div>`;
+      const motivos = [];
+      if (olds) motivos.push(`${olds} with prices older than ${staleMaxH}h`);
+      if (spikes && hideSpikes) motivos.push(`${spikes} price spike${spikes === 1 ? '' : 's'}`);
+      out.innerHTML = `<div class="mempty">No opportunities with complete data.${motivos.length ? ` Left out: ${motivos.join(' and ')}. Raise "Seen within" or untick the filters to see them.` : ' Try another tier or sell channel.'}</div>`;
       return;
     }
     const res2 = shown;
@@ -1273,7 +1286,12 @@
     const buyCityShort = city ? cityShort(cityKey(city)) : '';
     const sArrow = sdir === -1 ? ' ▲' : ' ▼';
     const sSort = (k, label, tip) => `<th class="top-sort${skey === k ? ' on' : ''}" data-ssort="${k}" title="${tip} · click to sort${skey === k ? ' the other way' : ''}">${label}${skey === k ? sArrow : ''}</th>`;
-    out.innerHTML = '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
+    // lo descartado se dice: si no, una lista corta parece "no hay oportunidades" cuando en
+    // realidad las hay pero con precios viejos.
+    const dropNote = olds
+      ? `<div class="fresh-note" title="They are not shown because their buy or sell price has not been seen in that long. Raise &quot;Seen within&quot; to include them.">⏳ ${olds} left out for being older than ${staleMaxH}h</div>`
+      : '';
+    out.innerHTML = dropNote + '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
       + sSort('cost', isCraft ? 'Craft' : 'Buy', isCraft ? 'Cost to make it: materials minus the station return, plus the station fee' : 'What it costs you to buy it in the source market')
       + sSort('price', sellHdr, 'Sell price used (current order)')
       + sSort('avg', 'Avg', 'Average price actually sold (historical)')
@@ -1326,6 +1344,8 @@
   }
   ['scan-tier', 'scan-city', 'scan-sell', 'scan-mode', 'scan-days'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', onScanFilterChange); });
   { const hs = document.getElementById('scan-hide-spikes'); if (hs) hs.addEventListener('change', () => { if (scanCache) renderScanResults(true); }); }
+  // la antigüedad se filtra sobre los datos ya descargados: cambiarla NO relanza el escaneo
+  { const sf = document.getElementById('scan-fresh'); if (sf) sf.addEventListener('change', () => { saveCfg(); if (scanCache) renderScanResults(true); }); }
   { const sb = document.getElementById('scan-btn'); if (sb) sb.addEventListener('click', runScan); }
   { const sr = document.getElementById('scan-result'); if (sr) sr.addEventListener('click', (e) => {
       const th = e.target.closest('[data-ssort]'); if (!th || !scanCache) return;
