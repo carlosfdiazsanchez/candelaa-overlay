@@ -173,7 +173,7 @@
   // Los de facción (1-6) van aparte: te atacan solo si eres de una facción rival, y cuál es la
   // TUYA no viaja por la red, así que se marcan como aviso intermedio en vez de darlo por hecho.
   const THREAT = {
-    peligro: ['Can attack you', 'h'],
+    peligro: ['Hostile', 'h'],
     faccion: ['Faction', 'p'],
     pasivo: ['Passive', 'a'],
   };
