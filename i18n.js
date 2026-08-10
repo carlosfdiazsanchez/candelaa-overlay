@@ -366,6 +366,8 @@
   "Mounted": "Montado",
   "Hide (mark as ally)": "Ocultar (marcar aliado)",
   "Role:": "Rol:",
+  "Weapon tier and enchantment": "Tier y encantamiento del arma",
+  "Weapon not identified": "Arma sin identificar",
   "Estimated market value of the gear": "Valor de mercado estimado del equipo",
   "connected": "conectado",
   "disconnected": "desconectado",

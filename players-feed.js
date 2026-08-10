@@ -87,10 +87,15 @@
     const ip = nameToP[u] || nameToP[u.replace(/@\d+$/, '')] || null;
     return { name: u, tier: tm ? +tm[1] : null, ench: em ? +em[1] : 0, ip };
   }
+  // Slots que aportan IP al personaje: arma, mano izq., casco, armadura, botas y CAPA.
+  // La montura (6), la bolsa (7) y la comida (8) también traen `p` en el dump, pero no cuentan
+  // para el poder en combate: colar la montura hundía el IP de cualquiera que fuese en un
+  // caballo barato con equipo T8 — justo al que más te interesa no subestimar.
+  const IP_SLOTS = [0, 1, 2, 3, 4, 5];
   function avgIP(eq) {
     if (!eq) return null;
     let s = 0, n = 0;
-    [0, 1, 2, 3, 4, 6].forEach((i) => { const it = itemInfo(eq[i]); if (it && it.ip) { s += it.ip; n++; } });
+    IP_SLOTS.forEach((i) => { const it = itemInfo(eq[i]); if (it && it.ip) { s += it.ip; n++; } });
     return n ? Math.round(s / n) : null;
   }
   const SLOT_ICON = ['🗡️', '🛡️', '🪖', '🧥', '👢', '🧣', '🐎', '🎒', '🍖'];
@@ -132,6 +137,8 @@
     [/HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN|_MACE/, 'Mace', 'tank', '🔨'],
   ];
   const ROLE = { heal: ['Healer', '#2ecc71'], sup: ['Support', '#3498db'], tank: ['Tank', '#f1c40f'], dps: ['DPS', '#ed4245'] };
+  // misma escala de color que los encantamientos del Buscador, para leer el tier sin pensar
+  const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160', 6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33' };
   function weaponOf(eq) {
     const it = eq && itemInfo(eq[0]); if (!it || !it.name) return null;
     let role = 'dps', emoji = '⚔', cat = 'Weapon';
@@ -208,18 +215,21 @@
       const th = threatOf(p);
       const gv = gearValue(p);
       const w = weaponOf(p.equip);
-      const wTier = (w && w.tier) ? `${w.tier}.${w.ench || 0}` : '';
+      // El tier del arma manda: es lo que dice de un vistazo con qué te vas a encontrar.
+      const tierTag = w && w.tier
+        ? `<span class="wtierbig" style="color:${TIER_COLOR[w.tier] || TIER_COLOR[0]};border-color:${TIER_COLOR[w.tier] || TIER_COLOR[0]}" title="Weapon tier and enchantment">${w.tier}<i>.${w.ench || 0}</i></span>`
+        : '<span class="wtierbig wt-unk" title="Weapon not identified">?</span>';
       const wTag = w
-        ? `<span class="wtype" style="color:${ROLE[w.role][1]}" title="Role: ${ROLE[w.role][0]}">${w.emoji} ${esc(w.es)}${wTier ? ' <b class="wtier">' + wTier + '</b>' : ''} · ${ROLE[w.role][0]}</span>`
+        ? `<span class="wtype">${w.emoji} ${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
         : '<span class="wtype wt-unk">weapon ?</span>';
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}" data-id="${p.id}">
-        <div class="prow"><span class="pname">${esc(p.name || '???')}</span>
-          <span class="pguild">${p.guild ? '· ' + esc(p.guild) + squad : ''}</span>
+        <div class="prow">${tierTag}${wTag}
           ${flag}${p.mounted ? '<span class="mount" title="Mounted">🐎</span>' : ''}
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
-        <div class="prow2">${wTag}</div>
+        <div class="prow2"><span class="pguild">${p.guild ? esc(p.guild) + squad : ''}</span>
+          <span class="pname">${esc(p.name || '???')}</span></div>
         <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Estimated market value of the gear">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
       </div>`;
     }).join('');
