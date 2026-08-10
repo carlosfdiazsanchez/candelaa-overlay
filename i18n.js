@@ -364,6 +364,7 @@
   "PvP flagged (hostile faction)": "Marcado PvP (facción hostil)",
   "from this guild in range": "de este gremio en rango",
   "Mounted": "Montado",
+  "On foot": "A pie",
   "Hide (mark as ally)": "Ocultar (marcar aliado)",
   "Role:": "Rol:",
   "Weapon tier and enchantment": "Tier y encantamiento del arma",

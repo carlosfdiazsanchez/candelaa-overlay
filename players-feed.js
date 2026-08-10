@@ -220,13 +220,13 @@
         ? `<span class="wtierbig" style="color:${TIER_COLOR[w.tier] || TIER_COLOR[0]};border-color:${TIER_COLOR[w.tier] || TIER_COLOR[0]}" title="Weapon tier and enchantment">${w.tier}<i>.${w.ench || 0}</i></span>`
         : '<span class="wtierbig wt-unk" title="Weapon not identified">?</span>';
       const wTag = w
-        ? `<span class="wtype">${w.emoji} ${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
+        ? `<span class="wtype">${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
         : '<span class="wtype wt-unk">weapon ?</span>';
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}" data-id="${p.id}">
         <div class="prow">${tierTag}${wTag}
-          ${flag}${p.mounted ? '<span class="mount" title="Mounted">🐎</span>' : ''}
+          ${flag}<span class="mount${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted' : 'On foot'}">🐎</span>
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
         <div class="prow2"><span class="pguild">${p.guild ? esc(p.guild) + squad : ''}</span>
           <span class="pname">${esc(p.name || '???')}</span></div>
