@@ -680,18 +680,6 @@
 
     drawMapBackground(size);
 
-    // distance rings
-    const rings = [10, 20, 30, 40, 50].filter((m) => m < rangeM() + 1);
-    ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    rings.forEach((m) => {
-      const rad = (size / 2) * (m / rangeM());
-      if (rad > c - 2) return;
-      ctx.beginPath(); ctx.arc(c, c, rad, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillText(m + 'm', c + rad + 3, c);
-    });
-    ctx.setLineDash([]);
-
     // cross-hair
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath(); ctx.moveTo(c, 4); ctx.lineTo(c, size - 4); ctx.moveTo(4, c); ctx.lineTo(size - 4, c); ctx.stroke();
