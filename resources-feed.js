@@ -281,12 +281,70 @@
   function rangeM() { return BASE_RANGE_M / zoom; }
   function relative(posX, posY) { return { hX: lpX - posX, hY: posY - lpY }; }
   function distMeters(hX, hY) { return Math.sqrt(hX * hX + hY * hY) / 3; }
+  // OJO CON LOS SIGNOS: la rotación va en sentido NEGATIVO (-45°), no positivo. Con el signo
+  // al revés el radar sale girado 180° — el norte cae al sur y el este al oeste, que es
+  // exactamente lo que se veía. El motor de datos usa x*a - y*a / x*a + y*a con a NEGATIVO
+  // (-0.785398), y el fondo de mapa (ctx.rotate(-45°)) solo cuadra con esta orientación.
   function toScreen(hX, hY, size) {
-    const u = (hX - hY) * Math.SQRT1_2;
-    const v = (hX + hY) * Math.SQRT1_2;
-    const scale = (size / 2) / (rangeM() * 3);
-    return { x: size / 2 + u * scale, y: size / 2 + v * scale };
+    const u = (hY - hX) * Math.SQRT1_2;
+    const v = -(hX + hY) * Math.SQRT1_2;
+    return { x: size / 2 + u * pxPerUnit(size), y: size / 2 + v * pxPerUnit(size) };
   }
+  function pxPerUnit(size) { return (size / 2) / (rangeM() * 3); }
+  // ---- fondo: el mapa de la zona ----
+  // El motor de datos ya sirve los renders de cada zona (/images/Maps/<id>.webp) y sus límites
+  // en zones.json, así que no hay que empaquetar nada: se piden por HTTP como los mobs.
+  // La imagen está en coordenadas de mundo (x a la derecha, y hacia abajo) y se orienta con el
+  // mismo giro de -45° que los blips; por eso ambos tienen que compartir píxeles-por-unidad.
+  const ZONES_URL = 'http://localhost:5001/ao-bin-dumps/zones.json';
+  const MAP_IMG_BASE = 'http://localhost:5001/images/Maps/';
+  const MAPKEY = 'albion-overlay-radar-map-v1';
+  let showMap = localStorage.getItem(MAPKEY) !== '0';
+  let zonesDB = null;
+  const mapImgs = new Map();
+  function loadZonesDB() {
+    fetch(ZONES_URL).then((r) => (r.ok ? r.json() : null)).then((z) => { if (z && typeof z === 'object') zonesDB = z; }).catch(() => {});
+  }
+  // los ids compuestos ("1234-5", instancias) comparten el render de su zona base
+  function zoneAsset(id) {
+    if (!id) return null;
+    const s = String(id);
+    for (const key of [s, s.split('-')[0]]) {
+      const b = zonesDB && zonesDB[key] && zonesDB[key].bounds;
+      if (!b || !Array.isArray(b.min) || !Array.isArray(b.max)) continue;
+      const v = [b.min[0], b.min[1], b.max[0], b.max[1]];
+      if (!v.every(Number.isFinite)) continue;
+      const extent = Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1]);
+      if (!(extent > 0)) continue;
+      return { key, extent, cx: (b.min[0] + b.max[0]) / 2, cy: (b.min[1] + b.max[1]) / 2 };
+    }
+    return null;
+  }
+  function mapImage(key) {
+    if (mapImgs.has(key)) return mapImgs.get(key);
+    mapImgs.set(key, null); // una sola petición por zona, haya render o no
+    const img = new Image();
+    img.onload = () => { mapImgs.set(key, img); markDirty(); };
+    img.src = MAP_IMG_BASE + encodeURIComponent(key) + '.webp';
+    return null;
+  }
+  function drawMapBackground(size) {
+    if (!showMap || !haveLp) return;
+    const a = zoneAsset(currentMapId); if (!a) return;
+    const img = mapImage(a.key); if (!img) return;
+    const sf = pxPerUnit(size);
+    const w = a.extent * sf;
+    const c = size / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.scale(1, -1);
+    ctx.translate(c, -c);
+    ctx.rotate(-Math.PI / 4);
+    ctx.translate(-(lpX - a.cx) * sf, (-lpY + a.cy) * sf);
+    ctx.drawImage(img, -w / 2, -w / 2, w, w);
+    ctx.restore();
+  }
+
   const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
   function arrowFor(dx, dy) {
     let a = Math.atan2(dy, dx); // screen space
@@ -322,6 +380,14 @@
     const kind = m.code; // 'event' | 'request' | 'response'
     const op = p['253'];
 
+    // JoinMap trae DOS cosas en el mismo mensaje: el mapa nuevo [8] y la posición de spawn [9].
+    // Antes se hacía return al cambiar de mapa y la posición se perdía, así que al entrar en una
+    // zona todo se pintaba respecto a las coordenadas de la zona ANTERIOR hasta que te movías.
+    if (kind === 'response' && op === 2) {
+      if (typeof p['8'] === 'string') onMapChange(p['8']);
+      setLpFromParam(p['9']);
+      return;
+    }
     // map / zone change -> wipe everything (positions are relative to a cluster)
     if ((op === 2 || op === 3) && typeof p['8'] === 'string') return onMapChange(p['8']);
     if (op === 41 && typeof p['0'] === 'string') return onMapChange(p['0']);
@@ -337,6 +403,7 @@
     harvestables.clear(); mobs.clear(); mists.clear(); chests.clear(); portals.clear(); cages.clear();
     selectedId = null;
     haveLp = false;
+    lpX = 0; lpY = 0;
   }
 
   function onRequest(p, op) {
@@ -544,6 +611,9 @@
   // ---- unified entity view (respects filters + sub-filters + range) ----
   function collect() {
     const out = [];
+    // Sin posición propia no hay nada que orientar: todo saldría en una dirección inventada.
+    // Antes se pintaba igualmente contra la última posición conocida (la de la zona anterior).
+    if (!haveLp) { out._radar = out; return out; }
     const range = rangeM();
     const push = (cat, e, meta) => {
       const { hX, hY } = relative(e.posX, e.posY);
@@ -608,6 +678,8 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.stroke();
     ctx.clip();
 
+    drawMapBackground(size);
+
     // distance rings
     const rings = [10, 20, 30, 40, 50].filter((m) => m < rangeM() + 1);
     ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -665,7 +737,9 @@
   const fmtK = (n) => { const a = Math.abs(n || 0); if (a >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + 'M'; if (a >= 1e3) return Math.round(n / 1e3) + 'K'; return String(Math.round(n || 0)); };
   function drawList(entities) {
     if (!entities.length) {
-      listEl.innerHTML = '<div class="rad-empty">Nothing in range.<br>Move around the world, or check the filters.</div>';
+      listEl.innerHTML = haveLp
+        ? '<div class="rad-empty">Nothing in range.<br>Move around the world, or check the filters.</div>'
+        : '<div class="rad-empty">Take a step so the game tells us where you are.</div>';
       return;
     }
     listEl.innerHTML = entities.slice(0, 40).map((e) => {
@@ -809,6 +883,16 @@
     zoomEl.value = String(zoom);
     zoomEl.addEventListener('input', () => { zoom = +zoomEl.value; localStorage.setItem(ZKEY, String(zoom)); render(true); });
   }
+  const mapBtn = document.getElementById('rad-map');
+  if (mapBtn) {
+    const paint = () => { mapBtn.style.opacity = showMap ? '1' : '.4'; mapBtn.setAttribute('aria-pressed', String(showMap)); };
+    paint();
+    mapBtn.addEventListener('click', () => {
+      showMap = !showMap;
+      localStorage.setItem(MAPKEY, showMap ? '1' : '0');
+      paint(); render(true);
+    });
+  }
   setInterval(() => { for (const k in priceMap) if (priceMap[k] === 0) delete priceMap[k]; schedulePriceFetch(); }, 120000);
 
   // clic en una fila = fijar ese recurso (el radar solo lo muestra a él); otro clic lo suelta
@@ -828,6 +912,7 @@
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }
   fitCanvas();
   loadMobsDB();
+  loadZonesDB();
   connect();
   requestAnimationFrame(loop);
 })();

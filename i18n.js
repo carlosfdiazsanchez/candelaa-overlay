@@ -435,6 +435,8 @@
   "Wisp cage": "Jaula wisp",
   "Nothing in range.": "Nada en rango.",
   "Move around the world, or check the filters.": "Muévete por el mundo, o revisa los filtros.",
+  "Take a step so the game tells us where you are.": "Da un paso para que el juego nos diga dónde estás.",
+  "Show the zone map behind the radar": "Ver el mapa de la zona detrás del radar",
   "Estimated market value of the node": "Valor de mercado estimado del nodo",
   "Charges left": "Cargas restantes",
   "Ascending (lowest first) — click to flip": "Ascendente (menor primero) — clic para invertir",
