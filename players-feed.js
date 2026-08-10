@@ -77,15 +77,17 @@
   (() => { const h = +localStorage.getItem(PLH_KEY); if (h > 0) plist.style.height = h + 'px'; })();
   try { new ResizeObserver(() => { if (plist.clientHeight) localStorage.setItem(PLH_KEY, plist.clientHeight); }).observe(plist); } catch (_) {}
 
-  fetch(ITEMS_URL).then((r) => (r.ok ? r.json() : null)).then((d) => { itemsDB = d; if (Array.isArray(d)) d.forEach((e) => { if (e && e.n) nameToP[e.n] = e.p; }); schedulePriceFetch(); render(); }).catch(() => {});
+  const nameToCat = {};
+  fetch(ITEMS_URL).then((r) => (r.ok ? r.json() : null)).then((d) => { itemsDB = d; if (Array.isArray(d)) d.forEach((e) => { if (e && e.n) { nameToP[e.n] = e.p; nameToCat[e.n] = e.cat; } }); schedulePriceFetch(); render(); }).catch(() => {});
   try { window.overlay.itemsByIndex().then((a) => { indexMap = a || null; schedulePriceFetch(); render(); }); } catch (_) {}
 
   function itemInfo(id) {
     if (!id || id <= 0 || !indexMap) return null;
     const u = indexMap[id]; if (!u) return null;
     const tm = u.match(/^T(\d)/), em = u.match(/@(\d)/);
-    const ip = nameToP[u] || nameToP[u.replace(/@\d+$/, '')] || null;
-    return { name: u, tier: tm ? +tm[1] : null, ench: em ? +em[1] : 0, ip };
+    const base = u.replace(/@\d+$/, '');
+    const ip = nameToP[u] || nameToP[base] || null;
+    return { name: u, tier: tm ? +tm[1] : null, ench: em ? +em[1] : 0, ip, cat: nameToCat[u] || nameToCat[base] || '' };
   }
   // Slots que aportan IP al personaje: arma, mano izq., casco, armadura, botas y CAPA.
   // La montura (6), la bolsa (7) y la comida (8) también traen `p` en el dump, pero no cuentan
@@ -114,43 +116,74 @@
 
   let esMap = {};
   try { window.overlay.itemsIndex(window.__lang).then((arr) => { (arr || []).forEach((x) => { esMap[x.id] = x.n; }); }); } catch (_) {}
+  // Rangos SACADOS DEL DUMP, no de memoria: los que de verdad aparecen son principiante,
+  // novato, obrero, iniciado, experto, maestro, gran maestro y anciano. Faltaba "obrero"
+  // (journeyman), así que los T3 se mostraban como "Guantes de peleador del obrero"; y
+  // sobraban aprendiz/oficial/adepto/veterano, que no existen en los datos.
+  // "gran maestro" va antes que "maestro" o quedaría un "gran " suelto.
   const RANKS = window.__lang === 'es'
-    ? /\s+de(l| la)\s+(principiante|novato|aprendiz|iniciado|oficial|adepto|experto|gran maestro|maestro|anciano|veterano)$/i
+    ? /\s+de(l| la)\s+(principiante|novato|obrero|iniciado|experto|gran maestro|maestro|anciano)$/i
     : /^(beginner|novice|journeyman|adept|expert|master|grandmaster|elder)'s\s+/i;
   const cleanTier = (s) => (s || '').replace(RANKS, '');
 
+  // Se clasifica por el TOKEN REAL del uniqueName, no por el nombre comercial del arma.
+  // La tabla anterior buscaba cosas como BEARPAWS, DEATHGIVERS o KINGMAKER, que el juego
+  // nunca manda: sus items son DUALAXE_KEEPER, DUALSICKLE_UNDEAD y CLAYMORE_AVALON. Por eso
+  // 258 de las 800 armas del índice caían en "Weapon" con rol DPS inventado. Los nombres
+  // comerciales se conservan por si alguna vez llegaran, pero lo que clasifica es el token.
+  // Auditado contra items-byindex + items-es/en: 0 armas sin clasificar.
   const WEAP = [
-    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'Holy staff', 'heal', '✚'],
-    [/NATURESTAFF|WILDSTAFF|DRUIDIC|BLIGHTSTAFF|RAMPANTSTAFF/, 'Nature staff', 'heal', '🌿'],
-    [/ARCANESTAFF|ENIGMATICSTAFF|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'Arcane staff', 'sup', '✨'],
-    [/FROSTSTAFF|GLACIALSTAFF|HOARFROST|ICICLESTAFF|PERMAFROST/, 'Frost staff', 'sup', '❄'],
-    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|DAWNSONG/, 'Fire staff', 'dps', '🔥'],
-    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSESTAFF|CURSEDSKULL|DAMNATION/, 'Cursed staff', 'dps', '💀'],
-    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Crossbow', 'dps', '🎯'],
-    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Bow', 'dps', '🏹'],
-    [/DAGGER|CLAWPAIR|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Dagger', 'dps', '🔪'],
-    [/_SPEAR|_PIKE|GLAIVE|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Spear', 'dps', '🔱'],
-    [/BATTLEAXE|HALBERD|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE|_AXE/, 'Axe', 'dps', '🪓'],
-    [/CLAYMORE|DUALSWORD|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD|SWORD/, 'Sword', 'dps', '⚔'],
-    [/QUARTERSTAFF|IRONCLADSTAFF|DOUBLEBLADEDSTAFF|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'Heavy staff', 'tank', '🥍'],
-    [/POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|GROVEKEEPER|HAMMER/, 'Hammer', 'tank', '🛠'],
-    [/HEAVYMACE|MACEPAIR|INCUBUSMACE|CAMLANN|_MACE/, 'Mace', 'tank', '🔨'],
+    [/HOLYSTAFF|DIVINESTAFF|FALLENSTAFF|REDEMPTIONSTAFF|HALLOWFALL/, 'Holy staff', 'heal'],
+    [/NATURESTAFF|WILDSTAFF|DRUIDIC|BLIGHTSTAFF|RAMPANTSTAFF|IRONROOT/, 'Nature staff', 'heal'],
+    [/ARCANESTAFF|ENIGMATICSTAFF|ENIGMATICORB|ARCANE_RINGPAIR|WITCHWORK|OCCULTSTAFF|MALEVOLENT/, 'Arcane staff', 'sup'],
+    [/FROSTSTAFF|GLACIALSTAFF|ICECRYSTAL|ICEGAUNTLETS|HOARFROST|ICICLESTAFF|PERMAFROST/, 'Frost staff', 'sup'],
+    [/FIRESTAFF|INFERNOSTAFF|WILDFIRESTAFF|BLAZINGSTAFF|FIRE_RINGPAIR|DAWNSONG/, 'Fire staff', 'dps'],
+    [/CURSEDSTAFF|DEMONICSTAFF|LIFECURSESTAFF|SKULLORB|CURSEDSKULL|DAMNATION/, 'Cursed staff', 'dps'],
+    [/SHAPESHIFTER/, 'Shapeshifter staff', 'dps'],
+    [/CROSSBOW|WEEPINGREPEATER|BOLTCASTERS|SIEGEBOW/, 'Crossbow', 'dps'],
+    [/_BOW|WARBOW|LONGBOW|WHISPERINGBOW/, 'Bow', 'dps'],
+    [/DAGGER|CLAWPAIR|DUALSICKLE|RAPIER|BLOODLETTER|BLACKHANDS|DEATHGIVERS|BRIDLEDFURY/, 'Dagger', 'dps'],
+    [/_SPEAR|_PIKE|GLAIVE|HARPOON|TRIDENT|HERESYSPEAR|TRINITYSPEAR|DAYBREAKER/, 'Spear', 'dps'],
+    // QUARTERSTAFF antes que AXE: TWINSCYTHE (Soulscythe) es bastón, _SCYTHE_ (Guadaña
+    // infernal, Falce de cristal) es hacha, y "TWINSCYTHE_HELL" contiene "SCYTHE".
+    [/QUARTERSTAFF|IRONCLADEDSTAFF|DOUBLEBLADEDSTAFF|COMBATSTAFF|ROCKSTAFF|TWINSCYTHE|BLACKMONKSTONE|SOULSCYTHE|GRAILSEEKER/, 'Heavy staff', 'tank'],
+    [/BATTLEAXE|HALBERD|DUALAXE|_SCYTHE_|CARRIONCALLERS|REALMBREAKER|BEARPAWS|INFERNALSCYTHE|_AXE/, 'Axe', 'dps'],
+    [/CLAYMORE|DUALSWORD|DUALSCIMITAR|SCIMITAR|CLEAVER|GALATINE|KINGMAKER|CARVINGSWORD|SWORD/, 'Sword', 'dps'],
+    [/KNUCKLES|IRONGAUNTLETS/, 'War gloves', 'dps'],
+    [/POLEHAMMER|TOMBHAMMER|FORGEHAMMERS|_RAM_|GROVEKEEPER|HAMMER/, 'Hammer', 'tank'],
+    [/HEAVYMACE|MACEPAIR|DUALMACE|ROCKMACE|FLAIL|INCUBUSMACE|CAMLANN|_MACE/, 'Mace', 'tank'],
   ];
-  const ROLE = { heal: ['Healer', '#2ecc71'], sup: ['Support', '#3498db'], tank: ['Tank', '#f1c40f'], dps: ['DPS', '#ed4245'] };
+  const ROLE = { heal: ['Healer', '#2ecc71'], sup: ['Support', '#3498db'], tank: ['Tank', '#f1c40f'], dps: ['DPS', '#ed4245'], gather: ['Gathering', '#9aa0a6'] };
   // misma escala de color que los encantamientos del Buscador, para leer el tier sin pensar
   const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160', 6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33' };
   function weaponOf(eq) {
     const it = eq && itemInfo(eq[0]); if (!it || !it.name) return null;
-    let role = 'dps', emoji = '⚔', cat = 'Weapon';
-    for (const [re, c, r, em] of WEAP) if (re.test(it.name)) { cat = c; role = r; emoji = em; break; }
+    let role = 'dps', cat = 'Weapon';
+    // el pico, la hoz o el martillo de cantero salían como "Hacha · DPS" o "Martillo · Tanque":
+    // el dump ya los marca como recolección, y quien recolecta no es la misma amenaza
+    if (it.cat === 'gathering') { role = 'gather'; cat = 'Gathering tool'; }
+    else for (const [re, c, r] of WEAP) if (re.test(it.name)) { cat = c; role = r; break; }
     const es = cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || cat);
-    return { es, role, emoji, tier: it.tier, ench: it.ench };
+    return { es, role, tier: it.tier, ench: it.ench };
   }
-  // distancia a mi personaje (posición que publica el radar) en unidades de mundo (~metros)
+  // ¿ESTE jugador me puede atacar? Antes solo se miraba la zona: fuera de una segura TODOS
+  // salían hostiles, así que el aviso no distinguía a un recolector de alguien que va a por ti.
+  // Regla del motor de datos (isPlayerThreat), que es la mecánica real del juego:
+  //   segura -> nadie · negra -> todos · amarilla/roja -> solo los marcados en PvP (facción 255)
+  // Los de facción (1-6) van aparte: te atacan solo si eres de una facción rival, y cuál es la
+  // TUYA no viaja por la red, así que se marcan como aviso intermedio en vez de darlo por hecho.
+  const THREAT = {
+    peligro: ['Can attack you', 'h'],
+    faccion: ['Faction', 'p'],
+    pasivo: ['Passive', 'a'],
+  };
   function threatOf(p) {
     const z = window.__ovZone;
     if (!z) return 'desc';
-    return z === 'safe' ? 'pasivo' : 'hostil';
+    if (z === 'safe') return 'pasivo';
+    if (z === 'black') return 'peligro';
+    if (p.faction === 255) return 'peligro';
+    return (p.faction >= 1 && p.faction <= 6) ? 'faccion' : 'pasivo';
   }
 
   const trimD = (v) => v.toFixed(1).replace('.', ',').replace(',0', '');
@@ -209,7 +242,7 @@
       return;
     }
     const inDanger = !!(window.__ovZone && window.__ovZone !== 'safe');
-    const hostiles = arr.filter((p) => threatOf(p) === 'hostil').length;
+    const hostiles = arr.filter((p) => threatOf(p) === 'peligro').length;
     const squads = Object.entries(guildCount).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]);
     const bits = [];
     if (hostiles) bits.push(`<b class="s-host">${hostiles} hostile${hostiles > 1 ? 's' : ''}</b>`);
@@ -230,9 +263,10 @@
         ? `<span class="wtype">${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
         : '<span class="wtype wt-unk">weapon ?</span>';
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
+      const risk = THREAT[th] ? `<span class="chip ${THREAT[th][1]}">${THREAT[th][0]}</span>` : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}" data-id="${p.id}">
-        <div class="prow">${tierTag}${wTag}
+        <div class="prow">${tierTag}${wTag}${risk}
           ${flag}<span class="mount${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted' : 'On foot'}">🐎</span>
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
         <div class="prow2"><span class="pguild">${p.guild ? esc(p.guild) + squad : ''}</span>
@@ -288,7 +322,9 @@
           faction: p['53'] ?? 0, hp: 1, hpMax: 1, equip: p['40'] || null, spells: p['43'] || null,
           mounted: false, posX: null, posY: null, last: Date.now() });
         schedulePriceFetch();
-        if (isNew && !isAlly(p['1']) && window.__ovZone !== 'safe') alertEnemy();  // avisa de enemigos fuera de zona segura
+        // solo avisa de quien REALMENTE puede atacarte: en amarilla/roja un recolector sin
+        // marcar disparaba el beep igual que alguien que venía a matarte
+        if (isNew && !isAlly(p['1']) && threatOf(players.get(id)) === 'peligro') alertEnemy();
         break;
       }
       case 1: {
@@ -301,7 +337,8 @@
       case 91: { const q = players.get(id); if (q) { q.hp = p['2'] ?? q.hp; q.hpMax = p['3'] ?? q.hpMax; q.last = Date.now(); } break; }
       case 90: { const q = players.get(id); if (q) { q.equip = p['2'] || q.equip; q.last = Date.now(); schedulePriceFetch(); } break; }
       case 211: { const q = players.get(id); if (q) { q.mounted = p['11'] === true || p['10'] === -1; q.last = Date.now(); } break; }
-      case 363: { const q = players.get(id); if (q) { q.faction = p['1'] ?? q.faction; q.last = Date.now(); } break; }
+      // alguien se marca en PvP a tu lado: antes esto no avisaba de nada, solo repintaba
+      case 363: { const q = players.get(id); if (q) { const was = q.faction; q.faction = p['1'] ?? q.faction; q.last = Date.now(); if (was !== 255 && q.faction === 255 && !isAlly(q.name) && threatOf(q) === 'peligro') alertEnemy(); } break; }
       case 3: { const q = players.get(id); if (q) { if (p['4'] != null) { q.posX = p['4']; q.posY = p['5']; } q.last = Date.now(); } break; }
       // ---- party (para ocultar a los tuyos) ----
       case 231: { const names = findStringList(p); if (names) { partyNames.clear(); names.forEach((n) => partyNames.add(n)); savePartyShared(); } break; } // PartyJoined (lista completa)
