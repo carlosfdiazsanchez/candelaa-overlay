@@ -186,10 +186,17 @@
     const all = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
     const guildCount = {};
     all.forEach((p) => { if (p.guild) guildCount[p.guild] = (guildCount[p.guild] || 0) + 1; });
+    // El arma manda también en el orden: el tier más alto arriba, que es lo que decide si
+    // peleas o te vas. Se calcula una vez por jugador, no dentro del comparador.
+    const wOf = new Map();
+    all.forEach((p) => wOf.set(p, weaponOf(p.equip)));
+    const wt = (p) => { const w = wOf.get(p); return w && w.tier ? w.tier : 0; };
+    const we = (p) => { const w = wOf.get(p); return w ? (w.ench || 0) : 0; };
     const arr = all.sort((a, b) => {
       if (a.id === selectedId) return -1;
       if (b.id === selectedId) return 1;
-      return (gearValue(b) - gearValue(a)) || ((avgIP(b.equip) || 0) - (avgIP(a.equip) || 0));
+      return (wt(b) - wt(a)) || (we(b) - we(a))
+        || ((avgIP(b.equip) || 0) - (avgIP(a.equip) || 0)) || (gearValue(b) - gearValue(a));
     });
     countEl.textContent = String(arr.length);
     const partyN = partyNames.size;
@@ -214,7 +221,7 @@
       const age = Math.round((Date.now() - p.last) / 1000);
       const th = threatOf(p);
       const gv = gearValue(p);
-      const w = weaponOf(p.equip);
+      const w = wOf.get(p);
       // El tier del arma manda: es lo que dice de un vistazo con qué te vas a encontrar.
       const tierTag = w && w.tier
         ? `<span class="wtierbig" style="color:${TIER_COLOR[w.tier] || TIER_COLOR[0]};border-color:${TIER_COLOR[w.tier] || TIER_COLOR[0]}" title="Weapon tier and enchantment">${w.tier}<i>.${w.ench || 0}</i></span>`
