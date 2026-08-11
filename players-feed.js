@@ -54,16 +54,25 @@
 
   // ---- alerta de enemigo (parpadeo rojo + beep), heredada del radar ----
   let audioCtx = null, lastAlert = 0;
+  // Dos notas de campana en quinta DESCENDENTE (Sol5 -> Re5). El aviso anterior era onda
+  // cuadrada subiendo de tono y cortada en seco: exactamente el patrón de una alarma, y el
+  // corte abrupto añadía un chasquido que sobresalta. Una sinusoide que sube en 30 ms y se
+  // apaga en medio segundo se oye igual de bien sin darte un susto.
   function beep() {
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
       const t = audioCtx.currentTime;
-      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.type = 'square'; g.gain.value = 0.09;
-      o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(1180, t + 0.12);
-      o.connect(g); g.connect(audioCtx.destination);
-      o.start(t); o.stop(t + 0.28);
+      [[784, 0], [587.33, 0.15]].forEach(([hz, dt]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = hz;
+        const s = t + dt;
+        g.gain.setValueAtTime(0.0001, s);
+        g.gain.exponentialRampToValueAtTime(0.075, s + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, s + 0.55);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(s); o.stop(s + 0.6);
+      });
     } catch (_) {}
   }
   function flashAlert() {
