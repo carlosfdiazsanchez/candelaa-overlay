@@ -154,8 +154,11 @@
     [/HEAVYMACE|MACEPAIR|DUALMACE|ROCKMACE|FLAIL|INCUBUSMACE|CAMLANN|_MACE/, 'Mace', 'tank'],
   ];
   const ROLE = { heal: ['Healer', '#2ecc71'], sup: ['Support', '#3498db'], tank: ['Tank', '#f1c40f'], dps: ['DPS', '#ed4245'], gather: ['Gathering', '#9aa0a6'] };
-  // misma escala de color que los encantamientos del Buscador, para leer el tier sin pensar
-  const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160', 6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33' };
+  // Color por TIER EFECTIVO (tier + encantamiento), que llega hasta 12 con un T8.4.
+  // Verificado en el dump: cada encantamiento vale exactamente lo mismo que un tier
+  // (T4=700 IP, T4.2=900 IP = T6=900 IP), así que sumarlos no es una aproximación.
+  const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160',
+    6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33', 9: '#ffa03c', 10: '#ffa03c', 11: '#ff6b5c', 12: '#ff6b5c' };
   function weaponOf(eq) {
     const it = eq && itemInfo(eq[0]); if (!it || !it.name) return null;
     let role = 'dps', cat = 'Weapon';
@@ -223,12 +226,14 @@
     // peleas o te vas. Se calcula una vez por jugador, no dentro del comparador.
     const wOf = new Map();
     all.forEach((p) => wOf.set(p, weaponOf(p.equip)));
-    const wt = (p) => { const w = wOf.get(p); return w && w.tier ? w.tier : 0; };
-    const we = (p) => { const w = wOf.get(p); return w ? (w.ench || 0) : 0; };
+    // se ordena por el MISMO número que se ve en la tarjeta (tier + encantamiento), o la lista
+    // contradiría al badge: un 8 (T4.4) tiene que ir por encima de un 7 (T7 pelado)
+    const wt = (p) => { const w = wOf.get(p); return w && w.tier ? w.tier + (w.ench || 0) : 0; };
+    const wb = (p) => { const w = wOf.get(p); return w && w.tier ? w.tier : 0; };
     const arr = all.sort((a, b) => {
       if (a.id === selectedId) return -1;
       if (b.id === selectedId) return 1;
-      return (wt(b) - wt(a)) || (we(b) - we(a))
+      return (wt(b) - wt(a)) || (wb(b) - wb(a))
         || ((avgIP(b.equip) || 0) - (avgIP(a.equip) || 0)) || (gearValue(b) - gearValue(a));
     });
     countEl.textContent = String(arr.length);
@@ -256,8 +261,12 @@
       const gv = gearValue(p);
       const w = wOf.get(p);
       // El tier del arma manda: es lo que dice de un vistazo con qué te vas a encontrar.
-      const tierTag = w && w.tier
-        ? `<span class="wtierbig" style="color:${TIER_COLOR[w.tier] || TIER_COLOR[0]};border-color:${TIER_COLOR[w.tier] || TIER_COLOR[0]}" title="Weapon tier and enchantment">${w.tier}<i>.${w.ench || 0}</i></span>`
+      // Se muestra SUMADO (T4.2 -> 6) porque un encantamiento vale igual que un tier: un
+      // número suelto se compara de un golpe, "4.2 contra 5.1" hay que pararse a pensarlo.
+      // El desglose real queda en el tooltip.
+      const eff = w && w.tier ? w.tier + (w.ench || 0) : 0;
+      const tierTag = eff
+        ? `<span class="wtierbig" style="color:${TIER_COLOR[eff] || TIER_COLOR[0]};border-color:${TIER_COLOR[eff] || TIER_COLOR[0]}" title="T${w.tier}${w.ench ? '.' + w.ench : ''}">${eff}</span>`
         : '<span class="wtierbig wt-unk" title="Weapon not identified">?</span>';
       const wTag = w
         ? `<span class="wtype">${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
