@@ -219,6 +219,12 @@
   .pflag{margin-left:4px;color:#ff8f91;font-size:12px;}
   .psquad{color:#ffcf6b;font-weight:700;font-size:11px;}
   .pmeta .dist{font-size:13px;font-weight:700;color:#cfe0ff;}
+  .pl-bal{border:1px solid var(--border);border-radius:7px;padding:7px 9px;margin-bottom:9px;background:var(--elev);}
+  .pl-bal-main{font-size:15px;font-weight:800;letter-spacing:.2px;}
+  .pl-bal-main.win{color:#5fd68a;} .pl-bal-main.lose{color:#ff7b7d;} .pl-bal-main.even{color:var(--dim);}
+  .pl-bal-sub{font-size:11px;color:var(--faint);font-family:var(--mono);margin-top:3px;}
+  .pl-bal-me{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--faint);}
+  .pl-bal-me input{width:64px;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:5px;padding:2px 6px;font:inherit;font-size:12px;font-family:var(--mono);}
   .pcard.th-peligro{border-left:3px solid rgba(237,66,69,.9);background:rgba(237,66,69,.07);}
   .pcard.th-faccion{border-left:3px solid rgba(255,167,60,.7);}
   .pcard.th-pasivo{border-left:3px solid rgba(120,200,120,.4);}
@@ -510,6 +516,11 @@
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
     <div class="ally-add"><input id="ally-input" placeholder="hide ally/party by name (never shown)…" autocomplete="off"><button id="ally-btn" title="Hide this name in every zone">+</button></div>
+    <div class="pl-bal" id="pl-bal" style="display:none">
+      <div class="pl-bal-main" id="pl-bal-main"></div>
+      <div class="pl-bal-sub" id="pl-bal-sub"></div>
+      <div class="pl-bal-me"><span>Your IP</span><input id="myip-input" type="number" min="0" max="2000" step="10" placeholder="—" title="Your character's IP: it never travels over the network, so type it once"></div>
+    </div>
     <div class="plist" id="plist">
       <div class="pl-empty" id="pl-empty">Connecting to the data engine…</div>
     </div>

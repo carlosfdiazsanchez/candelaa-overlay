@@ -218,6 +218,47 @@
     return sum;
   }
 
+  // ---- balance de fuerzas: los tuyos contra los que tienes al lado ----
+  // Tu propio personaje NO viaja por la red (nadie emite tu NewCharacter), así que tu IP se
+  // escribe a mano una vez y se guarda. Sin ella el recuento sale sesgado en tu contra: falta
+  // justo el jugador que más te importa.
+  const MYIP_KEY = 'albion-overlay-myip-v1';
+  let myIp = +localStorage.getItem(MYIP_KEY) || 0;
+  const balEl = document.getElementById('pl-bal');
+  const balMain = document.getElementById('pl-bal-main');
+  const balSub = document.getElementById('pl-bal-sub');
+  const myIpInput = document.getElementById('myip-input');
+  if (myIpInput) {
+    if (myIp) myIpInput.value = String(myIp);
+    myIpInput.addEventListener('input', () => {
+      myIp = Math.max(0, Math.min(2000, +myIpInput.value || 0));
+      localStorage.setItem(MYIP_KEY, String(myIp));
+      render();
+    });
+  }
+  const fmtIP = (n) => Math.round(n).toLocaleString();
+  function drawBalance(foes) {
+    if (!balEl) return;
+    // sin el índice de items cargado toda IP sería 0 y el veredicto sería mentira
+    if (!indexMap || !foes.length || window.__ovZone === 'safe') { balEl.style.display = 'none'; return; }
+    balEl.style.display = '';
+    balEl.title = 'Your party and hidden allies against everyone else in range';
+    const ipOf = (p) => avgIP(p.equip) || 0;
+    const mates = [...players.values()].filter((p) => isAlly(p.name));
+    const mine = mates.reduce((s, p) => s + ipOf(p), 0) + myIp;
+    const theirs = foes.reduce((s, p) => s + ipOf(p), 0);
+    const diff = mine - theirs;
+    const even = Math.abs(diff) < Math.max(150, theirs * 0.05);
+    balMain.className = 'pl-bal-main ' + (even ? 'even' : diff > 0 ? 'win' : 'lose');
+    balMain.textContent = even ? '⚖ Even fight'
+      : (diff > 0 ? '▲ Ahead by ' : '▼ Behind by ') + fmtIP(Math.abs(diff)) + ' IP';
+    const side = myIp ? mates.length + 1 : mates.length;
+    // con iconos en vez de "los tuyos"/"cercanos": la línea se arma sobre la marcha y las
+    // palabras sueltas se traducirían a trozos
+    balSub.textContent = `👥 ${side} · ${fmtIP(mine)} IP   vs   ⚔ ${foes.length} · ${fmtIP(theirs)} IP`
+      + (myIp ? '' : '   (not counting you)');
+  }
+
   function render() {
     const all = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
     const guildCount = {};
@@ -237,6 +278,7 @@
         || ((avgIP(b.equip) || 0) - (avgIP(a.equip) || 0)) || (gearValue(b) - gearValue(a));
     });
     countEl.textContent = String(arr.length);
+    drawBalance(arr);
     const partyN = partyNames.size;
     const chips = [...hidden].map((n) => `<span class="hchip">${esc(n)}<button data-unhide="${esc(n)}" title="Stop hiding">✕</button></span>`).join('');
     const hideBar = (hidden.size || partyN)
