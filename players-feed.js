@@ -28,7 +28,17 @@
   // ---- zona / mapa (heredado del radar; jugadores y el capturador de mercado lo necesitan) ----
   const isAlly = (name) => !!(name && (partyNames.has(name) || hidden.has(name)));
   let currentMapId = null, mapBounds = {};
-  function zonePvp() { const z = mapBounds[currentMapId]; return z ? z.pvpType : null; }
+  // Las brumas NO están en zones.json: su id es "@MISTS@..." (y "@MISTSDUNGEON@..." el santuario),
+  // así que la zona salía sin clasificar y el aviso de enemigo se quedaba mudo justo donde más
+  // falta. Dentro de las brumas el PvP es libre, así que cuentan como zona negra.
+  function zonePvp() {
+    const id = currentMapId;
+    if (typeof id !== 'string' || !id) return null;
+    if (id.startsWith('@MISTS@') || id.startsWith('@MISTSDUNGEON@')) return 'black';
+    // los ids compuestos de instancia ("1234-5") comparten el tipo de su zona base
+    const z = mapBounds[id] || mapBounds[id.split('-')[0]];
+    return z ? z.pvpType : null;
+  }
   function applyMapChange(mapId) {
     if (typeof mapId === 'string' && mapId && mapId !== currentMapId) {
       currentMapId = mapId; window.__ovMapId = mapId; window.__ovZone = zonePvp();
@@ -182,8 +192,11 @@
   };
   function threatOf(p) {
     const z = window.__ovZone;
-    if (!z) return 'desc';
     if (z === 'safe') return 'pasivo';
+    // Zona que no sabemos clasificar (mazmorras, instancias sueltas): se asume lo PEOR. Antes
+    // devolvía "desconocido", que no era ni hostil ni pasivo, y con eso la alerta no sonaba:
+    // un beep de más no cuesta nada, uno de menos te cuesta el equipo.
+    if (!z) return 'peligro';
     if (z === 'black') return 'peligro';
     if (p.faction === 255) return 'peligro';
     return (p.faction >= 1 && p.faction <= 6) ? 'faccion' : 'pasivo';
