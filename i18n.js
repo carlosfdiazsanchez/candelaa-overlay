@@ -364,7 +364,7 @@
   "Passive": "Pasivo",
   "Hammer": "Martillo",
   "Mace": "Maza",
-  "Healer": "Sanador",
+  "Healer": "Healer",
   "Support": "Apoyo",
   "Tank": "Tanque",
   "Weapon": "Arma",
