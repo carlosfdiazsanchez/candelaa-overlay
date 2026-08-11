@@ -365,7 +365,7 @@
   "Hammer": "Martillo",
   "Mace": "Maza",
   "Healer": "Healer",
-  "Support": "Apoyo",
+  "Support": "Support",
   "Tank": "Tanque",
   "Weapon": "Arma",
   "Party members detected automatically": "Miembros de tu grupo detectados automáticamente",
