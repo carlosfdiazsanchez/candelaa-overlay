@@ -337,31 +337,42 @@
     selectItem(r.dataset.id);
   });
 
-  // ---------- encantamiento ----------
+  // ---------- encantamiento y calidad ----------
+  // Mandan sobre TODO el panel. Vender los repite dentro de la pestaña (allí la pregunta es
+  // "qué tengo en la mano", no "qué filtro miro"), así que ambos sitios pasan por aquí.
+  const sellPickers = () => [document.getElementById('sell-ench'), document.getElementById('sell-quality')];
+  function syncSellPickers() {
+    const [e, q] = sellPickers();
+    if (e) e.value = String(currentEnch);
+    if (q) q.value = String(currentQuality || 1);
+  }
+  function reloadForItem() {
+    const sv = document.getElementById('tab-sell');
+    if (sv && !sv.hidden) loadSell();
+  }
+  function setItemEnch(e) {
+    currentEnch = e;
+    document.querySelectorAll('#item-ench button[data-e]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.e === currentEnch)));
+    syncSellPickers();
+    if (!currentBase) return;
+    search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
+    loadMarket(); renderCraft(); reloadForItem();
+  }
+  function setItemQuality(q) {
+    currentQuality = q;
+    document.querySelectorAll('#item-quality button[data-q]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.q === currentQuality)));
+    syncSellPickers();
+    if (currentBase) { loadMarket(); loadCraft(); reloadForItem(); }
+    onScanFilterChange();
+  }
   document.querySelectorAll('#item-ench button[data-e]').forEach((b) => {
-    b.addEventListener('click', () => {
-      currentEnch = +b.dataset.e;
-      document.querySelectorAll('#item-ench button[data-e]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (currentBase) {
-        search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
-        loadMarket(); renderCraft();
-        const sv = document.getElementById('tab-sell'); if (sv && !sv.hidden) loadSell();
-      }
-    });
+    b.addEventListener('click', () => setItemEnch(+b.dataset.e));
   });
-
-  // ---------- calidad (filtro global, como el de encantamiento) ----------
   document.querySelectorAll('#item-quality button[data-q]').forEach((b) => {
-    b.addEventListener('click', () => {
-      currentQuality = +b.dataset.q;
-      document.querySelectorAll('#item-quality button[data-q]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (currentBase) {
-        loadMarket(); loadCraft();
-        const sv = document.getElementById('tab-sell'); if (sv && !sv.hidden) loadSell();
-      }
-      onScanFilterChange();
-    });
+    b.addEventListener('click', () => setItemQuality(+b.dataset.q));
   });
+  { const se = document.getElementById('sell-ench'); if (se) se.addEventListener('change', () => setItemEnch(+se.value)); }
+  { const sq = document.getElementById('sell-quality'); if (sq) sq.addEventListener('change', () => setItemQuality(+sq.value)); }
 
   // ---------- pestañas ----------
   document.querySelectorAll('#item-tabs .tab-btn').forEach((b) => {
@@ -1102,6 +1113,7 @@
   async function loadSell(silent) {
     const out = document.getElementById('sell-out');
     if (!out) return;
+    syncSellPickers();
     if (!currentBase) { out.innerHTML = '<div class="mempty">Search for an item above to see how best to sell it.</div>'; return; }
     const from = currentEnch;
     const top = (enchantableItem(currentBase) && from < ENCH_MAX) ? ENCH_MAX : from;
