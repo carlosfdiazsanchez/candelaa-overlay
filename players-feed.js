@@ -282,7 +282,9 @@
   }
 
   function render() {
-    const all = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
+    const inRange = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
+    const all = inRange.filter((p) => threatOf(p) !== 'pasivo');
+    const passiveN = inRange.length - all.length;
     const guildCount = {};
     all.forEach((p) => { if (p.guild) guildCount[p.guild] = (guildCount[p.guild] || 0) + 1; });
     // El arma manda también en el orden: el tier más alto arriba, que es lo que decide si
@@ -307,7 +309,10 @@
       ? `<div class="hidden-bar">${partyN ? `<span class="hparty" title="Party members detected automatically">👥 party ×${partyN}</span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
       : '';
     if (!arr.length) {
-      plist.innerHTML = hideBar + '<div class="pl-empty">No players in range.<br>Move around the world to spot them.</div>';
+      const empty = passiveN
+        ? `Nobody can attack you here.<br>Passive players hidden: ${passiveN}`
+        : 'No players in range.<br>Move around the world to spot them.';
+      plist.innerHTML = hideBar + `<div class="pl-empty">${empty}</div>`;
       return;
     }
     const inDanger = !!(window.__ovZone && window.__ovZone !== 'safe');
