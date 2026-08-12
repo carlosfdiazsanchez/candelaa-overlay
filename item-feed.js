@@ -1082,6 +1082,7 @@
   // estimación: son las mismas para los tres niveles de cada item.
   const ENCH_MAT_NAME = ['', 'RUNE', 'SOUL', 'RELIC'];
   const ENCH_MAX = 3;   // el .4 avaloniano no tiene receta de mejora: solo se craftea
+  const SELL_QS = [1, 2, 3, 4, 5];
   function enchStep(baseId, lvl) {
     const e = enchIndex[baseId];
     if (!e || lvl < 1 || lvl > ENCH_MAX) return null;
@@ -1108,27 +1109,32 @@
     const matIds = []; for (let e = from + 1; e <= top; e++) { const s = enchStep(currentBase, e); if (s) matIds.push(s.id); }
     const locs = scopeCities();
     const matLocs = sellMatCity() ? [sellMatCity()] : CRAFT_CITIES;
-    const q = currentQuality || 1;
     if (!silent) out.innerHTML = '<div class="mempty">Loading prices…</div>';
-    let pr = [], vol = [], mat = [];
+    // las 5 calidades a la vez: la calidad no se puede cambiar, pero SÍ decide cuál compras
+    // para encantar y revender, así que la comparativa por calidad es media respuesta
+    let prSets = [], volSets = [], mat = [];
     try {
-      [pr, vol, mat] = await Promise.all([
-        window.overlay.craftPrices(ids, locs, q),
-        window.overlay.history(ids, locs, 21, q),
+      [prSets, volSets, mat] = await Promise.all([
+        Promise.all(SELL_QS.map((q) => window.overlay.craftPrices(ids, locs, q).catch(() => []))),
+        Promise.all(SELL_QS.map((q) => window.overlay.history(ids, locs, 21, q).catch(() => []))),
         matIds.length ? window.overlay.craftPrices(matIds, matLocs, 0) : Promise.resolve([]),
       ]);
     } catch (_) { out.innerHTML = '<div class="mempty">Could not load prices (API limit or no connection?). Try again in a moment.</div>'; return; }
-    const prod = {}, vols = {}, mats = {};
-    (pr || []).forEach((r) => {
-      if (!inScope(r.city)) return;
-      (prod[r.item_id] = prod[r.item_id] || {})[cityKey(r.city)] = {
-        sell: r.sell_price_min || 0, sellDate: r.sell_price_min_date || null,
-        buy: r.buy_price_max || 0, buyDate: r.buy_price_max_date || null,
-      };
+    const prodQ = {}, volsQ = {}, mats = {};
+    SELL_QS.forEach((q, i) => {
+      const P = {}, V = {};
+      (prSets[i] || []).forEach((r) => {
+        if (!inScope(r.city)) return;
+        (P[r.item_id] = P[r.item_id] || {})[cityKey(r.city)] = {
+          sell: r.sell_price_min || 0, sellDate: r.sell_price_min_date || null,
+          buy: r.buy_price_max || 0, buyDate: r.buy_price_max_date || null,
+        };
+      });
+      (volSets[i] || []).forEach((r) => { (V[r.item_id] = V[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
+      prodQ[q] = P; volsQ[q] = V;
     });
-    (vol || []).forEach((r) => { (vols[r.item_id] = vols[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
     (mat || []).forEach((r) => { (mats[r.item_id] = mats[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
-    sellCache = { base: currentBase, name: currentName, from, top, prod, vols, mats, quality: q };
+    sellCache = { base: currentBase, from, top, prodQ, volsQ, mats };
     renderSell();
   }
 
@@ -1137,15 +1143,14 @@
     if (sellMatOrder()) return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
     return cell.sell || 0;
   };
+  const wayTxt = (d) => (d.way === 'instant' ? 'instantly' : 'with an order');
 
-  function renderSell() {
-    const out = document.getElementById('sell-out');
-    if (!out || !sellCache || sellCache.base !== currentBase || sellCache.from !== currentEnch) return;
-    const { from, top, prod, vols, mats, quality } = sellCache;
+  // Plan de salida para UNA calidad: coste de encantar por escalón + mejor destino de cada nivel.
+  // opts.forceBuy fuerza a contar la compra del item aunque esté marcado "ya lo tengo".
+  function sellPlan(P, V, opts) {
+    const { from, top, mats } = sellCache;
     const tax = salesTax();
     const matFee = sellMatOrder() ? 1.025 : 1;
-    const qty = sellQty();
-
     const matBest = (id) => {
       const c = mats[id] || {};
       let unit = 0, city = '';
@@ -1156,7 +1161,7 @@
     // (solo impuesto) o ponerte en la cola de venta (impuesto + 2,5%). Con orden se valora al
     // MENOR entre la orden de ahora y el medio histórico: el pico de un troll no lo cobras.
     const destsOf = (pid) => {
-      const c = prod[pid] || {}, v = vols[pid] || {};
+      const c = P[pid] || {}, v = V[pid] || {};
       const rows = [];
       Object.keys(c).forEach((ck) => {
         const cell = c[ck], vc = v[ck] || {}, avg = vc.avg || 0;
@@ -1168,10 +1173,8 @@
       });
       rows.forEach((r) => { r.stale = isStale(r.date); });
       const fresh = rows.filter((r) => !r.stale);
-      const use = fresh.length ? fresh : rows;
-      return use.sort((a, b) => b.net - a.net);
+      return (fresh.length ? fresh : rows).sort((a, b) => b.net - a.net);
     };
-
     const routes = [];
     let acc = 0; const steps = []; let missing = null;
     for (let t = from; t <= top; t++) {
@@ -1186,27 +1189,47 @@
       routes.push({ t, extra: acc, steps: steps.slice(), dests, dest: dests[0] || null });
     }
     const priced = routes.filter((r) => r.dest);
-    if (!priced.length) {
-      out.innerHTML = itemHeadHtml('no market prices for this item right now')
-        + '<div class="mempty">Nobody is buying or selling it in the markets you have selected. Widen the 🏪 filter or the freshness limit.</div>';
-      return;
-    }
-    // el punto de partida es venderlo AHORA tal cual: todo lo demás se mide contra eso
-    const baseRoute = routes[0].dest ? routes[0] : null;
-    const baseNet = baseRoute ? baseRoute.dest.net : 0;
-    const buyCell = prod[prodEnch(currentBase, from)] || {};
-    let basePrice = 0, basePriceCity = '';
-    Object.keys(buyCell).forEach((ck) => { const p = buyCell[ck].sell || 0; if (p > 0 && (!basePrice || p < basePrice)) { basePrice = p; basePriceCity = ck; } });
-    const capital = sellOwned() ? 0 : basePrice;
+    if (!priced.length) return null;
+    const baseNet = routes[0].dest ? routes[0].dest.net : 0;
+    // lo que te cuesta comprarlo: la oferta de venta más barata, ignorando las caducadas y los
+    // precios irrisorios (dato podrido). Sin este filtro salía un coste de compra de risa y la
+    // diferencia entre "ya lo tengo" y "lo compro" parecía insignificante.
+    const buyCell = P[prodEnch(currentBase, from)] || {};
+    const asks = Object.keys(buyCell).map((ck) => ({ ck, p: buyCell[ck].sell || 0, d: buyCell[ck].sellDate })).filter((x) => x.p > 0);
+    const freshAsks = asks.filter((x) => !isStale(x.d));
+    const useAsks = freshAsks.length ? freshAsks : asks;
+    const allP = useAsks.map((x) => x.p);
+    const sane = useAsks.filter((x) => !isLoOutlier(x.p, allP));
+    const pick = (sane.length ? sane : useAsks).sort((a, b) => a.p - b.p)[0];
+    const basePrice = pick ? pick.p : 0, basePriceCity = pick ? pick.ck : '';
+    const cap = (opts && opts.forceBuy) || !sellOwned() ? basePrice : 0;
     priced.forEach((r) => {
-      r.cost = capital + r.extra;
+      r.cost = cap + r.extra;
       r.profit = r.dest.net - r.cost;
       r.roi = r.cost > 0 ? (r.profit / r.cost) * 100 : null;
       r.delta = (r.dest.net - r.extra) - baseNet;
     });
+    return { priced, baseNet, basePrice, basePriceCity, missing, capital: cap };
+  }
+
+  function renderSell() {
+    const out = document.getElementById('sell-out');
+    if (!out || !sellCache || sellCache.base !== currentBase || sellCache.from !== currentEnch) return;
+    const { from, top, prodQ, volsQ } = sellCache;
+    const tax = salesTax();
+    const matFee = sellMatOrder() ? 1.025 : 1;
+    const qty = sellQty();
+    const q0 = currentQuality || 1;
+
+    const plan = sellPlan(prodQ[q0], volsQ[q0]);
+    if (!plan) {
+      out.innerHTML = itemHeadHtml('no market prices for this item right now')
+        + '<div class="mempty">Nobody is buying or selling it in the markets you have selected. Widen the 🏪 filter or the freshness limit.</div>';
+      return;
+    }
+    const { priced, baseNet, basePrice, basePriceCity, missing, capital } = plan;
     const best = priced.reduce((a, b) => (b.delta > a.delta ? b : a), priced[0]);
 
-    const wayTxt = (d) => (d.way === 'instant' ? 'instantly' : 'with an order');
     const wayTip = (d) => (d.way === 'instant'
       ? `You take that market's best bid right now: ${fmt(d.gross)} minus ${Math.round(tax * 100)}% tax`
       : `You queue at ${fmt(d.gross)} and wait: ${Math.round(tax * 100)}% tax plus the 2.5% order fee${d.avg > 0 ? ` · valued at the historical average (~${fmt(d.avg)}) when the current order is above it` : ''}`);
@@ -1216,22 +1239,49 @@
       const d = r.dest;
       const isBest = r === best;
       const dcls = r.delta > 0 ? 'up' : (r.delta < 0 ? 'down' : 'faint');
-      const age = agoStr(d.date);
       return `<tr${isBest ? ' class="best-row"' : ''}><td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(prodEnch(currentBase, r.t))}?size=40" loading="lazy" alt=""><div class="scan-item-txt">${isBest ? '⭐ ' : ''}${esc(routeName(r.t))} <span class="enchtag">.${r.t}</span><br><span class="faint" style="font-size:11px">${cityShort(d.city)} · ${wayTxt(d)}${r.roi != null ? ` · ROI ${roiTxt(r.roi)}` : ''}</span></div></div></td>`
         + `<td class="silver" title="${r.t === from ? (capital ? 'What buying the item costs you' : 'You already own it: nothing to spend') : 'Enchanting materials' + (capital ? ' plus buying the item' : '')}">${r.cost > 0 ? fmt(r.cost) : '—'}</td>`
         + `<td class="silver" title="${esc(wayTip(d))}">${fmt(d.net)}</td>`
         + `<td class="${r.profit >= 0 ? 'up' : 'down'}"><b>${r.profit >= 0 ? '+' : ''}${fmt(r.profit)}</b></td>`
         + `<td class="${dcls}" title="Against selling it right now as it is (${fmt(baseNet)} net)">${r.t === from ? '—' : (r.delta >= 0 ? '+' : '') + fmt(r.delta)}</td>`
         + `<td class="${d.vol > 0 ? '' : 'faint'}" title="Units moved per day in that market. With no volume the price is there but nobody is buying.">${d.vol > 0 ? fmtInt(d.vol) : '—'}</td>`
-        + `<td class="${d.stale ? 'down' : 'faint'}" title="How long ago that price was seen">${d.stale ? '⚠ ' : ''}${age || '—'}</td></tr>`;
+        + `<td class="${d.stale ? 'down' : 'faint'}" title="How long ago that price was seen">${d.stale ? '⚠ ' : ''}${agoStr(d.date) || '—'}</td></tr>`;
     }).join('');
+
+    // ---- por calidad: SIEMPRE contando la compra, porque esta tabla responde a
+    // "¿qué calidad me compro para encantar y revender?" ----
+    const qRows = SELL_QS.map((q) => {
+      const pl = sellPlan(prodQ[q], volsQ[q], { forceBuy: true });
+      if (!pl || !pl.basePrice) return { q, p: null };
+      const b = pl.priced.reduce((a, c) => (c.profit > a.profit ? c : a), pl.priced[0]);
+      return { q, p: pl, best: b, buy: pl.basePrice, buyCity: pl.basePriceCity };
+    });
+    const qOk = qRows.filter((x) => x.p && x.best);
+    const qBest = qOk.length ? qOk.reduce((a, b) => (b.best.profit > a.best.profit ? b : a), qOk[0]) : null;
+    const qTable = qOk.length
+      ? '<div class="sell-sub">Which quality is worth buying to do this</div><div class="mkt-scroll"><table><thead><tr>'
+        + '<th style="text-align:left">Quality</th><th title="Cheapest sell offer for the plain item at that quality">Buy at</th><th>Best route</th>'
+        + '<th title="Net silver after tax and fees">Sells for</th><th title="Per unit, buying the item included">Profit</th><th>ROI</th><th title="Units moved per day at that quality in the destination market">Vol/day</th>'
+        + '</tr></thead><tbody>'
+        + qOk.map((x) => {
+          const b = x.best;
+          return `<tr${x === qBest ? ' class="best-row"' : ''}><td class="name">${x === qBest ? '⭐ ' : ''}${QNAMES[x.q]}${x.q === q0 ? ' <span class="enchtag">yours</span>' : ''}</td>`
+            + `<td class="silver" title="in ${cityShort(x.buyCity)}">${fmt(x.buy)}</td>`
+            + `<td class="faint">.${b.t} · ${cityShort(b.dest.city)} ${wayTxt(b.dest)}</td>`
+            + `<td class="silver">${fmt(b.dest.net)}</td>`
+            + `<td class="${b.profit >= 0 ? 'up' : 'down'}"><b>${b.profit >= 0 ? '+' : ''}${fmt(b.profit)}</b></td>`
+            + `<td class="${b.profit >= 0 ? 'up' : 'down'}">${roiTxt(b.roi)}</td>`
+            + `<td class="${b.dest.vol > 0 ? '' : 'faint'}">${b.dest.vol > 0 ? fmtInt(b.dest.vol) : '—'}</td></tr>`;
+        }).join('')
+        + '</tbody></table></div>'
+      : '';
 
     const shopping = best.steps.length
       ? '<div class="sell-plan"><div class="sell-plan-h">What to buy for the starred route</div>'
+        + (capital ? `<div class="sell-plan-row"><img class="scan-ico" src="icon://item/${encodeURIComponent(prodEnch(currentBase, from))}?size=40" loading="lazy" alt=""><span class="copyable" data-copy="${esc(copyNameOf(currentBase, from, currentName))}" title="Click to copy">${esc(currentName)} .${from}</span> <b>× ${fmtInt(qty)}</b> <span class="faint">in ${cityShort(basePriceCity)} at ${fmt(basePrice)} each</span> <span class="silver">${fmt(basePrice * qty)}</span></div>` : '')
         + best.steps.map((s) => {
           const nm = nameById[s.id] || s.id;
-          const total = s.unit * s.count * matFee;
-          return `<div class="sell-plan-row"><img class="scan-ico" src="icon://item/${encodeURIComponent(s.id)}?size=32" loading="lazy" alt=""><span class="copyable" data-copy="${esc(nameEnById[s.id] || nm)}" title="Click to copy «${esc(nameEnById[s.id] || nm)}»">${esc(nm)}</span> <b>× ${fmtInt(s.count * qty)}</b> <span class="faint">in ${cityShort(s.city)} at ${fmt(s.unit)} each</span> <span class="silver">${fmt(total * qty)}</span></div>`;
+          return `<div class="sell-plan-row"><img class="scan-ico" src="icon://item/${encodeURIComponent(s.id)}?size=40" loading="lazy" alt=""><span class="copyable" data-copy="${esc(nameEnById[s.id] || nm)}" title="Click to copy «${esc(nameEnById[s.id] || nm)}»">${esc(nm)}</span> <b>× ${fmtInt(s.count * qty)}</b> <span class="faint">in ${cityShort(s.city)} at ${fmt(s.unit)} each</span> <span class="silver">${fmt(s.unit * s.count * matFee * qty)}</span></div>`;
         }).join('')
         + `<div class="sell-plan-row faint">→ .${best.t} and sell in ${cityShort(best.dest.city)} ${wayTxt(best.dest)}</div></div>`
       : '';
@@ -1249,23 +1299,31 @@
     const thin = best.dest.vol > 0 ? '' : ' <b>Careful</b>: nothing has sold there lately, so that price may take a long time to happen.';
     const verdict = (best.t === from
       ? `Best move: <b>sell it as it is</b> in ${cityShort(best.dest.city)} ${wayTxt(best.dest)} — ${fmt(best.dest.net)} net.`
-      : `Best move: <b>enchant it to .${best.t}</b> and sell in ${cityShort(best.dest.city)} ${wayTxt(best.dest)} — ${fmt(best.delta)} more than selling it now${qty > 1 ? ` (${fmt(best.delta * qty)} for ${qty})` : ''}.`) + thin;
+      : `Best move: <b>enchant it to .${best.t}</b> and sell in ${cityShort(best.dest.city)} ${wayTxt(best.dest)} — ${fmt(best.delta)} more than selling it now.`) + thin;
+    // el total manda cuando compras varias: cuánto pones, cuánto sacas y cuánto tardas en colocarlas
+    const days = best.dest.vol > 0 ? qty / best.dest.vol : 0;
+    const pace = days <= 0 ? '.'
+      : days < 1 ? ` · Placing them takes less than a day at ${fmtInt(best.dest.vol)}/day in ${cityShort(best.dest.city)}.`
+      : ` · Placing them takes about ${Math.ceil(days)} days at ${fmtInt(best.dest.vol)}/day in ${cityShort(best.dest.city)}.`;
+    const totals = `For <b>${fmtInt(qty)}</b>: you put in <b>${fmt(best.cost * qty)}</b>, you get back <b>${fmt(best.dest.net * qty)}</b> → <b>${best.profit >= 0 ? '+' : ''}${fmt(best.profit * qty)}</b>` + pace;
+
     const notes = [];
     if (!enchantableItem(currentBase)) notes.push('This item has no enchant recipe: the only choice is where to sell it.');
     else if (from >= ENCH_MAX) notes.push('.3 is the last level you can enchant to: .4 can only be crafted.');
     if (missing) notes.push(`No price for ${esc(nameById[missing] || missing)}, so the higher levels are left out.`);
-    if (!sellOwned() && basePrice) notes.push(`Buying it costs ${fmt(basePrice)} in ${cityShort(basePriceCity)} and is counted in every route.`);
-    notes.push('Quality cannot be changed in game — it is set when the item is crafted and enchanting keeps it. Pick yours in the quality filter above.');
+    if (capital) notes.push(`Buying it costs ${fmt(basePrice)} in ${cityShort(basePriceCity)} and is counted in every route.`);
+    else notes.push('You already own it, so only the runes count as cost. Untick "I already own it" to see it as a purchase.');
+    notes.push('Quality cannot be changed in game — it is set when the item is crafted and enchanting keeps it. Enchanting a Masterpiece gives back a Masterpiece.');
 
-    out.innerHTML = itemHeadHtml(`quality: ${QNAMES[quality] || 'Normal'} · ${qty > 1 ? qty + ' units · ' : ''}what to do with the one you have`)
-      + `<div class="sell-verdict">${verdict}</div>`
+    out.innerHTML = itemHeadHtml(`quality: ${QNAMES[q0] || 'Normal'} · ${qty > 1 ? fmtInt(qty) + ' units · ' : ''}${capital ? 'buying it and flipping it' : 'what to do with the one you have'}`)
+      + `<div class="sell-verdict">${verdict}<div class="sell-totals">${totals}</div></div>`
       + '<div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Route</th>'
       + '<th title="What you have to spend: enchanting materials, plus the item itself if you do not own it yet">Costs you</th>'
       + '<th title="Net silver in your pocket after tax and fees">You get</th>'
       + '<th title="What you get minus what you spend">Profit</th>'
       + '<th title="How much better (or worse) than selling it right now as it is">vs selling now</th>'
       + '<th>Vol/day</th><th>Seen</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-      + shopping + destTable
+      + qTable + shopping + destTable
       + `<div class="best-hint">${notes.join(' · ')}</div>`;
   }
 

@@ -42,14 +42,33 @@ function registerIconCache() {
     if (!id) return new Response(null, { status: 400 });
     const f = fileFor(id, size);
     try { return png(fs.readFileSync(f)); } catch (_) {}
-    try {
-      const r = await fetch('https://render.albiononline.com/v1/item/' + encodeURIComponent(id) + '.png?size=' + size,
-        { signal: AbortSignal.timeout(15000) });
-      if (!r.ok) return new Response(null, { status: r.status });
+    // El render de Albion se atasca con los iconos que no tiene calientes (medido: 2 de cada 6
+    // pasan de 30s la primera vez), así que se pide a nuestra API, que los cachea en el VPS:
+    // el primero que necesita un icono lo paga una vez y el resto lo tiene al instante. Si el
+    // VPS no responde se va al render oficial, y si tampoco, se enseña el item sin encantar
+    // (mismo arte, sin el aura) en vez de dejar el hueco roto.
+    const save = (buf) => { try { fs.writeFileSync(f, buf); } catch (_) {} return png(buf); };
+    const get = async (url, headers, ms) => {
+      const r = await fetch(url, { headers, signal: AbortSignal.timeout(ms) });
+      if (!r.ok) throw new Error(String(r.status));
       const buf = Buffer.from(await r.arrayBuffer());
-      try { fs.writeFileSync(f, buf); } catch (_) {}
-      return png(buf);
-    } catch (_) { return new Response(null, { status: 504 }); }
+      if (!buf.length) throw new Error('empty');
+      return buf;
+    };
+    const token = readStoredToken();
+    if (token) {
+      try {
+        return save(await get(API_BASE + '/api/icon/' + encodeURIComponent(id) + '?size=' + size,
+          { 'x-candelaa-token': token }, 50000));
+      } catch (_) {}
+    }
+    try {
+      return save(await get('https://render.albiononline.com/v1/item/' + encodeURIComponent(id) + '.png?size=' + size,
+        {}, 20000));
+    } catch (_) {}
+    const plain = id.replace(/@\d+$/, '');
+    if (plain !== id) { try { return png(fs.readFileSync(fileFor(plain, size))); } catch (_) {} }
+    return new Response(null, { status: 504 });
   });
   // por si algún día se desmadra: si la caché pasa del límite, se vacía y se rehace sola
   try {
