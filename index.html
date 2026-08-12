@@ -347,7 +347,7 @@
   .cmp-note{font-size:10.5px;color:var(--faint);margin:7px 0 10px;line-height:1.5;}
   .cmp-line{font-size:12.5px;margin:5px 0;}
   .cmp-verdict{font-size:14px;font-weight:700;margin:9px 0;padding:8px 10px;border-radius:6px;background:var(--elev);border:1px solid var(--border);}
-  #tab-scan select, #tab-enchant select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
+  #tab-scan select, #tab-sell select, #tab-enchant select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;width:100%;}
   .scan-btn{width:100%;background:rgba(90,169,196,.18);border:1px solid rgba(90,169,196,.45);color:#cdeaf2;font:inherit;font-size:13px;font-weight:600;padding:8px;border-radius:7px;cursor:pointer;margin:6px 0;}
   .scan-btn:hover{background:rgba(90,169,196,.28);}
   .scan-btn:disabled{opacity:.55;cursor:default;}
@@ -369,6 +369,14 @@
   .scan-item-txt{min-width:0;}
   tr.best-row td{background:rgba(59,165,93,.14);}
   tr.best-row td.name{color:#86e0a3;font-weight:700;}
+  .sell-verdict{margin:2px 0 9px;padding:9px 11px;border-radius:6px;background:rgba(59,165,93,.12);border:1px solid rgba(59,165,93,.3);font-size:12.5px;line-height:1.5;color:#c8e8d3;}
+  .sell-verdict b{color:#86e0a3;}
+  .sell-sub{margin:12px 0 5px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);}
+  .sell-plan{margin-top:11px;padding:9px 11px;border-radius:7px;background:var(--elev);border:1px solid var(--border);}
+  .sell-plan-h{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);margin-bottom:6px;}
+  .sell-plan-row{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;}
+  .sell-plan-row .scan-ico{width:28px;height:28px;}
+  .sell-plan-row .silver{margin-left:auto;}
   .craft-item{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
   .craft-item .slot{width:38px;height:38px;flex:0 0 auto;font-size:18px;}
   .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--border);}
@@ -596,6 +604,7 @@
     <div class="market-results" id="item-results"></div>
     <div class="tabs" id="item-tabs">
       <button class="tab-btn active" data-tab="market">Prices</button>
+      <button class="tab-btn" data-tab="sell">Sell</button>
       <button class="tab-btn" data-tab="craft">Crafting</button>
       <button class="tab-btn" data-tab="scan">Scanner</button>
       <button class="tab-btn" data-tab="level">Level</button>
@@ -604,6 +613,16 @@
     <div id="tab-market"></div>
     <div id="tab-config" hidden>
       <label class="cfg-check" title="With premium the sales tax is 4%; without it, 8%. Affects every profit calculation in the panel."><input type="checkbox" id="premium-toggle" checked> Premium account — sales tax <b>4%</b> (without premium, 8%)</label>
+    </div>
+    <div id="tab-sell" hidden>
+      <div class="craft-cfg">
+        <div class="cfg-row"><span class="cfg-lbl">Units</span><input type="number" id="sell-qty" value="1" min="1"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Runes from</span><select id="sell-mat-city" title="City where you buy the enchanting materials. Leave it on Anywhere to use the cheapest price across every city."><option value="">Anywhere (the cheapest)</option>
+          <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+        <label class="cfg-check" title="Placing a buy order costs 1 silver above the current best bid, plus a 2.5% setup fee. Cheaper than buying instantly, but it takes time to get filled."><input type="checkbox" id="sell-mat-order"> Runes via buy order (bid+1 and +2.5%)</label>
+        <label class="cfg-check" title="Untick it if you do not own the item yet: the cheapest sell offer is added to the cost and every route is measured as an investment."><input type="checkbox" id="sell-owned" checked> I already own it (the item itself costs me nothing)</label>
+      </div>
+      <div id="sell-out"></div>
     </div>
     <div id="tab-craft" hidden>
       <div class="craft-cfg">
@@ -625,7 +644,7 @@
     </div>
     <div id="tab-scan" hidden>
       <div class="craft-cfg">
-      <div class="cfg-row"><span class="cfg-lbl">Mode</span><select id="scan-mode" title="Resell: you buy the finished item and move it. Craft: you buy the materials and make it, assuming you craft in each item's bonus city with the focus setup from the Crafting tab."><option value="flip" selected>Buy and resell</option><option value="craft">Craft</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl">Mode</span><select id="scan-mode" title="Resell: you buy the finished item and move it. Craft: you buy the materials and make it, assuming you craft in each item's bonus city with the focus setup from the Crafting tab. Enchant: you buy the plain item, spend runes on it and sell the enchanted one."><option value="flip" selected>Buy and resell</option><option value="craft">Craft</option><option value="enchant">Enchant and resell</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Sell to</span><select id="scan-sell" title="Instant: you take that market's bid right away and only pay tax. With order: you queue at the cheapest sell price, pay tax plus 2.5% and wait to get filled. Market destinations follow the 🏪 filter: cities only, + Rests or + smugglers."><option value="bm" selected>Black Market — instant</option><option value="bmorder">Black Market — with order</option><option value="market">Markets — with order</option><option value="cityfast">Markets — instant</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl" title="History window used for volume and average price. Fewer days = more recent; more days = more stable.">Window</span><select id="scan-days">
         <option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="21" selected>21 days</option><option value="30">30 days</option></select></div>

@@ -395,6 +395,13 @@ ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
   catch (_) { return {}; }
 });
+// Recetas de encantado (upgraderequirements de ao-bin-dumps): id base -> [cantidad, tipo]
+// tipo 0 = runa/alma/reliquia del tier del item, 1 = extracto arcano, 2 = salsa de pescado.
+ipcMain.handle('enchant-index', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-enchant.json'), 'utf8')); }
+  catch (_) { return null; }
+});
+
 ipcMain.handle('items-index-en', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-en.json'), 'utf8')); }
   catch (_) { return []; }

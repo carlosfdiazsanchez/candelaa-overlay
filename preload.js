@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('overlay', {
   zones: () => ipcRenderer.invoke('zones'),
   marketPrices: (itemId, quality) => ipcRenderer.invoke('market-prices', itemId, quality),
   recipesIndex: () => ipcRenderer.invoke('recipes-index'),
+  enchantIndex: () => ipcRenderer.invoke('enchant-index'),
   focusIndex: () => ipcRenderer.invoke('focus-index'),
   itemsIndexEn: () => ipcRenderer.invoke('items-index-en'),
   marketLive: (itemId, quality) => ipcRenderer.invoke('market-live', itemId, quality),

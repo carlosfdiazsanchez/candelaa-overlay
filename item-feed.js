@@ -10,7 +10,7 @@
   const craftOut = document.getElementById('craft-out');
   if (!search) return;
 
-  let items = [], nameById = {}, nameEnById = {}, recipes = {}, focusData = {};
+  let items = [], nameById = {}, nameEnById = {}, recipes = {}, focusData = {}, enchIndex = {};
   let currentBase = null, currentName = '', currentEnch = 0, currentQuality = 0;
   let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null;
 
@@ -139,6 +139,9 @@
     nameById = Object.fromEntries(items.map((x) => [x.id, x.n]));
     initDailyBonus();
   });
+  if (window.overlay.enchantIndex) {
+    window.overlay.enchantIndex().then((ix) => { enchIndex = ix || {}; }).catch(() => {});
+  }
   // nombres en inglés: para el mensaje de compra del chat global (se carga aparte, sin bloquear)
   if (window.overlay.itemsIndexEn) {
     window.overlay.itemsIndexEn().then((en) => { nameEnById = Object.fromEntries((en || []).map((x) => [x.id, x.n])); }).catch(() => {});
@@ -299,6 +302,7 @@
     { const co = document.getElementById('cmp-offer'); if (co) co.value = ''; }
     loadMarket(); loadCraft();
     { const lv = document.getElementById('tab-level'); if (lv && !lv.hidden) loadLevel(); }
+    { const sv = document.getElementById('tab-sell'); if (sv && !sv.hidden) loadSell(); }
   }
   let t = null;
   search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(doSearch, 180); });
@@ -338,7 +342,11 @@
     b.addEventListener('click', () => {
       currentEnch = +b.dataset.e;
       document.querySelectorAll('#item-ench button[data-e]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (currentBase) { search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : ''); loadMarket(); renderCraft(); }
+      if (currentBase) {
+        search.value = currentName + (currentEnch > 0 ? ` .${currentEnch}` : '');
+        loadMarket(); renderCraft();
+        const sv = document.getElementById('tab-sell'); if (sv && !sv.hidden) loadSell();
+      }
     });
   });
 
@@ -347,7 +355,10 @@
     b.addEventListener('click', () => {
       currentQuality = +b.dataset.q;
       document.querySelectorAll('#item-quality button[data-q]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (currentBase) { loadMarket(); loadCraft(); }
+      if (currentBase) {
+        loadMarket(); loadCraft();
+        const sv = document.getElementById('tab-sell'); if (sv && !sv.hidden) loadSell();
+      }
       onScanFilterChange();
     });
   });
@@ -356,10 +367,12 @@
   document.querySelectorAll('#item-tabs .tab-btn').forEach((b) => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#item-tabs .tab-btn').forEach((x) => x.classList.toggle('active', x === b));
-      ['market', 'craft', 'scan', 'level', 'config'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
+      ['market', 'sell', 'craft', 'scan', 'level', 'config'].forEach((t) => { const el = document.getElementById('tab-' + t); if (el) el.hidden = b.dataset.tab !== t; });
       if (b.dataset.tab === 'level') loadLevel();
+      if (b.dataset.tab === 'sell') loadSell();
       const enchSel = document.getElementById('item-ench');
-      if (enchSel) enchSel.style.display = (b.dataset.tab === 'market') ? '' : 'none';
+      // en Vender el encantamiento elegido es el que YA tiene el item: es el punto de partida
+      if (enchSel) enchSel.style.display = (b.dataset.tab === 'market' || b.dataset.tab === 'sell') ? '' : 'none';
       const frSel = document.getElementById('item-fresh');
       if (frSel) frSel.style.display = (b.dataset.tab === 'market' || b.dataset.tab === 'top') ? '' : 'none';
       const qSel = document.getElementById('item-quality');
@@ -1062,6 +1075,206 @@
   //  se evalúa dentro de calcResult y muestra el veredicto de rentabilidad.)
   { const co = document.getElementById('cmp-offer'); if (co) co.addEventListener('input', () => { if (currentBase) calcResult(); }); }
 
+  // ================= VENDER (rutas de salida del item que ya tienes) =================
+  // La calidad NO se puede cambiar en el juego: se fija al craftear y encantar la respeta.
+  // Por eso solo hay dos familias de ruta: venderlo tal cual, o subirle encantamiento y venderlo.
+  // Las cantidades de runa/alma/reliquia salen de upgraderequirements (ao-bin-dumps), no de una
+  // estimación: son las mismas para los tres niveles de cada item.
+  const ENCH_MAT_NAME = ['', 'RUNE', 'SOUL', 'RELIC'];
+  const ENCH_MAX = 3;   // el .4 avaloniano no tiene receta de mejora: solo se craftea
+  function enchStep(baseId, lvl) {
+    const e = enchIndex[baseId];
+    if (!e || lvl < 1 || lvl > ENCH_MAX) return null;
+    const kind = e[1];
+    const id = kind === 1 ? 'T1_ALCHEMY_EXTRACT_LEVEL' + lvl
+      : kind === 2 ? 'T1_FISHSAUCE_LEVEL' + lvl
+      : 'T' + tierOf(baseId) + '_' + ENCH_MAT_NAME[lvl];
+    return { id, count: e[0] };
+  }
+  const enchantableItem = (baseId) => !!enchIndex[baseId];
+  const sellMatCity = () => (document.getElementById('sell-mat-city') || {}).value || '';
+  const sellMatOrder = () => !!(document.getElementById('sell-mat-order') || {}).checked;
+  const sellOwned = () => !!(document.getElementById('sell-owned') || {}).checked;
+  const sellQty = () => Math.max(1, +((document.getElementById('sell-qty') || {}).value) || 1);
+  let sellCache = null;
+
+  async function loadSell(silent) {
+    const out = document.getElementById('sell-out');
+    if (!out) return;
+    if (!currentBase) { out.innerHTML = '<div class="mempty">Search for an item above to see how best to sell it.</div>'; return; }
+    const from = currentEnch;
+    const top = (enchantableItem(currentBase) && from < ENCH_MAX) ? ENCH_MAX : from;
+    const ids = []; for (let e = from; e <= top; e++) ids.push(prodEnch(currentBase, e));
+    const matIds = []; for (let e = from + 1; e <= top; e++) { const s = enchStep(currentBase, e); if (s) matIds.push(s.id); }
+    const locs = scopeCities();
+    const matLocs = sellMatCity() ? [sellMatCity()] : CRAFT_CITIES;
+    const q = currentQuality || 1;
+    if (!silent) out.innerHTML = '<div class="mempty">Loading prices…</div>';
+    let pr = [], vol = [], mat = [];
+    try {
+      [pr, vol, mat] = await Promise.all([
+        window.overlay.craftPrices(ids, locs, q),
+        window.overlay.history(ids, locs, 21, q),
+        matIds.length ? window.overlay.craftPrices(matIds, matLocs, 0) : Promise.resolve([]),
+      ]);
+    } catch (_) { out.innerHTML = '<div class="mempty">Could not load prices (API limit or no connection?). Try again in a moment.</div>'; return; }
+    const prod = {}, vols = {}, mats = {};
+    (pr || []).forEach((r) => {
+      if (!inScope(r.city)) return;
+      (prod[r.item_id] = prod[r.item_id] || {})[cityKey(r.city)] = {
+        sell: r.sell_price_min || 0, sellDate: r.sell_price_min_date || null,
+        buy: r.buy_price_max || 0, buyDate: r.buy_price_max_date || null,
+      };
+    });
+    (vol || []).forEach((r) => { (vols[r.item_id] = vols[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, avg: r.avg_price || 0 }; });
+    (mat || []).forEach((r) => { (mats[r.item_id] = mats[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
+    sellCache = { base: currentBase, name: currentName, from, top, prod, vols, mats, quality: q };
+    renderSell();
+  }
+
+  const sellMatUnit = (cell) => {
+    if (!cell) return 0;
+    if (sellMatOrder()) return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
+    return cell.sell || 0;
+  };
+
+  function renderSell() {
+    const out = document.getElementById('sell-out');
+    if (!out || !sellCache || sellCache.base !== currentBase || sellCache.from !== currentEnch) return;
+    const { from, top, prod, vols, mats, quality } = sellCache;
+    const tax = salesTax();
+    const matFee = sellMatOrder() ? 1.025 : 1;
+    const qty = sellQty();
+
+    const matBest = (id) => {
+      const c = mats[id] || {};
+      let unit = 0, city = '';
+      Object.keys(c).forEach((ck) => { const p = sellMatUnit(c[ck]); if (p > 0 && (!unit || p < unit)) { unit = p; city = ck; } });
+      return { unit, city };
+    };
+    // lo que te deja cada mercado por unidad, por las dos vías: cobrar la puja al instante
+    // (solo impuesto) o ponerte en la cola de venta (impuesto + 2,5%). Con orden se valora al
+    // MENOR entre la orden de ahora y el medio histórico: el pico de un troll no lo cobras.
+    const destsOf = (pid) => {
+      const c = prod[pid] || {}, v = vols[pid] || {};
+      const rows = [];
+      Object.keys(c).forEach((ck) => {
+        const cell = c[ck], vc = v[ck] || {}, avg = vc.avg || 0;
+        if (cell.buy > 0) rows.push({ city: ck, way: 'instant', gross: cell.buy, net: cell.buy * (1 - tax), date: cell.buyDate, vol: vc.daily || 0, avg });
+        if (cell.sell > 0) {
+          const g = avg > 0 ? Math.min(cell.sell, avg) : cell.sell;
+          rows.push({ city: ck, way: 'order', gross: g, net: g * (1 - tax - 0.025), date: cell.sellDate, vol: vc.daily || 0, avg });
+        }
+      });
+      rows.forEach((r) => { r.stale = isStale(r.date); });
+      const fresh = rows.filter((r) => !r.stale);
+      const use = fresh.length ? fresh : rows;
+      return use.sort((a, b) => b.net - a.net);
+    };
+
+    const routes = [];
+    let acc = 0; const steps = []; let missing = null;
+    for (let t = from; t <= top; t++) {
+      if (t > from) {
+        const st = enchStep(currentBase, t);
+        const mb = st ? matBest(st.id) : null;
+        if (!st || !mb.unit) { missing = st ? st.id : null; break; }
+        acc += mb.unit * st.count * matFee;
+        steps.push({ lvl: t, id: st.id, count: st.count, unit: mb.unit, city: mb.city });
+      }
+      const dests = destsOf(prodEnch(currentBase, t));
+      routes.push({ t, extra: acc, steps: steps.slice(), dests, dest: dests[0] || null });
+    }
+    const priced = routes.filter((r) => r.dest);
+    if (!priced.length) {
+      out.innerHTML = itemHeadHtml('no market prices for this item right now')
+        + '<div class="mempty">Nobody is buying or selling it in the markets you have selected. Widen the 🏪 filter or the freshness limit.</div>';
+      return;
+    }
+    // el punto de partida es venderlo AHORA tal cual: todo lo demás se mide contra eso
+    const baseRoute = routes[0].dest ? routes[0] : null;
+    const baseNet = baseRoute ? baseRoute.dest.net : 0;
+    const buyCell = prod[prodEnch(currentBase, from)] || {};
+    let basePrice = 0, basePriceCity = '';
+    Object.keys(buyCell).forEach((ck) => { const p = buyCell[ck].sell || 0; if (p > 0 && (!basePrice || p < basePrice)) { basePrice = p; basePriceCity = ck; } });
+    const capital = sellOwned() ? 0 : basePrice;
+    priced.forEach((r) => {
+      r.cost = capital + r.extra;
+      r.profit = r.dest.net - r.cost;
+      r.roi = r.cost > 0 ? (r.profit / r.cost) * 100 : null;
+      r.delta = (r.dest.net - r.extra) - baseNet;
+    });
+    const best = priced.reduce((a, b) => (b.delta > a.delta ? b : a), priced[0]);
+
+    const wayTxt = (d) => (d.way === 'instant' ? 'instantly' : 'with an order');
+    const wayTip = (d) => (d.way === 'instant'
+      ? `You take that market's best bid right now: ${fmt(d.gross)} minus ${Math.round(tax * 100)}% tax`
+      : `You queue at ${fmt(d.gross)} and wait: ${Math.round(tax * 100)}% tax plus the 2.5% order fee${d.avg > 0 ? ` · valued at the historical average (~${fmt(d.avg)}) when the current order is above it` : ''}`);
+    const routeName = (t) => (t === from ? 'Sell it as it is' : `Enchant to .${t} and sell`);
+
+    const rows = priced.map((r) => {
+      const d = r.dest;
+      const isBest = r === best;
+      const dcls = r.delta > 0 ? 'up' : (r.delta < 0 ? 'down' : 'faint');
+      const age = agoStr(d.date);
+      return `<tr${isBest ? ' class="best-row"' : ''}><td class="name"><div class="scan-item"><img class="scan-ico" src="icon://item/${encodeURIComponent(prodEnch(currentBase, r.t))}?size=40" loading="lazy" alt=""><div class="scan-item-txt">${isBest ? '⭐ ' : ''}${esc(routeName(r.t))} <span class="enchtag">.${r.t}</span><br><span class="faint" style="font-size:11px">${cityShort(d.city)} · ${wayTxt(d)}${r.roi != null ? ` · ROI ${roiTxt(r.roi)}` : ''}</span></div></div></td>`
+        + `<td class="silver" title="${r.t === from ? (capital ? 'What buying the item costs you' : 'You already own it: nothing to spend') : 'Enchanting materials' + (capital ? ' plus buying the item' : '')}">${r.cost > 0 ? fmt(r.cost) : '—'}</td>`
+        + `<td class="silver" title="${esc(wayTip(d))}">${fmt(d.net)}</td>`
+        + `<td class="${r.profit >= 0 ? 'up' : 'down'}"><b>${r.profit >= 0 ? '+' : ''}${fmt(r.profit)}</b></td>`
+        + `<td class="${dcls}" title="Against selling it right now as it is (${fmt(baseNet)} net)">${r.t === from ? '—' : (r.delta >= 0 ? '+' : '') + fmt(r.delta)}</td>`
+        + `<td class="${d.vol > 0 ? '' : 'faint'}" title="Units moved per day in that market. With no volume the price is there but nobody is buying.">${d.vol > 0 ? fmtInt(d.vol) : '—'}</td>`
+        + `<td class="${d.stale ? 'down' : 'faint'}" title="How long ago that price was seen">${d.stale ? '⚠ ' : ''}${age || '—'}</td></tr>`;
+    }).join('');
+
+    const shopping = best.steps.length
+      ? '<div class="sell-plan"><div class="sell-plan-h">What to buy for the starred route</div>'
+        + best.steps.map((s) => {
+          const nm = nameById[s.id] || s.id;
+          const total = s.unit * s.count * matFee;
+          return `<div class="sell-plan-row"><img class="scan-ico" src="icon://item/${encodeURIComponent(s.id)}?size=32" loading="lazy" alt=""><span class="copyable" data-copy="${esc(nameEnById[s.id] || nm)}" title="Click to copy «${esc(nameEnById[s.id] || nm)}»">${esc(nm)}</span> <b>× ${fmtInt(s.count * qty)}</b> <span class="faint">in ${cityShort(s.city)} at ${fmt(s.unit)} each</span> <span class="silver">${fmt(total * qty)}</span></div>`;
+        }).join('')
+        + `<div class="sell-plan-row faint">→ .${best.t} and sell in ${cityShort(best.dest.city)} ${wayTxt(best.dest)}</div></div>`
+      : '';
+
+    // un mercado, una fila: de las dos vías se enseña la que más deja
+    const seenCity = new Set();
+    const others = (best.dests || []).filter((d) => (seenCity.has(d.city) ? false : seenCity.add(d.city))).slice(0, 7);
+    const destTable = others.length > 1
+      ? '<div class="sell-sub">Where to sell it once it is .' + best.t + '</div><div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Market</th><th>How</th><th>You get</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
+        + others.map((d) => `<tr><td class="name">${cityShort(d.city)}</td><td class="faint">${wayTxt(d)}</td><td class="silver" title="${esc(wayTip(d))}">${fmt(d.net)}</td><td class="${d.vol > 0 ? '' : 'faint'}">${d.vol > 0 ? fmtInt(d.vol) : '—'}</td><td class="${d.stale ? 'down' : 'faint'}">${d.stale ? '⚠ ' : ''}${agoStr(d.date) || '—'}</td></tr>`).join('')
+        + '</tbody></table></div>'
+      : '';
+
+    // un destino sin volumen paga mucho sobre el papel y luego no te lo compra nadie: se dice
+    const thin = best.dest.vol > 0 ? '' : ' <b>Careful</b>: nothing has sold there lately, so that price may take a long time to happen.';
+    const verdict = (best.t === from
+      ? `Best move: <b>sell it as it is</b> in ${cityShort(best.dest.city)} ${wayTxt(best.dest)} — ${fmt(best.dest.net)} net.`
+      : `Best move: <b>enchant it to .${best.t}</b> and sell in ${cityShort(best.dest.city)} ${wayTxt(best.dest)} — ${fmt(best.delta)} more than selling it now${qty > 1 ? ` (${fmt(best.delta * qty)} for ${qty})` : ''}.`) + thin;
+    const notes = [];
+    if (!enchantableItem(currentBase)) notes.push('This item has no enchant recipe: the only choice is where to sell it.');
+    else if (from >= ENCH_MAX) notes.push('.3 is the last level you can enchant to: .4 can only be crafted.');
+    if (missing) notes.push(`No price for ${esc(nameById[missing] || missing)}, so the higher levels are left out.`);
+    if (!sellOwned() && basePrice) notes.push(`Buying it costs ${fmt(basePrice)} in ${cityShort(basePriceCity)} and is counted in every route.`);
+    notes.push('Quality cannot be changed in game — it is set when the item is crafted and enchanting keeps it. Pick yours in the quality filter above.');
+
+    out.innerHTML = itemHeadHtml(`quality: ${QNAMES[quality] || 'Normal'} · ${qty > 1 ? qty + ' units · ' : ''}what to do with the one you have`)
+      + `<div class="sell-verdict">${verdict}</div>`
+      + '<div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Route</th>'
+      + '<th title="What you have to spend: enchanting materials, plus the item itself if you do not own it yet">Costs you</th>'
+      + '<th title="Net silver in your pocket after tax and fees">You get</th>'
+      + '<th title="What you get minus what you spend">Profit</th>'
+      + '<th title="How much better (or worse) than selling it right now as it is">vs selling now</th>'
+      + '<th>Vol/day</th><th>Seen</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      + shopping + destTable
+      + `<div class="best-hint">${notes.join(' · ')}</div>`;
+  }
+
+  ['sell-qty', 'sell-mat-order', 'sell-owned'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(id === 'sell-qty' ? 'input' : 'change', () => { if (sellCache) renderSell(); });
+  });
+  { const mc = document.getElementById('sell-mat-city'); if (mc) mc.addEventListener('change', () => { if (currentBase) loadSell(true); }); }
+
   // ================= ESCÁNER (flip: comprar hecho → revender) =================
   // dónde vendes y cómo: inmediato cobra la puja y solo paga impuesto; con orden te pones
   // en la cola al precio de la venta más barata y pagas impuesto + 2,5%.
@@ -1147,8 +1360,10 @@
     // su cuenta, así que aquí solo duplican y salen con doble encantamiento) y todo lo que no
     // tenga nombre en el índice (tradepacks, tokens, quest items): saldrían con el id crudo.
     const scannable = (id) => !/_LEVEL\d/.test(id) && !!nameById[id];
+    const mode = scanMode();
     const targets = Object.keys(recipes).filter((id) => id.indexOf('@') < 0 && tierOk(id) && scannable(id)
-      && recipes[id] && recipes[id].r && (!onlyBM || bmBuys(id)));
+      && recipes[id] && recipes[id].r && (!onlyBM || bmBuys(id))
+      && (mode !== 'enchant' || enchantableItem(id)));
     if (!targets.length) { out.innerHTML = '<div class="mempty">No items for that tier.</div>'; return; }
     out.innerHTML = `<div class="scan-prog"><div class="lbl"><span>Scanning ${targets.length} items…</span><b id="scan-prog-pct">0%</b></div><div class="scan-bar"><i id="scan-bar-fill"></i></div></div>`;
     const btn = document.getElementById('scan-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning…'; }
@@ -1159,18 +1374,19 @@
     const sellLocs = sellModeOf(sellMode).locs;
     // rentabilidad: usa la calidad que DE VERDAD compras/flipeas. "Todas" (0) = Normal (1).
     const q = currentQuality || 1;
-    const mode = scanMode();
     try {
       // Flip: comprar el ITEM ya hecho y revenderlo. Craft: comprar los MATERIALES y fabricarlo.
+      // Encantar: comprar el item plano y gastarle runas/almas/reliquias encima.
       const matSet = new Set();
       if (mode === 'craft') targets.forEach((id) => SCAN_ENCHANTS.forEach((e) => recipeRows(id, e).forEach((m) => matSet.add(m.priceId))));
+      if (mode === 'enchant') targets.forEach((id) => { for (let l = 1; l <= ENCH_MAX; l++) { const s = enchStep(id, l); if (s) matSet.add(s.id); } });
       // "Comprar en" vacío = cualquier ciudad: se piden todas y se queda la más barata de cada cosa
       const buyLocs = city ? [city] : CRAFT_CITIES;
       const inBuyLocs = (ck) => buyLocs.some((c) => cityKey(c) === ck);
       const priceLocs = [...new Set([...buyLocs, ...sellLocs])];
       const prodJobs = batches(prodIds, SCAN_BATCH).map((b) => () => window.overlay.scanPrices(b, priceLocs, q));
       const volJobs = batches(prodIds, SCAN_BATCH).map((b) => () => window.overlay.history(b, sellLocs, scanDays(), q));
-      const matJobs = mode === 'craft' ? batches([...matSet], SCAN_BATCH).map((b) => () => window.overlay.scanPrices(b, buyLocs, 1)) : [];
+      const matJobs = matSet.size ? batches([...matSet], SCAN_BATCH).map((b) => () => window.overlay.scanPrices(b, buyLocs, 1)) : [];
       prog = startScanProgress(prodJobs.length + volJobs.length + matJobs.length);
       const done = await runBatches([...prodJobs, ...volJobs, ...matJobs], prog.tick);
       const joined = (from, n) => done.slice(from, from + n).reduce((a, r) => a.concat(r || []), []);
@@ -1212,6 +1428,7 @@
     const bmNet = 1 - salesTax();
     const ordNet = 1 - salesTax() - 0.025;
     const isCraft = mode === 'craft';
+    const isEnch = mode === 'enchant';
     // con "cualquiera" cada material puede venir de una ciudad distinta
     const matsCityLabel = (id, e) => {
       const cities = [...new Set(recipeRows(id, e).map((m) => (matCityM || {})[m.priceId]).filter(Boolean))];
@@ -1233,12 +1450,30 @@
       const R = returnRate(id, { best: true }).pct / 100;
       return ret * (1 - R) + non + stationFeeOf(id, stationRate());
     };
+    // encantar: lo que cuesta subir el item de e0 a e con runas compradas en buyLocs
+    const enchMatOrder = matOrderOn() ? 1.025 : 1;
+    const enchCostOf = (id, e0, e) => {
+      let c = 0;
+      for (let l = e0 + 1; l <= e; l++) {
+        const s = enchStep(id, l); if (!s) return 0;
+        const u = (matP && matP[s.id]) || 0; if (!u) return 0;
+        c += u * s.count;
+      }
+      return c * enchMatOrder;
+    };
+    // flip/craft valoran un solo encantamiento; encantar compara pares (compras .e0, vendes .e)
+    const COMBOS = [];
+    for (let a = 0; a < ENCH_MAX; a++) for (let b = a + 1; b <= ENCH_MAX; b++) COMBOS.push([a, b]);
+    const combos = isEnch ? COMBOS : SCAN_ENCHANTS.map((e) => [e, e]);
     const res = targets.map((id) => {
       let best = null;
-      SCAN_ENCHANTS.forEach((e) => {
+      combos.forEach(([e0, e]) => {
         const pid = prodEnch(id, e);
-        const netCost = isCraft ? craftCostOf(id, e) : ((buyP && buyP[pid]) || 0);
-        if (netCost <= 0) return;                  // sin precio de compra / sin todos los materiales
+        const buyId = prodEnch(id, e0);
+        const enchCost = isEnch ? enchCostOf(id, e0, e) : 0;
+        if (isEnch && enchCost <= 0) return;       // sin precio de las runas de algún escalón
+        const netCost = isCraft ? craftCostOf(id, e) : (((buyP && buyP[buyId]) || 0) + enchCost);
+        if (netCost <= 0 || (!isCraft && !(buyP && buyP[buyId]))) return;   // sin precio de compra / sin todos los materiales
         const prices = sellP[pid] || {}, vols = volM[pid] || {}, dts = (dateM && dateM[pid]) || {};
         sellLocs.forEach((ckRaw) => {
           const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
@@ -1252,7 +1487,7 @@
           const fCost = useFocus ? focusCostOf(id, e) : 0;
           const perFocus = fCost > 0 ? gain / fCost : 0;
           const craftCity = isCraft ? (productionBonus(id) || {}).city || '' : '';
-          if (!best || eurDay > best.eurDay) best = { id, e, netCost, price, avg, city: ck, gain, vol, eurDay, roi, perFocus, fCost, craftCity, sellDate: dts[ck] || null, buyDate: (buyDateM && buyDateM[id]) || null };
+          if (!best || eurDay > best.eurDay) best = { id, e, e0, netCost, enchCost, price, avg, city: ck, gain, vol, eurDay, roi, perFocus, fCost, craftCity, sellDate: dts[ck] || null, buyDate: (buyDateM && buyDateM[buyId]) || null };
         });
       });
       return best;
@@ -1292,7 +1527,7 @@
       ? `<div class="fresh-note" title="They are not shown because their buy or sell price has not been seen in that long. Raise &quot;Seen within&quot; to include them.">⏳ ${olds} left out for being older than ${staleMaxH}h</div>`
       : '';
     out.innerHTML = dropNote + '<div class="scan-scroll"><table><thead><tr><th>Item · ench</th>'
-      + sSort('cost', isCraft ? 'Craft' : 'Buy', isCraft ? 'Cost to make it: materials minus the station return, plus the station fee' : 'What it costs you to buy it in the source market')
+      + sSort('cost', isCraft ? 'Craft' : isEnch ? 'Buy+runes' : 'Buy', isCraft ? 'Cost to make it: materials minus the station return, plus the station fee' : isEnch ? 'What the plain item costs you plus the enchanting materials' : 'What it costs you to buy it in the source market')
       + sSort('price', sellHdr, 'Sell price used (current order)')
       + sSort('avg', 'Avg', 'Average price actually sold (historical)')
       + sSort('gain', 'Profit', 'Net profit per unit after tax')
@@ -1305,14 +1540,16 @@
         const nm = nameById[r.id.split('@')[0]] || r.id;
         const where = sellModeOf(sellMode).locs.length === 1 ? '🏴 BM' : cityShort(r.city);
         const matsFrom = isCraft && !city ? matsCityLabel(r.id, r.e) : buyCityShort;
-        const buyFrom = buyCityShort || cityShort(buyCityM[prodEnch(r.id, r.e)] || '') || 'the cheapest';
+        const buyFrom = buyCityShort || cityShort(buyCityM[prodEnch(r.id, r.e0)] || '') || 'the cheapest';
         // la antigüedad va pegada a CADA mercado: así se ve de un vistazo cuál de los dos
         // precios es el viejo, en vez de un único "visto" que no dice de dónde sale
         const buyAgeTxt = agoStr(r.buyDate) || '?';
         const sellAgeTxt = agoStr(r.sellDate) || '?';
         const action = isCraft
           ? `craft in ${r.craftCity ? cityShort(cityKey(r.craftCity)) : 'station with no bonus'} · mats from ${matsFrom} → sell ${where} (${sellAgeTxt})`
-          : `buy in ${buyFrom} (${buyAgeTxt}) → sell ${where} (${sellAgeTxt})`;
+          : isEnch
+            ? `buy .${r.e0} in ${buyFrom} (${buyAgeTxt}) → enchant to .${r.e} (${fmt(r.enchCost)} in runes) → sell ${where} (${sellAgeTxt})`
+            : `buy in ${buyFrom} (${buyAgeTxt}) → sell ${where} (${sellAgeTxt})`;
         // la columna enseña la PEOR de las dos patas: de nada sirve una venta fresquísima si el
         // precio de compra que sostiene la operación es de hace horas
         const staleDate = ageHours(r.buyDate) > ageHours(r.sellDate) ? r.buyDate : r.sellDate;
@@ -1328,7 +1565,7 @@
           + (useFocus ? `<td class="${r.perFocus >= 0 ? 'up' : 'down'}" title="${r.fCost ? fmtInt(r.fCost) + ' focus per unit' : 'no focus data for this item'}">${r.fCost ? (r.perFocus >= 0 ? '+' : '') + r.perFocus.toFixed(1) : '—'}</td>` : '')
           + `<td class="${stale ? 'down' : 'faint'}" title="${seenTip}">${stale ? '⚠ ' : ''}${ageTxt || '—'}</td></tr>`;
       }).join('') + '</tbody></table></div>'
-      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cached</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} spike${spikes === 1 ? '' : 's'} ${hideSpikes ? 'hidden' : 'visible'}</b> · ` : ''}${res.length} with data · ${isCraft ? 'crafting' : 'reselling'} · ${sellModeOf(sellMode).txt}${useFocus ? ' · with focus' : ''}</div>`;
+      + `<div class="best-hint">${fromCache ? '<b style="color:#9fd2e0">cached</b> · ' : ''}${spikes ? `<b style="color:#e0a336">${spikes} spike${spikes === 1 ? '' : 's'} ${hideSpikes ? 'hidden' : 'visible'}</b> · ` : ''}${res.length} with data · ${isCraft ? 'crafting' : isEnch ? 'enchanting' : 'reselling'} · ${sellModeOf(sellMode).txt}${useFocus ? ' · with focus' : ''}</div>`;
   }
   // al cambiar de tier/ciudad/categoría/canal: si ya está cacheado, mostrar al instante (sin API);
   // si no, pedir pulsar Buscar. Solo el botón consulta la API.
