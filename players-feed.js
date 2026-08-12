@@ -192,13 +192,21 @@
   // salían hostiles, así que el aviso no distinguía a un recolector de alguien que va a por ti.
   // Regla del motor de datos (isPlayerThreat), que es la mecánica real del juego:
   //   segura -> nadie · negra -> todos · amarilla/roja -> solo los marcados en PvP (facción 255)
-  // Los de facción (1-6) van aparte: te atacan solo si eres de una facción rival, y cuál es la
-  // TUYA no viaja por la red, así que se marcan como aviso intermedio en vez de darlo por hecho.
-  const THREAT = {
-    peligro: ['Hostile', 'h'],
-    faccion: ['Faction', 'p'],
-    pasivo: ['Passive', 'a'],
-  };
+  // Los de facción (1-6) dependen de cuál sea la TUYA, y esa no viaja por la red: se elige a
+  // mano igual que la IP. Los de tu propia facción no te pueden tocar; los de una rival sí,
+  // así que cuentan como hostiles. Sin facción elegida se asume lo peor y salen todos.
+  const MYFAC_KEY = 'albion-overlay-myfaction-v1';
+  let myFac = +localStorage.getItem(MYFAC_KEY) || 0;
+  const myFacSel = document.getElementById('myfac-input');
+  if (myFacSel) {
+    myFacSel.value = String(myFac);
+    myFacSel.addEventListener('change', () => {
+      myFac = +myFacSel.value || 0;
+      localStorage.setItem(MYFAC_KEY, String(myFac));
+      render();
+    });
+  }
+  const THREAT = { peligro: ['Hostile', 'h'] };
   function threatOf(p) {
     const z = window.__ovZone;
     if (z === 'safe') return 'pasivo';
@@ -208,7 +216,8 @@
     if (!z) return 'peligro';
     if (z === 'black') return 'peligro';
     if (p.faction === 255) return 'peligro';
-    return (p.faction >= 1 && p.faction <= 6) ? 'faccion' : 'pasivo';
+    if (p.faction >= 1 && p.faction <= 6) return (myFac && p.faction === myFac) ? 'pasivo' : 'peligro';
+    return 'pasivo';
   }
 
   const trimD = (v) => v.toFixed(1).replace('.', ',').replace(',0', '');
