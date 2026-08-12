@@ -441,7 +441,7 @@
   "No players in range.": "Sin jugadores en rango.",
   "Move around the world to spot them.": "Muévete por el mundo para detectarlos.",
   "Nobody can attack you here.": "Aquí nadie puede atacarte.",
-  "Passive players hidden:": "Pasivos ocultos:",
+  "Non-hostile players hidden:": "No hostiles ocultos:",
   "s": "es",
   "weapon ?": "arma ?",
   "PvP flagged (hostile faction)": "Marcado PvP (facción hostil)",

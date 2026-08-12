@@ -283,7 +283,7 @@
 
   function render() {
     const inRange = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
-    const all = inRange.filter((p) => threatOf(p) !== 'pasivo');
+    const all = inRange.filter((p) => threatOf(p) === 'peligro');
     const passiveN = inRange.length - all.length;
     const guildCount = {};
     all.forEach((p) => { if (p.guild) guildCount[p.guild] = (guildCount[p.guild] || 0) + 1; });
@@ -310,7 +310,7 @@
       : '';
     if (!arr.length) {
       const empty = passiveN
-        ? `Nobody can attack you here.<br>Passive players hidden: ${passiveN}`
+        ? `Nobody can attack you here.<br>Non-hostile players hidden: ${passiveN}`
         : 'No players in range.<br>Move around the world to spot them.';
       plist.innerHTML = hideBar + `<div class="pl-empty">${empty}</div>`;
       return;
