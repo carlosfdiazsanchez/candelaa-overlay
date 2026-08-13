@@ -19,8 +19,32 @@
   let itemsDB = null, indexMap = null;
   const nameToP = {};
   let selectedId = null;
-  const partyNames = new Set((() => { try { return JSON.parse(localStorage.getItem('albion-overlay-party-v1')) || []; } catch (_) { return []; } })());
-  const savePartyShared = () => localStorage.setItem('albion-overlay-party-v1', JSON.stringify([...partyNames]));
+  // v2: la v1 se envenenó (nombres sueltos de gente aleatoria entraban por PartyPlayerJoined y
+  // se acumulaban para siempre), así que se descarta lo guardado en vez de heredarlo.
+  const PARTY_KEY = 'albion-overlay-party-v2';
+  try { localStorage.removeItem('albion-overlay-party-v1'); } catch (_) {}
+  const partyNames = new Set((() => { try { return JSON.parse(localStorage.getItem(PARTY_KEY)) || []; } catch (_) { return []; } })());
+  const savePartyShared = () => localStorage.setItem(PARTY_KEY, JSON.stringify([...partyNames]));
+  // Un party son como mucho 20 jugadores y sus nombres tienen forma de nombre de personaje.
+  // Sin esto cualquier evento con una lista de textos (las pestañas del chat, por ejemplo)
+  // pasaba por lista de grupo.
+  const PARTY_MAX = 20;
+  const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_]{2,15}$/;
+  const NOT_NAMES = new Set(['Spanish', 'English', 'French', 'German', 'Russian', 'Polish', 'Portuguese',
+    'Chinese', 'Korean', 'Japanese', 'Italian', 'Turkish', 'System', 'Global', 'Local', 'Trade', 'Rec',
+    'Guild', 'Alliance', 'Party', 'Officer', 'Whisper', 'Help', 'News']);
+  const looksLikeName = (n) => typeof n === 'string' && NAME_RE.test(n) && !NOT_NAMES.has(n);
+  // Tu propio nombre llega en el JoinMap (op 2, param 2) y es el filtro que de verdad separa a
+  // tu grupo de cualquier otra lista de nombres que viaje por la red: si no estás TÚ en ella,
+  // no es tu grupo.
+  const MYNAME_KEY = 'albion-overlay-myname-v1';
+  let myName = localStorage.getItem(MYNAME_KEY) || '';
+  const looksLikeParty = (names) => Array.isArray(names) && names.length > 0 && names.length <= PARTY_MAX
+    && names.every(looksLikeName) && (!myName || names.includes(myName));
+  function setParty(names) {
+    if (!looksLikeParty(names)) return;
+    partyNames.clear(); names.forEach((n) => partyNames.add(n)); savePartyShared();
+  }
   const HIDE_KEY = 'albion-overlay-hidden-v1';
   let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY)) || []); } catch (_) { return new Set(); } })();
   const saveHidden = () => localStorage.setItem(HIDE_KEY, JSON.stringify([...hidden]));
@@ -315,7 +339,7 @@
     const partyN = partyNames.size;
     const chips = [...hidden].map((n) => `<span class="hchip">${esc(n)}<button data-unhide="${esc(n)}" title="Stop hiding">✕</button></span>`).join('');
     const hideBar = (hidden.size || partyN)
-      ? `<div class="hidden-bar">${partyN ? `<span class="hparty" title="Party members detected automatically">👥 party ×${partyN}</span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
+      ? `<div class="hidden-bar">${partyN ? `<span class="hchip hparty" title="Party detected automatically: ${esc([...partyNames].join(', '))}">👥 party ×${partyN}<button data-clearparty="1" title="Forget the detected party">✕</button></span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
       : '';
     if (!arr.length) {
       const empty = passiveN
@@ -381,9 +405,11 @@
 
   const safeParse = (s) => { try { return JSON.parse(s); } catch (_) { return null; } };
   // PartyJoined trae la lista de nombres como array de strings: lo localizamos
-  // sin depender del índice exacto (robusto ante cambios de versión).
-  function findStringList(params) {
-    for (const k in params) { const v = params[k]; if (Array.isArray(v) && v.length && v.every((x) => typeof x === 'string')) return v; }
+  // sin depender del índice exacto (robusto ante cambios de versión), pero exigiendo que
+  // TODA la lista tenga pinta de nombres de jugador — antes valía el primer array de textos
+  // que hubiera en el evento.
+  function findNameList(params) {
+    for (const k in params) { if (looksLikeParty(params[k])) return params[k]; }
     return null;
   }
   function firstString(params, skip) {
@@ -399,6 +425,7 @@
     const p = dict && dict.parameters; if (!p) return;
     const op = p['253'], code = p['252'], id = p['0'];
     // cambio de mapa/zona (por operación): lo necesitan la clasificación de zona y el capturador de mercado
+    if (op === 2 && looksLikeName(p['2']) && p['2'] !== myName) { myName = p['2']; try { localStorage.setItem(MYNAME_KEY, myName); } catch (_) {} }
     if ((op === 2 || op === 3) && typeof p['8'] === 'string') applyMapChange(p['8']);
     else if (op === 41 && typeof p['0'] === 'string') applyMapChange(p['0']);
     let touched = true;
@@ -415,9 +442,8 @@
         break;
       }
       case 1: {
-        if (typeof p['4'] === 'string' && Array.isArray(p['5']) && p['5'].every((x) => typeof x === 'string')) {
-          partyNames.clear(); partyNames.add(p['4']); p['5'].forEach((n) => partyNames.add(n)); savePartyShared();   // lista de party recurrente
-        } else { const q = players.get(id); if (q) q.left = Date.now(); }   // salió de rango: se borra tras un delay
+        if (typeof p['4'] === 'string' && Array.isArray(p['5'])) setParty([p['4'], ...p['5']]);   // lista de party recurrente
+        else { const q = players.get(id); if (q) q.left = Date.now(); }   // salió de rango: se borra tras un delay
         break;
       }
       case 6: { const q = players.get(id); if (q) { q.hp = p['3'] ?? q.hp; q.last = Date.now(); } break; }
@@ -428,8 +454,14 @@
       case 363: { const q = players.get(id); if (q) { const was = q.faction; q.faction = p['1'] ?? q.faction; q.last = Date.now(); if (was !== 255 && q.faction === 255 && !isAlly(q.name) && threatOf(q) === 'peligro') alertEnemy(); } break; }
       case 3: { const q = players.get(id); if (q) { if (p['4'] != null) { q.posX = p['4']; q.posY = p['5']; } q.last = Date.now(); } break; }
       // ---- party (para ocultar a los tuyos) ----
-      case 231: { const names = findStringList(p); if (names) { partyNames.clear(); names.forEach((n) => partyNames.add(n)); savePartyShared(); } break; } // PartyJoined (lista completa)
-      case 233: { const nm = (typeof p['2'] === 'string' ? p['2'] : firstString(p, ['252'])); if (nm) { partyNames.add(nm); savePartyShared(); } break; } // PartyPlayerJoined
+      case 231: { const names = findNameList(p); if (names) setParty(names); break; } // PartyJoined (lista completa)
+      // PartyPlayerJoined: solo suma a un grupo YA detectado. Suelto no puede crear uno de la
+      // nada — así es como se llenó de desconocidos, uno a uno y sin que nada lo vaciara nunca.
+      case 233: {
+        const nm = (typeof p['2'] === 'string' ? p['2'] : firstString(p, ['252']));
+        if (nm && partyNames.size && partyNames.size < PARTY_MAX && looksLikeName(nm)) { partyNames.add(nm); savePartyShared(); }
+        break;
+      }
       case 232: { partyNames.clear(); savePartyShared(); break; } // PartyDisbanded
       default: touched = false;
     }
@@ -466,6 +498,7 @@
   // clic en una tarjeta = seleccionar (sube arriba y se resalta); otro clic la quita
   plist.addEventListener('click', (e) => {
     if (e.target.closest('#unhideAll')) { hidden.clear(); saveHidden(); render(); return; }
+    if (e.target.closest('[data-clearparty]')) { e.stopPropagation(); partyNames.clear(); savePartyShared(); render(); return; }
     const uh = e.target.closest('[data-unhide]');
     if (uh) { e.stopPropagation(); hidden.delete(uh.dataset.unhide); saveHidden(); render(); return; }
     const hb = e.target.closest('.phide');
