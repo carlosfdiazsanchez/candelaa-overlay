@@ -4,10 +4,10 @@
 (function () {
   const LS_KEY = 'albion-overlay-layout-v1';
   let topZ = 10;
-  let passthrough = false;   // "clic al juego": los paneles se atraviesan
   let lastIgnore = null;     // último estado enviado a setIgnoreMouseEvents
   let dragging = false;      // arrastrando un panel/barra
   let gateActive = false;    // pantalla de token visible (captura todo el input)
+  let monitorId = null;      // pantalla en la que se dibuja el overlay
   const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
   function applyIgnore(ignore) {
@@ -38,10 +38,10 @@
   }
 
   // ---- layout persistence ----
-  const draggables = ['bar', 'p-players', 'p-radar', 'p-item', 'p-notes'];
+  const draggables = ['bar', 'p-players', 'p-combat', 'p-radar', 'p-item', 'p-notes'];
   function loadState() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (_) { return {}; } }
   function saveState() {
-    const st = { panels: {}, monitor: document.getElementById('mon').value, passthrough };
+    const st = { panels: {}, monitor: monitorId };
     draggables.forEach((id) => {
       const el = document.getElementById(id); if (!el) return;
       st.panels[id] = {
@@ -86,7 +86,7 @@
     });
   }
   makeDraggable(document.getElementById('bar'), document.querySelector('#bar .brand'));
-  ['p-players', 'p-radar', 'p-item', 'p-notes'].forEach((id) => {
+  ['p-players', 'p-combat', 'p-radar', 'p-item', 'p-notes'].forEach((id) => {
     const el = document.getElementById(id);
     makeDraggable(el, el.querySelector('.panel__head'));
   });
@@ -106,13 +106,67 @@
     const el = document.getElementById('p-' + t.dataset.p); if (el) el.style.display = on ? 'none' : '';
     saveState();
   });
-  // ---- notas: texto libre, se guarda solo ----
+  // ---- notas: varias notas en pestañas, se guardan solas ----
   (function notes() {
-    const NOTES_KEY = 'candelaa-notes-v1';
+    const NOTES_KEY = 'candelaa-notes-v2';
+    const LEGACY_KEY = 'candelaa-notes-v1';
     const ta = document.getElementById('notes-text');
+    const tabsEl = document.getElementById('notes-tabs');
     const state = document.getElementById('notes-state');
-    if (!ta) return;
-    try { ta.value = localStorage.getItem(NOTES_KEY) || ''; } catch (_) {}
+    if (!ta || !tabsEl) return;
+    const load = () => {
+      try {
+        const v2 = JSON.parse(localStorage.getItem(NOTES_KEY) || 'null');
+        if (v2 && Array.isArray(v2.notes) && v2.notes.length) return { cur: Math.min(v2.cur || 0, v2.notes.length - 1), notes: v2.notes.map((n) => ({ t: String(n.t || 'Note'), x: String(n.x || '') })) };
+      } catch (_) {}
+      let legacy = '';
+      try { legacy = localStorage.getItem(LEGACY_KEY) || ''; } catch (_) {}
+      return { cur: 0, notes: [{ t: 'Note 1', x: legacy }] };
+    };
+    const model = load();
+    const save = () => { try { localStorage.setItem(NOTES_KEY, JSON.stringify(model)); mark('saved'); } catch (_) { mark('could not save'); } };
+    let t = null, clearT = null;
+    const mark = (txt) => { if (!state) return; state.textContent = txt; clearTimeout(clearT); clearT = setTimeout(() => { state.textContent = ''; }, 1500); };
+    const current = () => model.notes[model.cur];
+    function renderTabs() {
+      tabsEl.innerHTML = model.notes.map((n, i) => `<button class="notes-tab" data-i="${i}" aria-pressed="${i === model.cur}" title="Double-click to rename">${esc(n.t)}<span class="ntx" data-x="${i}" title="Delete this note">✕</span></button>`).join('')
+        + '<button class="notes-tab add" id="notes-add" title="New note">+</button>';
+    }
+    function show() { ta.value = current().x; renderTabs(); }
+    function select(i) { if (i < 0 || i >= model.notes.length || i === model.cur) return; model.cur = i; show(); save(); }
+    function rename(i, btn) {
+      const inp = document.createElement('input');
+      inp.className = 'notes-tab-edit'; inp.value = model.notes[i].t; inp.maxLength = 40;
+      let done = false;
+      const commit = (keep) => {
+        if (done) return; done = true;
+        const v = inp.value.trim();
+        if (keep && v) model.notes[i].t = v;
+        renderTabs(); save();
+      };
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(true); else if (e.key === 'Escape') commit(false); e.stopPropagation(); });
+      inp.addEventListener('blur', () => commit(true));
+      btn.replaceWith(inp); inp.focus(); inp.select();
+    }
+    function removeNote(i) {
+      if (i < 0 || i >= model.notes.length) return;
+      if (model.notes[i].x.trim() && !window.confirm('Delete this note?')) return;
+      if (model.notes.length > 1) { model.notes.splice(i, 1); model.cur = Math.min(model.cur > i ? model.cur - 1 : model.cur, model.notes.length - 1); }
+      else { model.notes[0] = { t: 'Note 1', x: '' }; model.cur = 0; }
+      show(); save();
+    }
+    tabsEl.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-x]');
+      if (x) { e.stopPropagation(); removeNote(+x.dataset.x); return; }
+      if (e.target.closest('#notes-add')) {
+        model.notes.push({ t: 'Note ' + (model.notes.length + 1), x: '' });
+        model.cur = model.notes.length - 1; show(); save(); ta.focus();
+        return;
+      }
+      const b = e.target.closest('.notes-tab[data-i]'); if (b) select(+b.dataset.i);
+    });
+    tabsEl.addEventListener('dblclick', (e) => { const b = e.target.closest('.notes-tab[data-i]'); if (b) rename(+b.dataset.i, b); });
+    show();
     // el tamaño al que la dejes estirada se recuerda
     const SIZE_KEY = 'candelaa-notes-size-v1';
     try {
@@ -144,35 +198,43 @@
         }, 500);
       }).observe(ta);
     }
-    let t = null, clearT = null;
-    const mark = (txt) => { if (!state) return; state.textContent = txt; clearTimeout(clearT); clearT = setTimeout(() => { state.textContent = ''; }, 1500); };
     ta.addEventListener('input', () => {
+      current().x = ta.value;
       clearTimeout(t);
-      t = setTimeout(() => { try { localStorage.setItem(NOTES_KEY, ta.value); mark('saved'); } catch (_) { mark('could not save'); } }, 400);
+      t = setTimeout(save, 400);
     });
     const btn = document.getElementById('notes-clear');
-    if (btn) btn.addEventListener('click', () => {
-      if (!ta.value.trim()) return;
-      if (!window.confirm('Delete every note?')) return;
-      ta.value = '';
-      try { localStorage.setItem(NOTES_KEY, ''); } catch (_) {}
-      mark('vaciado');
-    });
+    if (btn) btn.addEventListener('click', () => removeNote(model.cur));
   })();
 
   document.getElementById('quit').addEventListener('click', () => window.overlay.quit());
 
-  // ---- monitor selector ----
+  // ---- monitor: un botón que rota entre pantallas; oculto si solo hay una ----
   const mon = document.getElementById('mon');
+  let displays = [];
+  function paintMon() {
+    if (!mon) return;
+    mon.hidden = displays.length < 2;
+    const i = displays.findIndex((d) => String(d.id) === String(monitorId));
+    const cur = displays[i] || displays[0];
+    mon.textContent = '🖥 ' + (i >= 0 ? i + 1 : 1) + '/' + displays.length;
+    mon.title = (cur ? 'Display: ' + cur.label + ' — ' : '') + 'click to move the overlay to the next display';
+  }
   window.overlay.getDisplays().then((list) => {
-    mon.innerHTML = '';
-    list.forEach((d) => { const o = document.createElement('option'); o.value = d.id; o.textContent = d.label; mon.appendChild(o); });
+    displays = list || [];
     const st = loadState();
-    if (st.monitor && [...mon.options].some((o) => o.value === String(st.monitor))) {
-      mon.value = st.monitor; window.overlay.setDisplay(Number(st.monitor));
-    }
+    if (st.monitor && displays.some((d) => String(d.id) === String(st.monitor))) {
+      monitorId = st.monitor; window.overlay.setDisplay(Number(monitorId));
+    } else if (displays.length) monitorId = displays[0].id;
+    paintMon();
   });
-  mon.addEventListener('change', () => { window.overlay.setDisplay(Number(mon.value)); saveState(); });
+  if (mon) mon.addEventListener('click', () => {
+    if (displays.length < 2) return;
+    const i = displays.findIndex((d) => String(d.id) === String(monitorId));
+    monitorId = displays[(i + 1) % displays.length].id;
+    window.overlay.setDisplay(Number(monitorId));
+    paintMon(); saveState();
+  });
 
   // ---- restore saved layout ----
   (function restore() {
@@ -195,23 +257,14 @@
   })();
 
   // ---- click-through (por posición del ratón) ----
-  // Sobre barra -> siempre captura. Sobre panel -> captura salvo passthrough.
-  // En vacío -> deja pasar los clics al juego.
+  // Sobre barra o panel -> captura. En vacío -> deja pasar los clics al juego.
   function evalAt(target) {
     if (dragging) return;
-    const interactive = target.closest('#bar') || target.closest('#npcap-notice') || target.closest('.gate-card') || (!passthrough && target.closest('.panel'));
+    const interactive = target.closest('#bar') || target.closest('#npcap-notice') || target.closest('.gate-card') || target.closest('.panel');
     applyIgnore(!interactive);
   }
   document.addEventListener('mousemove', (e) => evalAt(e.target), true);
   document.addEventListener('mouseover', (e) => evalAt(e.target), true);
-
-  const ptBtn = document.getElementById('passthrough');
-  function applyPassthrough() { ptBtn.setAttribute('aria-pressed', String(passthrough)); lastIgnore = null; }
-  function togglePassthrough() { passthrough = !passthrough; applyPassthrough(); saveState(); }
-  ptBtn.addEventListener('click', togglePassthrough);
-  window.overlay.onTogglePassthrough(togglePassthrough);
-
-  { const st = loadState(); if (st.passthrough) { passthrough = true; applyPassthrough(); } }
 
   // ================= ACCESO POR TOKEN =================
   const gate = document.getElementById('auth-gate');

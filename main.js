@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const { spawn, execFile, execFileSync } = require('child_process');
+const roadsOcr = require('./roads-ocr');
 
 let win = null;
 let radarProc = null;
@@ -269,11 +270,8 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
   ensureMarket();         // arranca el capturador de mercado EN VIVO (http://localhost:5002)
   startMarketWatchdog();
   createWindow();
-  // Atajo global para alternar el modo "pasar clics al juego" (funciona aunque
-  // el overlay esté ignorando el ratón).
-  globalShortcut.register('CommandOrControl+Alt+O', () => {
-    if (win) win.webContents.send('toggle-passthrough');
-  });
+  // Ctrl+Alt+R: leer el nombre del portal de Caminos bajo el cursor (OCR) y enviarlo al Buscador.
+  roadsOcr.register((r) => { if (win && !win.isDestroyed()) win.webContents.send('roads-ocr', r); });
   // Auto-update desde GitHub Releases (solo en la app empaquetada).
   if (app.isPackaged) {
     try {
@@ -325,7 +323,7 @@ ipcMain.on('install-update', () => {
 
 // también al cerrar normal: con autoInstallOnAppQuit el instalador corre al salir y se
 // encontraría los mismos ficheros bloqueados
-app.on('will-quit', () => { globalShortcut.unregisterAll(); stopChildrenSync(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); roadsOcr.terminate(); stopChildrenSync(); });
 
 app.on('window-all-closed', () => app.quit());
 
@@ -369,8 +367,45 @@ ipcMain.handle('items-by-index', () => {
   catch (_) { return null; }
 });
 
+// Nombres de hechizo por índice: el evento de daño trae el índice, no el nombre, y ese
+// diccionario no viaja por la red. Se genera con tools/build-spells.py desde ao-bin-dumps.
+ipcMain.handle('spells-index', (_e, lang) => {
+  const file = lang === 'es' ? 'spells-es.json' : 'spells-en.json';
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', file), 'utf8')); }
+  catch (_) { return null; }
+});
+
+// Tabla de mobs (tier, recurso vivo y nombre) indexada por la firma vida:energía que trae el
+// propio evento. Se generaba en el motor de datos, que dejó de servir /ao-bin-dumps: ahora se
+// empaqueta aquí con tools/build-mobs.py.
+ipcMain.handle('mobs-index', (_e, lang) => {
+  const file = lang === 'es' ? 'mobs-es.json' : 'mobs-en.json';
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', file), 'utf8')); }
+  catch (_) { return null; }
+});
+
 ipcMain.handle('zones', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zones.json'), 'utf8')); }
+  catch (_) { return null; }
+});
+
+// Ficha estática de cada mapa de los Caminos (id -> nombre/tier/tipo + cofres/mazmorras/nodos).
+// Se genera con tools/build-roads.py (zones.json + dataset MIT de AO-Noki).
+// Bitácora del mercado: copia duradera en userData/ledger.json (escritura atómica).
+const ledgerFile = () => path.join(app.getPath('userData'), 'ledger.json');
+ipcMain.handle('ledger-load', () => {
+  try { return JSON.parse(fs.readFileSync(ledgerFile(), 'utf8')); } catch (_) { return null; }
+});
+ipcMain.handle('ledger-save', (_e, data) => {
+  try {
+    const f = ledgerFile(), tmp = f + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 1));
+    fs.renameSync(tmp, f);
+    return true;
+  } catch (e) { console.error('[ledger] save:', e.message); return false; }
+});
+ipcMain.handle('roads-index', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'roads.json'), 'utf8')); }
   catch (_) { return null; }
 });
 
@@ -414,6 +449,20 @@ ipcMain.handle('recipes-index', () => {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-recipes.json'), 'utf8')); }
   catch (_) { return {}; }
 });
+// Refino y transmutación (items.xml): recetas de recurso refinado con su variante de
+// corazón de facción (1 corazón sustituye 1 unidad de crudo) y las aristas de
+// transmutación (1:1 + plata fija, sube tier o encantamiento).
+ipcMain.handle('refine-index', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'items-refine.json'), 'utf8')); }
+  catch (e) { console.error('[overlay] refine-index:', e.message); return { refine: {}, transmute: {}, hearts: {} }; }
+});
+// Datos de crafteo que faltaban en el resto de indices (items.xml + buildings.xml +
+// craftingmodifiers.xml): peso, fama por run, categoria de crafteo, diario que se llena,
+// bonos de retorno por ciudad y por hideout. Generado con tools/build-craftdata.py.
+ipcMain.handle('craft-extra', () => {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'craft-extra.json'), 'utf8')); }
+  catch (e) { console.error('[overlay] craft-extra:', e.message); return null; }
+});
 // Recetas de encantado (upgraderequirements de ao-bin-dumps): id base -> [cantidad, tipo]
 // tipo 0 = runa/alma/reliquia del tier del item, 1 = extracto arcano, 2 = salsa de pescado.
 ipcMain.handle('enchant-index', () => {
@@ -449,6 +498,13 @@ ipcMain.handle('scan-prices', async (_e, ids, locations, quality) => {
 // Top de items por volumen (Black Market por defecto): base para la cartera.
 ipcMain.handle('top-volume', async (_e, opts) => {
   const r = await apiCall('/api/top-volume', { method: 'POST', token: readStoredToken(), body: opts || {} });
+  return (r.data && r.data.rows) || [];
+});
+
+// Libro de órdenes: cuántas unidades hay a cada precio. Sin esto el panel valora N unidades
+// al precio de la PRIMERA orden, que casi nunca tiene N unidades detrás.
+ipcMain.handle('depth', async (_e, ids, locations, quality, levels) => {
+  const r = await apiCall('/api/depth', { method: 'POST', token: readStoredToken(), body: { ids: ids || [], locations, quality, levels }, timeout: BULK_TIMEOUT });
   return (r.data && r.data.rows) || [];
 });
 

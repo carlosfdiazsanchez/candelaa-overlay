@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Candelaa Overlay</title>
+<title>Overlay</title>
 <style>
   :root{
     --panel-alpha:1;
@@ -64,9 +64,153 @@
   #p-item .cmp-note{font-size:12.5px;}
   #p-item .cmp-city{font-size:13px;max-width:150px;}
   #p-item .scan-scroll{max-height:460px;}
+  /* Escáner: hasta 11 columnas en 900px se pisaban unas a otras. Los números bajan a 13px, las
+     cabeceras no parten línea y nombre + ruta caben en una sola línea con ellipsis: la fila pasa
+     de 103px a ~50px, así que se ve el doble de oportunidades sin scrollear. Va acotado a
+     #tab-scan porque .scan-scroll lo comparte la tabla de Nivel. */
+  #p-item #tab-scan .scan-scroll table{font-size:13px;}
+  #p-item #tab-scan .scan-scroll th{font-size:10px;white-space:nowrap;vertical-align:bottom;padding:0 6px 7px;}
+  #p-item #tab-scan .scan-scroll td{padding:6px;white-space:nowrap;}
+  #p-item #tab-scan .scan-scroll tbody tr:nth-child(even){background:rgba(255,255,255,.03);}
+  #p-item #tab-scan .scan-scroll tbody tr:hover{background:rgba(90,169,196,.07);}
+  /* max-width:0 saca el nombre del calculo de ancho de la tabla: asi la columna respeta su
+     porcentaje y el texto largo se corta con ellipsis en vez de ensanchar toda la tabla. */
+  #p-item #tab-scan .scan-scroll td.name{width:34%;max-width:0;white-space:normal;}
+  /* con presupuesto entra la columna «Coge»: el nombre cede el ancho, no la última columna */
+  #p-item #tab-scan .scan-scroll.wide td.name{width:25%;}
+  #p-item #tab-scan .scan-ico{width:30px;height:30px;}
+  #p-item #tab-scan .scan-nm{font-size:14px;}
+  #p-item #tab-scan .fresh-note{margin:0 0 7px;}
+  /* labels alineados en las tres columnas sin robar ancho a los selects */
+  #p-item #tab-scan .craft-cfg{grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);gap:7px 10px;}
+  #p-item #tab-scan .craft-cfg .cfg-row{display:contents;}
+  #p-item #tab-scan .craft-cfg .cfg-check{grid-column:1/-1;white-space:nowrap;}
+  #p-item #tab-scan .craft-cfg input:not([type=checkbox]){width:100%;box-sizing:border-box;}
+  /* Tablas del panel: con pocas columnas se estiraban al 100% y los números quedaban
+     desparramados por 900px (y los resaltes verde/dorado se convertían en bandas de 200px).
+     La primera columna se queda el sobrante y las numéricas se comprimen a su contenido. */
+  #p-item #tab-market table th:first-child,#p-item #tab-market table td:first-child,
+  #p-item #tab-ledger table th:first-child,#p-item #tab-ledger table td:first-child{width:100%;}
+  #p-item #tab-market table th:not(:first-child),#p-item #tab-market table td:not(:first-child),
+  #p-item #tab-ledger table th:not(:first-child),#p-item #tab-ledger table td:not(:first-child){white-space:nowrap;min-width:78px;}
+  #p-item table th{vertical-align:bottom;}
+  #p-item #tab-market tbody tr:nth-child(even),#p-item #tab-level tbody tr:nth-child(even),
+  #p-item #tab-ledger tbody tr:nth-child(even){background:rgba(255,255,255,.022);}
+  #p-item #tab-market tbody tr:hover,#p-item #tab-level tbody tr:hover,
+  #p-item #tab-ledger tbody tr:hover{background:rgba(90,169,196,.06);}
+  #p-item #tab-market td,#p-item #tab-level td,#p-item #tab-ledger td{padding:8px 9px;}
   #p-item .mkt-scroll{max-height:330px;}
   #p-item .scan-prog .lbl{font-size:12.5px;}
-  #p-item .market-results{max-height:230px;}
+  #p-item:not(.collapsed){overflow:visible;}
+  #p-item .search-row{position:relative;}
+  #p-item .search-row .market-results{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;margin:0;padding:4px;max-height:380px;overflow-y:auto;
+    background:var(--panel-solid);border:1px solid var(--border-strong);border-radius:9px;box-shadow:0 12px 32px rgba(0,0,0,.55);}
+  #p-item .ires-tier{flex:0 0 auto;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px;background:rgba(90,169,196,.18);color:#cdeaf2;border:1px solid rgba(90,169,196,.45);}
+  #p-item .tab-scroll{max-height:calc(100vh - 330px);overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  #p-item .tab-scroll::-webkit-scrollbar{width:8px;} #p-item .tab-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  #p-item .filter-row select{font-size:13px;padding:5px 26px 5px 9px;}
+  #p-item .tabs{align-items:center;}
+  #p-item .tabs .tabs-right{margin-left:auto;margin-bottom:5px;gap:6px;}
+  #p-item .tabs .tabs-right select{font-size:12.5px;padding:4px 26px 4px 8px;}
+  #p-item .tabs .tabs-right .cfg-lbl{min-width:0;}
+  /* alta de compra: el botón caía a mitad de una fila del grid; ahora ocupa su propia línea */
+  #p-item #ledger-form{grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:9px 12px;}
+  #p-item #ledger-form .cfg-row{display:contents;}
+  #p-item #ledger-form .cfg-check{grid-column:1/-1;}
+  #p-item #ledger-form #ledger-add{grid-column:1/-1;margin:2px 0 0;}
+  #p-item #ledger-form input:not([type=checkbox]){width:100%;box-sizing:border-box;}
+  .ledger-item{font-weight:600;color:var(--text);}
+  .ledger-item.none{color:var(--faint);font-weight:400;}
+  .lg-sec{font-size:12px;font-weight:700;color:var(--dim);margin:14px 0 6px;display:flex;align-items:center;gap:10px;}
+  .lg-sec .lg-sum{font-weight:500;color:var(--faint);font-size:12px;}
+  .lg-sec .mini-btn{margin-left:auto;}
+  .lg-name{display:flex;align-items:center;gap:8px;}
+  .lg-name img{width:30px;height:30px;object-fit:contain;flex:0 0 auto;}
+  .lg-name .lg-sub{font-size:11px;color:var(--faint);font-family:var(--mono);}
+  td.lg-be{font-weight:700;color:#ffd27a;font-family:var(--mono);}
+  td.lg-now.up{color:#7ee081;} td.lg-now.down{color:#e06c5f;}
+  .lg-sell{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap;}
+  .lg-sell input{width:88px;} .lg-sell select{width:auto;}
+  #p-item .lg-sell input,#p-item .lg-sell select{font-size:13px;padding:4px 7px;}
+  .lg-x{color:var(--faint);cursor:pointer;padding:0 6px;} .lg-x:hover{color:#e06c5f;}
+  .lg-total{font-size:14px;margin:6px 0 2px;} .lg-total b.up{color:#7ee081;} .lg-total b.down{color:#e06c5f;}
+  .lg-empty{color:var(--faint);font-size:12.5px;padding:10px 4px;text-align:center;}
+  .lg-lot{display:grid;grid-template-columns:minmax(230px,1.5fr) repeat(4,minmax(78px,.7fr)) 28px;gap:6px 12px;align-items:center;background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;}
+  .lg-lot .lg-k{display:block;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;}
+  .lg-lot .lg-v{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;}
+  .lg-lot .lg-v.be{color:#ffd27a;font-weight:700;}
+  .lg-lot .lg-v.up{color:#7ee081;} .lg-lot .lg-v.down{color:#e06c5f;}
+  .lg-lot .lg-sellrow{grid-column:1 / -1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:7px;font-size:12px;color:var(--dim);}
+  .lg-lot .lg-sellrow input[type=number]{width:96px;}
+  #p-item .lg-lot .lg-sellrow input,#p-item .lg-lot .lg-sellrow select{font-size:13px;padding:4px 7px;}
+  .lg-lot .lg-x{justify-self:end;}
+  .lg-city{margin-top:4px;max-width:150px;}
+  #p-item .lg-city{font-size:11.5px;padding:3px 24px 3px 7px;background-position:right 7px center;}
+  .lg-city.none{color:var(--faint);}
+  .lg-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 8px;}
+  .lg-tools .search{flex:1;min-width:160px;}
+  #p-item .lg-tools .search,#p-item .lg-tools select{font-size:13px;padding:5px 9px;}
+  .lg-more{display:block;margin:8px auto 2px;}
+  .cr-adv-toggle{appearance:none;border:1px dashed var(--border-strong);background:transparent;color:var(--dim);border-radius:6px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;text-align:left;display:flex;gap:8px;align-items:center;}
+  .cr-adv-toggle:hover{color:var(--text);border-color:rgba(90,169,196,.5);}
+  .cr-adv-toggle[aria-pressed="true"]{border-style:solid;color:var(--text);}
+  .cr-adv-sum{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
+  .cr-adv{border-left:2px solid var(--border-strong);padding-left:10px;margin-top:-2px;}
+  .cr-verdict{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+  .cr-verdict .big{font-size:22px;font-weight:800;line-height:1;}
+  .cr-verdict .roi{font-size:13px;color:var(--dim);}
+  /* KPIs del veredicto: etiqueta arriba, cifra abajo (antes era una línea de texto mono) */
+  .cr-kpi{flex:1 1 0;min-width:96px;display:flex;flex-direction:column;gap:3px;padding:7px 10px;border-radius:7px;background:var(--elev);border:1px solid var(--border);}
+  .cr-kpi.big{flex:1.4 1 0;background:rgba(90,169,196,.10);border-color:rgba(90,169,196,.28);}
+  .cr-kpi-l{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);white-space:nowrap;}
+  .cr-kpi-v{font-family:var(--mono);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .cr-kpi.big .cr-kpi-v{font-size:21px;}
+  .cr-batch{font-size:13px;color:var(--dim);line-height:1.6;}
+  /* fama, diarios y peso de la tanda: datos de logistica, no de plata, asi que van en su
+     propia linea con menos peso visual que los KPI */
+  /* topes de cantidad: rejilla de campos pequenos con su etiqueta encima */
+  .lim-grid{display:flex;flex-wrap:wrap;gap:6px 10px;margin:4px 0 6px;}
+  .lim-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--dim);cursor:help;}
+  .lim-grid input{width:84px;background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--fg);padding:3px 5px;font-size:12px;}
+  .cr-session{margin-top:4px;font-size:12px;color:var(--dim);line-height:1.7;display:flex;flex-wrap:wrap;gap:2px 8px;}
+  .cr-session>span{white-space:nowrap;cursor:help;}
+  /* receta: nombre+chips a la izquierda y mercado/precio/subtotal en columnas fijas, para que
+     las filas de materiales queden alineadas entre sí en vez de partirse en dos renglones */
+  .cr-mat-left{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  #cr-mats .cr-name{flex:0 1 auto;}
+  #cr-mats .cr-city{flex:0 0 auto;width:188px;}
+  #cr-mats .cr-buy{flex:0 0 auto;min-width:58px;text-align:right;}
+  .cr-mat-hdr{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:0 0 4px;border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .cr-mat-hdr span{background:none!important;border:0!important;color:var(--faint);font-weight:600;padding:0;font-family:var(--ui);font-size:10px;}
+  .cr-mat-hdr .cr-price,.cr-mat-hdr .cr-subtot{text-align:right;}
+  .cr-mat-hdr .cr-city{text-align:left;}
+  #p-item .cr-prod .cr-name{flex:1 1 auto;}
+  #p-item .cr-prod .cr-city{flex:0 0 auto;width:188px;}
+  /* hueco del ancho del subtotal para que mercado y precio del producto queden en la misma
+     columna que los de los materiales */
+  #p-item .cr-prod::after{content:"";flex:0 0 auto;width:72px;}
+  .cr-chat{margin-top:8px;} .cr-chat summary{cursor:pointer;color:var(--dim);font-size:12px;} .cr-chat summary:hover{color:var(--text);}
+  #p-item .cfg-hint{font-size:12px;color:var(--faint);}
+  #p-item #tab-config .cfg-row{margin-top:10px;}
+  /* ⚙: label, control y explicación en tres columnas alineadas (antes cada ajuste caía en una
+     celda distinta del grid de 3 y quedaba escalonado) */
+  #p-item #tab-config .craft-cfg{grid-template-columns:auto auto minmax(0,1fr);gap:10px 12px;align-items:center;}
+  #p-item #tab-config .craft-cfg .cfg-row{display:contents;}
+  #p-item #tab-config .craft-cfg .cfg-check{grid-column:1/-1;}
+  #p-item #tab-config .cfg-hint{line-height:1.5;}
+  #p-item #tab-config #station-rate{width:96px;}
+  /* volumen por mercado: era un párrafo corrido de 870px; ahora son chips que envuelven */
+  #craft-out .cr-vol{display:flex;flex-wrap:wrap;gap:5px 6px;align-items:center;line-height:1.5;}
+  #craft-out .cr-vol>span{background:var(--elev);border:1px solid var(--border);border-radius:5px;padding:2px 7px;white-space:nowrap;}
+  #craft-out .cr-vol>span.cr-vol-best{border-color:rgba(59,165,93,.45);background:rgba(59,165,93,.12);}
+  .flip-grid{display:grid;grid-template-columns:auto minmax(90px,1fr) auto minmax(90px,1fr) auto minmax(90px,1fr);gap:6px 10px;align-items:center;}
+  .flip-grid .cfg-lbl{width:auto;min-width:0;}
+  .flip-opts{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;}
+  #p-item .flip{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 18px;}
+  #p-item .flip .flip-title{flex-basis:100%;}
+  #p-item .flip .flip-grid{flex:1 1 520px;}
+  #p-item .flip .flip-opts{flex:0 0 auto;}
+  #p-item .flip .flip-result{flex-basis:100%;margin-top:0;}
   #p-item .best-hint{background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:10px 12px;line-height:1.8;text-align:left;color:var(--dim);margin-top:11px;}
   #p-item .mkt-intro{font-size:13px;color:var(--dim);margin:2px 0 11px;line-height:1.55;background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:9px 12px;}
   #p-item .mkt-intro b{color:var(--text);}
@@ -93,6 +237,13 @@
   .notes-text::placeholder{color:var(--faint);}
   #p-notes{width:auto;min-width:280px;}
   #notes-state{font-size:10px;color:var(--faint);}
+  .notes-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;align-items:center;}
+  .notes-tab{border:1px solid var(--border);background:var(--elev);color:var(--dim);border-radius:6px;padding:3px 9px;font:inherit;font-size:11px;cursor:pointer;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .notes-tab[aria-pressed="true"]{background:rgba(90,169,196,.18);border-color:rgba(90,169,196,.45);color:#cdeaf2;}
+  .notes-tab.add{padding:3px 8px;font-weight:700;}
+  .notes-tab .ntx{margin-left:7px;opacity:.4;font-size:10px;}
+  .notes-tab .ntx:hover{opacity:1;color:#e06c5f;}
+  .notes-tab-edit{border:1px solid var(--accent);background:var(--panel-solid);color:var(--text);border-radius:6px;padding:2px 7px;font:inherit;font-size:11px;width:110px;outline:none;}
   .filter-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:2px 0 4px;}
   #p-item .filter-row .cfg-lbl{min-width:auto;}
   #p-item .filter-row .minitoggles button{padding:0 7px;}
@@ -184,16 +335,63 @@
   .pcard:hover{border-color:var(--border-strong);}
   .pcard.selected{border-color:rgba(90,169,196,.7);background:rgba(90,169,196,.12);box-shadow:0 0 0 1px rgba(90,169,196,.45),0 0 14px rgba(90,169,196,.22);}
   .prow{display:flex;align-items:center;gap:8px;}
-  .pname{font-size:11.5px;color:var(--faint);font-weight:500;} .pguild{font-size:13px;color:var(--dim);font-weight:700;}
+  .pname{font-size:12.5px;color:var(--text);font-weight:600;} .pguild{font-size:12px;color:var(--dim);font-weight:600;opacity:.85;}
   .chip{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-left:auto;}
   .chip.h{background:rgba(237,66,69,.16);color:#ff9a9c;} .chip.a{background:rgba(59,165,93,.16);color:#86e0a3;}
   .chip.p{background:rgba(255,255,255,.07);color:var(--dim);}
   .hp{height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin:8px 0 9px;overflow:hidden;}
   .hp>i{display:block;height:100%;background:linear-gradient(90deg,#3ba55d,#5fc88a);}
+  #p-combat{width:400px;} #p-combat.collapsed{width:220px;}
+  .cb-tabs{display:flex;gap:4px;margin-bottom:8px;}
+  .cb-tabs button{flex:0 1 auto;appearance:none;border:1px solid var(--border);background:var(--elev);color:var(--dim);
+    border-radius:6px;padding:5px 14px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+  .cb-tabs button[aria-pressed="true"]{background:rgba(90,169,196,.18);border-color:rgba(90,169,196,.45);color:#cdeaf2;}
+  .cb-ctl{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;color:var(--faint);}
+  .cb-ctl button{appearance:none;border:1px solid var(--border);background:var(--elev);color:var(--dim);border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;cursor:pointer;}
+  .cb-ctl button:hover{border-color:var(--border-strong);color:var(--text);}
+  .cb-time{font-family:var(--mono);font-size:12px;color:#cfe0ff;}
+  .cb-auto{display:flex;align-items:center;gap:3px;cursor:pointer;}
+  .cb-total{margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700;color:#ffcf6b;}
+  .cb-body{max-height:46vh;min-height:80px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:7px;}
+  .cb-empty{color:var(--faint);font-size:12px;text-align:center;padding:18px 6px;line-height:1.5;}
+  .cb-row{background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:7px 9px;}
+  .cb-row.mine{border-color:rgba(90,169,196,.5);}
+  .cb-r1{display:flex;align-items:baseline;gap:7px;}
+  .cb-name{font-size:13px;font-weight:700;color:#eef2f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cb-name i{color:var(--faint);font-style:normal;font-weight:500;font-size:11px;}
+  .cb-dmg{margin-left:auto;font-family:var(--mono);font-size:14px;font-weight:800;color:#ff9a6b;}
+  .cb-dps{font-family:var(--mono);font-size:11px;color:var(--dim);} .cb-share{font-family:var(--mono);font-size:11px;color:var(--faint);width:34px;text-align:right;}
+  .cb-bar-track{position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.07);margin:6px 0 5px;overflow:hidden;}
+  .cb-bar-track>i{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,#c9603a,#ff9a6b);}
+  .cb-bar-track>u{position:absolute;left:0;bottom:0;height:2px;background:#5fc88a;}
+  .cb-r2{display:flex;gap:9px;flex-wrap:wrap;font-size:11px;color:var(--faint);font-family:var(--mono);}
+  .cb-heal{color:#86e0a3;} .cb-taken{color:#9fd2e0;} .cb-kill{color:#ff9a9c;} .cb-death{color:#ff7b7d;}
+  .cb-log{display:flex;flex-direction:column;gap:5px;}
+  .cb-log-row{display:flex;align-items:baseline;gap:6px;font-size:11.5px;color:var(--dim);line-height:1.35;}
+  .cb-log-row b{color:#eef2f7;font-weight:700;} .cb-log-row i{color:var(--faint);font-style:normal;}
+  .cb-log-row.died{color:#ff9a9c;} .cb-log-row.loot{color:#ffcf6b;} .cb-log-row.harvest{color:#a8dfa9;}
+  .cb-age{margin-left:auto;color:var(--faint);font-family:var(--mono);font-size:10px;flex:0 0 auto;}
+  .cb-sp{background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:7px 9px;}
+  .cb-sp-list{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;} .cb-sp-list.dim{opacity:.5;}
+  .cb-sp-chip{font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--dim);}
+  .cb-sp-chip b{color:#eef2f7;} .cb-sp-chip.off{text-decoration:line-through;}
+  .cb-sp-chip.int{opacity:.62;font-style:italic;}
+  .cb-sp-none{font-size:11px;color:var(--faint);}
+  .pact{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
+  .pact-chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:var(--dim);white-space:nowrap;}
+  .pact-chip.fight{background:rgba(237,66,69,.18);color:#ff9a9c;}
+  .pact-chip.farm{background:rgba(120,200,120,.14);color:#a8dfa9;}
+  .pact-chip.cast{background:rgba(255,207,107,.16);color:#ffcf6b;}
+  .zlog{border-top:1px solid var(--border);margin-top:4px;padding-top:7px;display:flex;flex-direction:column;gap:4px;}
+  .zlog-row{display:flex;align-items:baseline;gap:6px;font-size:11px;color:var(--dim);line-height:1.35;}
+  .zlog-row b{color:#eef2f7;font-weight:700;} .zlog-row i{color:var(--faint);font-style:normal;}
+  .zlog-row.died{color:#ff9a9c;} .zlog-row.loot{color:#ffcf6b;}
+  .zlog-age{margin-left:auto;color:var(--faint);font-family:var(--mono);font-size:10px;flex:0 0 auto;}
   .gear{display:flex;gap:4px;}
   .slot{flex:1;aspect-ratio:1;border-radius:5px;background:rgba(255,255,255,.05);border:1px solid var(--border);
     display:grid;place-items:center;font-size:16px;position:relative;}
   .slot .t{position:absolute;bottom:1px;right:1px;font-family:var(--mono);font-size:10px;font-weight:700;color:#cdeaf2;background:rgba(0,0,0,.55);padding:0 2px;border-radius:3px;line-height:1.3;}
+  .pcard.leaving{opacity:.45;}
   .pmeta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--faint);font-family:var(--mono);}
   .pmeta .ip{font-size:14px;font-weight:700;color:#dfe3ea;}
   .phide{margin-left:auto;appearance:none;border:0;background:transparent;color:var(--faint);width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:12px;line-height:1;flex:0 0 auto;}
@@ -205,6 +403,8 @@
   .hchip button:hover{color:#fff;}
   .hparty{background:rgba(90,169,196,.16);color:#9fd2e0;border-radius:10px;padding:1px 4px 1px 8px;font-size:11px;font-weight:700;}
   .hparty button{color:#9fd2e0;}
+  .hguild{background:rgba(196,168,90,.16);color:#e0cf9f;border-radius:10px;padding:1px 4px 1px 8px;font-size:11px;font-weight:700;}
+  .hguild button{color:#e0cf9f;}
   .prow2{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap;}
   .th{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;letter-spacing:.3px;}
   .th-h{background:rgba(237,66,69,.16);color:#ff8f91;}
@@ -319,6 +519,11 @@
   .cr-tbl th{color:var(--dim);font-weight:500;text-align:right;padding:2px 3px;white-space:nowrap;}
   .cr-tbl th:first-child,.cr-tbl td:first-child{text-align:left;}
   .cr-tbl td{padding:2px 3px;text-align:right;white-space:nowrap;}
+  .sp-grid{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;min-width:0;}
+  .sp-cell{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--dim);}
+  .sp-cell.self{color:#9ec5ff;font-weight:700;}
+  .sp-cell input{width:46px;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:5px;padding:2px 4px;font:inherit;font-size:11px;text-align:right;}
+  .sp-sum{font-size:10.5px;color:var(--faint);margin-left:auto;white-space:nowrap;}
   .cr-wtb-lbl{font-size:10px;color:var(--dim);margin:6px 0 2px;}
   .cr-hint{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.45;}
   .cr-wtb{width:100%;box-sizing:border-box;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:5px 7px;font:inherit;font-size:11px;margin-top:6px;resize:vertical;}
@@ -358,6 +563,7 @@
   .scan-bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;}
   .scan-bar>i{display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,#3ba55d,#5fc88a);transition:width .22s ease;}
   .scan-scroll,.mkt-scroll{max-height:340px;overflow-y:auto;}
+  #tab-scan .scan-scroll{overflow-x:auto;}
   .scan-scroll td .chip{margin-left:5px;padding:1px 5px;font-size:10px;}
   .scan-scroll td.scan-price{white-space:nowrap;}
   .scan-scroll thead th,.mkt-scroll thead th{position:sticky;top:0;background:var(--panel-solid);z-index:1;}
@@ -367,7 +573,10 @@
   .enchtag{font-family:var(--mono);font-size:10px;color:var(--accent);}
   .scan-item{display:flex;align-items:center;gap:8px;}
   .scan-ico{width:36px;height:36px;flex:0 0 auto;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.05);}
-  .scan-item-txt{min-width:0;}
+  .scan-item-txt{min-width:0;flex:1 1 auto;}
+  .scan-nm,.scan-act{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .scan-act{font-size:11px;color:var(--faint);margin-top:1px;}
+  #tab-scan .scan-scroll th.gsep,#tab-scan .scan-scroll td.gsep{border-left:1px solid var(--border);}
   tr.best-row td{background:rgba(59,165,93,.14);}
   tr.best-row td.name{color:#86e0a3;font-weight:700;}
   .sell-verdict{margin:2px 0 9px;padding:9px 11px;border-radius:6px;background:rgba(59,165,93,.12);border:1px solid rgba(59,165,93,.3);font-size:12.5px;line-height:1.5;color:#c8e8d3;}
@@ -419,7 +628,30 @@
   .plist{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
 
   /* radar de recursos */
-  #p-radar{width:300px;}
+  #p-radar{width:390px;}
+  .rad-zone{margin-bottom:9px;}
+  .rz-search{width:100%;box-sizing:border-box;margin-bottom:6px;}
+  .rz-card{background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:7px 9px;display:flex;flex-direction:column;gap:4px;}
+  .rz-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;}
+  .rz-name{font-weight:600;color:var(--text);}
+  .rz-tier{border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;background:rgba(90,169,196,.18);color:#cdeaf2;border:1px solid rgba(90,169,196,.45);}
+  .rz-tag{border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:10px;color:var(--dim);}
+  .rz-tag.ok{background:rgba(70,209,96,.14);border-color:rgba(70,209,96,.45);color:#8fe8a4;}
+  .rz-tag.no{opacity:.6;}
+  .rz-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text);}
+  .rz-row .rz-ico{flex:0 0 auto;}
+  .rz-row.dim{color:var(--faint);font-size:11px;}
+  .rad-tabs{display:flex;gap:4px;margin-bottom:9px;}
+  .rz-count:empty{display:none;}
+  .rz-count{background:rgba(90,169,196,.25);border-radius:8px;padding:0 6px;font-size:10px;color:#cdeaf2;}
+  .rz-portals-head{color:var(--faint);font-size:10.5px;margin:9px 0 5px;}
+  .rz-portals{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  .rz-foot{color:var(--faint);font-size:10.5px;}
+  .rz-hint{color:var(--dim);font-size:11px;line-height:1.45;background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:8px;}
+  .rz-hint kbd{font-family:var(--mono);font-size:10.5px;background:rgba(255,255,255,.08);border:1px solid var(--border-strong);border-radius:4px;padding:0 5px;color:var(--text);}
+  .rz-ocr{font-size:11px;color:var(--faint);min-height:14px;margin:-3px 0 6px;}
+  .rz-ocr.ok{color:#8fe8a4;}
+  .rz-ocr.bad{color:#e6a15a;}
   #p-radar.collapsed{width:220px;}
   .rad-filters{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px;}
   .rad-chip{border:1px solid var(--border);background:var(--elev);color:var(--dim);border-radius:6px;padding:4px 8px;font:inherit;font-size:11px;cursor:pointer;transition:background .12s,border-color .12s,color .12s;}
@@ -432,9 +664,13 @@
   .rad-schip{border:1px solid var(--border);background:var(--elev);color:var(--dim);border-radius:5px;padding:3px 7px;font:inherit;font-size:10.5px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;}
   .rad-schip[aria-pressed="false"]{opacity:.4;}
   .rad-schip .sw{width:8px;height:8px;border-radius:2px;flex:0 0 auto;}
-  .rad-controls{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 9px;color:var(--faint);font-size:11px;align-items:center;}
-  .rad-controls label{display:inline-flex;align-items:center;gap:5px;}
-  .rad-controls select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:3px 6px;font:inherit;font-size:11px;}
+  .rad-toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 9px;color:var(--faint);font-size:11px;align-items:center;}
+  .rad-toolbar label{display:inline-flex;align-items:center;gap:5px;margin-left:auto;}
+  .rad-toolbar select{background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:3px 6px;font:inherit;font-size:11px;}
+  .rad-range{font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px dashed var(--border);border-radius:6px;padding:2px 6px;}
+  #rad-filterbox{margin-bottom:4px;}
+  .rad-chip .fdot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#e6a15a;margin-left:5px;vertical-align:middle;}
+  .rad-row.is-hover{border-color:rgba(90,169,196,.55);background:rgba(90,169,196,.08);}
   .rad-dirbtn{background:var(--elev);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:2px 7px;font:inherit;font-size:12px;cursor:pointer;line-height:1;}
   .rad-dirbtn:hover{border-color:rgba(90,169,196,.5);}
   .rad-row .rv{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:#e8c46a;font-variant-numeric:tabular-nums;}
@@ -442,12 +678,12 @@
   .rad-row .rc.full{color:#7ee081;background:rgba(70,209,96,.14);}
   .rad-row .rc.low{color:#e6a15a;background:rgba(230,140,60,.14);}
   .rad-row{cursor:pointer;}
+  .rad-row.is-empty{opacity:.62;}
+  .rad-row.is-ghost{opacity:.55;border-style:dashed;}
   .rad-row:hover{border-color:var(--border-strong);}
   .rad-row.selected{border-color:rgba(90,169,196,.7);background:rgba(90,169,196,.14);box-shadow:0 0 0 1px rgba(90,169,196,.4);}
   #radar-canvas{display:block;width:100%;aspect-ratio:1/1;border-radius:8px;background:radial-gradient(circle at 50% 50%,rgba(30,34,42,.6),rgba(14,16,20,.7));}
-  .rad-zoomrow{display:flex;align-items:center;gap:8px;margin:8px 0 6px;color:var(--faint);font-size:11px;}
-  .rad-zoomrow input[type=range]{flex:1;}
-  .rad-list{display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  .rad-list{margin-top:8px;display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
   .rad-list::-webkit-scrollbar{width:8px;}
   .rad-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
   .rad-row{display:flex;align-items:center;gap:7px;background:var(--elev);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;}
@@ -455,7 +691,6 @@
   .rad-row .rl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
   .rad-row .rl .rt{color:#cdeaf2;font-family:var(--mono);font-size:11px;}
   .rad-row .rd{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;}
-  .rad-row.cat-chest{border-left:3px solid rgba(255,204,51,.55);}
   .rad-empty{color:var(--faint);font-size:12px;text-align:center;padding:16px 6px;line-height:1.5;}
 
   /* copiar nombre al portapapeles */
@@ -474,18 +709,17 @@
 </head>
 <body>
 <div id="bar">
-  <div class="brand"><span class="dot"></span>Candelaa&nbsp;Overlay<span class="ver" id="app-ver"></span></div>
+  <div class="brand"><span class="dot"></span>Overlay<span class="ver" id="app-ver"></span></div>
   <div class="sep"></div>
   <div class="toggles" id="toggles">
     <button class="tg" aria-pressed="true" data-p="players">Players</button>
+    <button class="tg" aria-pressed="true" data-p="combat">Combat</button>
     <button class="tg" aria-pressed="true" data-p="radar">Finder</button>
     <button class="tg" aria-pressed="true" data-p="item">Market</button>
     <button class="tg" aria-pressed="true" data-p="notes">Notes</button>
   </div>
   <div class="sep"></div>
-  <div class="ctl"><span>Display</span><select id="mon"></select></div>
-  <div class="sep"></div>
-  <button class="tg" id="passthrough" aria-pressed="false" title="Click through to the game — the overlay ignores clicks (Ctrl+Alt+O)">🎮 Click to game</button>
+  <button class="tg" id="mon" hidden>🖥</button>
   <span class="auth-user" id="auth-user" title="Token owner"></span>
   <button class="tg" id="btn-admin" title="Manage tokens (admin)" hidden>🛡️ Tokens</button>
   <button class="upd-box" id="app-upd" hidden></button>
@@ -497,7 +731,7 @@
   <div class="gate-card">
     <button id="gate-close" title="Close — reopen it with 🔑 in the top bar">✕</button>
     <div class="gate-logo">🔥</div>
-    <div class="gate-title">Candelaa&nbsp;Overlay</div>
+    <div class="gate-title">Overlay</div>
     <div class="gate-msg" id="gate-msg">Enter your access token</div>
     <input id="gate-input" type="text" placeholder="CDL-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false">
     <button id="gate-btn">Sign in</button>
@@ -543,43 +777,78 @@
   </div>
 </div>
 
+<div class="panel" id="p-combat" style="top:78px;right:20px;">
+  <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Combat</span>
+    <span class="panel__spacer"></span><span class="panel__count" id="cb-count">0</span>
+    <span class="conn" id="cb-conn" title="Data engine connection"></span>
+    <button class="icon-btn collapse" title="Minimize">▁</button></div>
+  <div class="panel__body">
+    <div class="cb-tabs" id="cb-tabs">
+      <button data-t="dmg" aria-pressed="true">Damage</button>
+      <button data-t="log">Events</button>
+      <button data-t="spells">Abilities</button>
+    </div>
+    <div class="cb-ctl">
+      <button id="cb-reset" title="Clear the current fight">⟲ Reset</button>
+      <span class="cb-time" id="cb-time">—</span>
+      <label class="cb-auto" title="Start a new fight automatically after a minute with no damage"><input type="checkbox" id="cb-auto" checked> auto</label>
+      <span class="cb-total" id="cb-total"></span>
+    </div>
+    <div class="cb-body" id="cb-body"></div>
+  </div>
+</div>
+
 <div class="panel" id="p-radar" style="top:78px;left:20px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Resource finder</span>
     <span class="panel__spacer"></span><span class="panel__count" id="rad-count">0</span>
     <span class="conn" id="rad-conn" title="Data engine connection"></span>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="rad-filters" id="rad-filters"></div>
-    <div class="rad-subfilters" id="rad-subfilters"></div>
-    <canvas id="radar-canvas"></canvas>
-    <div class="rad-zoomrow"><span>Zoom</span><input type="range" id="rad-zoom" min="0.5" max="3" step="0.1" value="1"><button id="rad-map" class="rad-dirbtn" title="Show the zone map behind the radar">🗺</button></div>
-    <div class="rad-controls">
-      <label>Sort
-        <select id="rad-sort">
-          <option value="dist">Distance</option>
-          <option value="value">Value</option>
-          <option value="tier">Tier</option>
-        </select>
-        <button id="rad-dir" class="rad-dirbtn" title="Flip order (high/low)">↓</button>
-      </label>
-      <label>Tier ≥
-        <select id="rad-tier">
-          <option value="0">All</option>
-          <option value="2">T2</option><option value="3">T3</option><option value="4">T4</option>
-          <option value="5">T5</option><option value="6">T6</option><option value="7">T7</option><option value="8">T8</option>
-        </select>
-      </label>
+    <div class="rad-tabs">
+      <button class="rad-chip" id="rad-tab-radar" aria-pressed="true">Radar</button>
+      <button class="rad-chip" id="rad-tab-roads" aria-pressed="false"><span>Roads</span> <span class="rz-count" id="rz-count"></span></button>
     </div>
-    <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to the data engine…</div></div>
+    <div id="rad-view-radar">
+      <div class="rad-toolbar">
+        <button class="rad-chip" id="rad-filters-toggle" aria-pressed="false" title="Show or hide the filters">⚙ Filters</button>
+        <button id="rad-map" class="rad-dirbtn" title="Show the zone map behind the radar">🗺</button>
+        <span class="rad-range" title="The radar shows what the server sends: everything within ~28 m of you">28 m</span>
+        <label>Sort
+          <select id="rad-sort">
+            <option value="dist">Distance</option>
+            <option value="value">Value</option>
+            <option value="tier">Tier</option>
+          </select>
+          <button id="rad-dir" class="rad-dirbtn" title="Flip order (high/low)">↓</button>
+        </label>
+      </div>
+      <div id="rad-filterbox" hidden>
+        <div class="rad-filters" id="rad-filters"></div>
+        <div class="rad-subfilters" id="rad-subfilters"></div>
+      </div>
+      <canvas id="radar-canvas"></canvas>
+      <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to the data engine…</div></div>
+    </div>
+    <div id="rad-view-roads" hidden>
+      <div class="rz-hint">🔍 Hover a portal in the game and press <kbd>Ctrl+Alt+R</kbd> — the destination is read off the screen and shown here</div>
+      <div class="rz-ocr" id="rz-ocr"></div>
+      <div class="rad-zone" id="rad-zone">
+        <input class="search rz-search" id="rz-search" placeholder="Roads map… (Qiitun-Vietis)" autocomplete="off" spellcheck="false">
+        <div class="rz-card" id="rz-card" hidden></div>
+      </div>
+      <div class="rz-portals-head" title="Portals read with Ctrl+Alt+R in this zone, plus any the server announced — Roads connections rotate, so they expire after 8 h">Portals read in this zone</div>
+      <div class="rz-portals" id="rz-portals"></div>
+    </div>
   </div>
 </div>
 
 <div class="panel" id="p-notes" style="bottom:20px;right:20px;">
   <div class="panel__head"><span class="panel__grip">⠿</span><span class="panel__title">Notes</span>
     <span class="panel__spacer"></span><span class="panel__count" id="notes-state"></span>
-    <button class="icon-btn" id="notes-clear" title="Delete every note">🗑</button>
+    <button class="icon-btn" id="notes-clear" title="Delete this note">🗑</button>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
+    <div class="notes-tabs" id="notes-tabs"></div>
     <textarea id="notes-text" class="notes-text" spellcheck="false" placeholder="Reference prices, who to buy from, what to craft tomorrow, names to avoid…"></textarea>
   </div>
 </div>
@@ -589,49 +858,38 @@
     <span class="panel__spacer"></span><span class="panel__count" id="item-sub">buy low · sell high · with real data</span>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="search-row"><input class="search" id="item-search" placeholder="Search item… (cape, bow, stew)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Search whatever you have copied">📋</button></div>
+    <div class="search-row"><input class="search" id="item-search" placeholder="Search item… (cape, bow, stew)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Search whatever you have copied">📋</button>
+      <div class="market-results" id="item-results" hidden></div></div>
     <div class="fav-row" id="item-favs" hidden></div>
     <div class="filter-row">
     <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
       <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
     <div class="cfg-row" id="item-quality"><span class="cfg-lbl">Quality</span><div class="minitoggles">
       <button data-q="0" aria-pressed="true">All</button><button data-q="1">Normal</button><button data-q="2">Good</button><button data-q="3">Outstanding</button><button data-q="4">Excellent</button><button data-q="5">Master.</button></div></div>
-    <div class="cfg-row" id="item-fresh"><span class="cfg-lbl" title="Freshness: prices older than this are greyed out and are NOT used to pick the best play. They are never hidden: you still see them, they just don't count.">⏱</span><select id="mkt-fresh">
-      <option value="0" selected>No limit</option>
-      <option value="1">&lt; 1 h</option>
-      <option value="2">&lt; 2 h</option>
-      <option value="6">&lt; 6 h</option>
-      <option value="24">&lt; 24 h</option></select></div>
-    <div class="cfg-row" id="item-markets"><span class="cfg-lbl" title="Which markets show up in the price table and the Scanner. The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.">🏪</span><select id="mkt-scope">
-      <option value="city">Cities only</option>
-      <option value="rest" selected>Cities + Rests</option>
-      <option value="all">All (+ smugglers)</option></select></div>
     </div>
-    <div class="market-results" id="item-results"></div>
     <div class="tabs" id="item-tabs">
       <button class="tab-btn active" data-tab="market">Prices</button>
-      <button class="tab-btn" data-tab="sell">Sell</button>
       <button class="tab-btn" data-tab="craft">Crafting</button>
       <button class="tab-btn" data-tab="scan">Scanner</button>
       <button class="tab-btn" data-tab="level">Level</button>
+      <button class="tab-btn" data-tab="ledger" title="What you bought, the exact break-even price and what each sale made">Ledger</button>
       <button class="tab-btn" data-tab="config" title="Set once, applies to the whole panel">⚙</button>
+      <div class="cfg-row tabs-right" id="item-markets"><span class="cfg-lbl" title="Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.">🏪</span><select id="mkt-scope">
+        <option value="city">Cities only</option>
+        <option value="rest" selected>Cities + Rests</option>
+        <option value="all">All (+ smugglers)</option></select></div>
     </div>
+    <div class="tab-scroll" id="item-tabscroll">
     <div id="tab-market"></div>
     <div id="tab-config" hidden>
       <label class="cfg-check" title="With premium the sales tax is 4%; without it, 8%. Affects every profit calculation in the panel."><input type="checkbox" id="premium-toggle" checked> Premium account — sales tax <b>4%</b> (without premium, 8%)</label>
-    </div>
-    <div id="tab-sell" hidden>
-      <div class="craft-cfg">
-        <div class="cfg-row w2"><span class="cfg-lbl" title="What you are holding right now: the enchant it already has and its quality. Everything below is worked out from here.">Yours is</span>
-          <select id="sell-ench"><option value="0">.0 plain</option><option value="1">.1</option><option value="2">.2</option><option value="3">.3</option><option value="4">.4</option></select>
-          <select id="sell-quality"><option value="1">Normal</option><option value="2">Good</option><option value="3">Outstanding</option><option value="4">Excellent</option><option value="5">Masterpiece</option></select></div>
-        <div class="cfg-row"><span class="cfg-lbl">Units</span><input type="number" id="sell-qty" value="1" min="1"></div>
-        <div class="cfg-row"><span class="cfg-lbl">Runes from</span><select id="sell-mat-city" title="City where you buy the enchanting materials. Leave it on Anywhere to use the cheapest price across every city."><option value="">Anywhere (the cheapest)</option>
-          <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
-        <label class="cfg-check" title="Placing a buy order costs 1 silver above the current best bid, plus a 2.5% setup fee. Cheaper than buying instantly, but it takes time to get filled."><input type="checkbox" id="sell-mat-order"> Runes via buy order (bid+1 and +2.5%)</label>
-        <label class="cfg-check" title="Untick it if you do not own the item yet: the cheapest sell offer is added to the cost and every route is measured as an investment."><input type="checkbox" id="sell-owned" checked> I already own it (the item itself costs me nothing)</label>
-      </div>
-      <div id="sell-out"></div>
+      <div class="cfg-row"><span class="cfg-lbl" title="Usage fee of the station you craft or refine in, exactly as its sign shows it (nutrition rate, normally 100-1000; the royal cities sit around 400). The silver it charges per unit is item value × 0.1125 × rate/100, so it changes every cost in Crafting and Refining.">🏭 Station fee</span><input type="number" id="station-rate" value="400" min="0" max="1000" step="10"><span class="cfg-hint" id="station-rate-hint">Fee rate the station charges (Crafting and Refining use it)</span></div>
+      <div class="cfg-row" id="item-fresh"><span class="cfg-lbl" title="Freshness: prices older than this are greyed out and are NOT used to pick the best play. They are never hidden: you still see them, they just don't count.">⏱ Freshness</span><select id="mkt-fresh">
+        <option value="0" selected>No limit</option>
+        <option value="1">&lt; 1 h</option>
+        <option value="2">&lt; 2 h</option>
+        <option value="6">&lt; 6 h</option>
+        <option value="24">&lt; 24 h</option></select><span class="cfg-hint">Prices older than this are greyed out in Prices and left out of the best play</span></div>
     </div>
     <div id="tab-craft" hidden>
       <div class="craft-cfg">
@@ -640,6 +898,9 @@
           <option value="">— no bonus</option>
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
         <label class="cfg-check"><input type="checkbox" id="craft-focus"> Use <b>focus</b> (+59% to the production bonus)</label>
+        <button class="cr-adv-toggle w3" id="craft-adv-toggle" aria-pressed="false">⚙ Advanced settings <span class="cr-adv-sum" id="craft-adv-sum"></span></button>
+      </div>
+      <div class="craft-cfg cr-adv" id="craft-adv" hidden>
         <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Every day two item families get a +10% production bonus. Pick today's two: the bonus only applies when the item you're looking at belongs to one of them.">Today's bonus</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
         <div class="cfg-row"><span class="cfg-lbl">Focus avail.</span><input type="number" id="craft-focus-avail" value="10000" min="0" step="500" title="Focus you plan to spend this session. With premium you regenerate 10,000/day."></div>
         <div class="cfg-row"><span class="cfg-lbl">Focus/unit</span><input type="number" id="craft-focus-cost" min="0" title="Focus cost per unit. Estimated from game data and your efficiency; type the EXACT value you see at the station and your spec is calibrated for this whole item line."><button class="mini-btn" id="craft-focus-auto" title="Back to the estimated cost (clears this item's calibration)">auto</button></div>
@@ -648,6 +909,8 @@
         <div class="cfg-row"><span class="cfg-lbl">Return %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% of resources the station returns. Worked out from city + focus + daily bonus; if you type it by hand, your value wins (change any setting to go back to automatic)."><button class="mini-btn" id="craft-return-auto" title="Back to the calculated return">auto</button></div>
         <label class="cfg-check" title="Placing a buy order costs 1 silver above the current best bid, plus a 2.5% setup fee. Cheaper than buying instantly, but it takes time to get filled."><input type="checkbox" id="craft-mat-order"> Mats via buy order (bid+1 and +2.5%)</label>
         <label class="cfg-check" title="With an order: you queue at the cheapest sell price in that market (Black Market included) and pay tax plus a 2.5% fee. Without: you sell instantly to the best bid and only pay tax."><input type="checkbox" id="craft-sell-order" checked> Sell via order (+2.5%)</label>
+        <label class="cfg-check" title="Crafting fills a labourer journal that you can resell full. The empty one is bought before crafting (fame already earned does not go back in) and the full one is sold; both prices are read from the market."><input type="checkbox" id="craft-journals" checked> Buy and resell <b>journals</b></label>
+        <div class="cfg-row w3 sp-row"><span class="cfg-lbl" title="Your levels on the destiny board (0-100). The node you are making counts 250 points per level, its branch siblings and the mastery 30 each, and 10,000 points halve the focus cost. Saved once and used everywhere in the panel.">🎓 Spec</span><div class="sp-grid" id="craft-specs"></div></div>
       </div>
       <div id="craft-out"></div>
     </div>
@@ -659,6 +922,9 @@
         <option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="21" selected>21 days</option><option value="30">30 days</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl" title="Drops any play whose buy or sell price has not been seen in this long. A margin computed on a three-day-old price is a guess, not an opportunity.">Seen within</span><select id="scan-fresh">
         <option value="0">No limit</option><option value="1">1 h</option><option value="2">2 h</option><option value="6">6 h</option><option value="12">12 h</option><option value="24" selected>1 day</option><option value="72">3 days</option></select></div>
+      <div class="cfg-row"><span class="cfg-lbl" title="Your budget. With one set, the panel stops being a ranking and becomes a shopping list: it splits the silver across the plays that pay best per silver spent and tells you how many units to take of each. Leave it empty to just see the ranking.">Budget</span><input id="scan-budget" type="text" placeholder="e.g. 5M"></div>
+      <div class="cfg-row"><span class="cfg-lbl" title="The margin you want to make. The Max pay column is worked back from it: walk into the market and buy only what sits below that price, whatever the panel said it cost when you scanned.">Target margin</span><select id="scan-margin">
+        <option value="15">15%</option><option value="20">20%</option><option value="30" selected>30%</option><option value="50">50%</option><option value="100">100%</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Tier</span><select id="scan-tier"><option value="all" selected>All (T4-T8)</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Buy in</span><select id="scan-city" title="City where you buy. Leave it on Anywhere to use the cheapest price across every city (may mean several trips)."><option value="" selected>Anywhere (the cheapest)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
       <label class="cfg-check" title="Drops rows where the current sell price is more than 3× the historical average: those are spikes or troll orders, not real opportunities."><input type="checkbox" id="scan-hide-spikes" checked> Hide spikes (sell &gt; 3× the average)</label>
@@ -666,12 +932,26 @@
       <button class="scan-btn" id="scan-btn">🔍 Find opportunities</button>
       <div id="scan-result"></div>
     </div>
+    <div id="tab-ledger" hidden>
+      <div class="craft-cfg" id="ledger-form">
+        <div class="cfg-row w2"><span class="cfg-lbl">Bought</span><span class="ledger-item" id="ledger-item">— search and pick the item above —</span></div>
+        <div class="cfg-row"><span class="cfg-lbl">Units</span><input type="number" id="ledger-qty" value="1" min="1"></div>
+        <div class="cfg-row"><span class="cfg-lbl">Paid / unit</span><input type="number" id="ledger-price" min="0" placeholder="silver"></div>
+        <div class="cfg-row"><span class="cfg-lbl" title="Where you plan to sell it. It sets the fees behind the break-even price: the Black Market and instant sales only pay the sales tax; a sell order also pays the 2.5% setup fee.">Sell to</span><select id="ledger-dest"><option value="bm">Black Market — instant</option><option value="bmorder">Black Market — with order</option><option value="order">Market — with order</option><option value="instant">Market — instant</option></select></div>
+        <div class="cfg-row"><span class="cfg-lbl" title="City where the stock is: the market holding the sell order, or simply where you left it. The Now price is read from that city, and you can change it later on the lot itself.">Stock in</span><select id="ledger-city"></select></div>
+        <label class="cfg-check" title="A buy order costs a 2.5% setup fee on top of the price. It is added to your cost."><input type="checkbox" id="ledger-buy-order"> Buy order</label>
+        <button class="scan-btn" id="ledger-add">➕ Add purchase</button>
+      </div>
+      <div id="ledger-open"></div>
+      <div id="ledger-history"></div>
+    </div>
     <div id="tab-level" hidden>
       <div class="craft-cfg">
       <div class="cfg-row"><span class="cfg-lbl">Level</span><select id="level-target"><option>4</option><option>5</option><option>6</option><option>7</option><option value="8" selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
       <div class="cfg-row"><span class="cfg-lbl">Buy in</span><select id="level-city"><option value="">All (cheapest)</option><option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
       </div>
       <div id="level-result"></div>
+    </div>
     </div>
 
   </div>
@@ -681,6 +961,7 @@
 <script src="i18n.js"></script>
 <script src="renderer.js"></script>
 <script src="players-feed.js"></script>
+<script src="combat-feed.js"></script>
 <script src="resources-feed.js"></script>
 <script src="item-feed.js"></script>
 </body>

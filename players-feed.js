@@ -45,8 +45,31 @@
   let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY)) || []); } catch (_) { return new Set(); } })();
   const saveHidden = () => localStorage.setItem(HIDE_KEY, JSON.stringify([...hidden]));
 
+  // ---- tu gremio y tu alianza ----
+  // Ni tu gremio ni tu alianza viajan en ningún spawn (tu personaje nunca emite NewCharacter),
+  // pero SÍ vienen en la respuesta de JoinMap (op 2): param 58 = gremio, param 79 = alianza.
+  // Índices verificados contra JoinResponse.cs de AlbionOnline-StatisticsAnalysis.
+  // Se guardan porque el JoinMap solo llega al cambiar de zona: si el overlay se abre a mitad
+  // de sesión, sin persistir no habría gremio hasta que el usuario se moviera de mapa.
+  const MYGUILD_KEY = 'albion-overlay-myguild-v1';
+  let myGuild = '', myAlliance = '';
+  try { const v = JSON.parse(localStorage.getItem(MYGUILD_KEY)) || {}; myGuild = v.g || ''; myAlliance = v.a || ''; } catch (_) {}
+  const saveMine = () => { try { localStorage.setItem(MYGUILD_KEY, JSON.stringify({ g: myGuild, a: myAlliance })); } catch (_) {} };
+  // Los de tu gremio o tu alianza no te pueden atacar, así que salían como hostiles y disparaban
+  // la alerta por nada: cuentan como los tuyos igual que el grupo y los ocultados a mano.
+  const isMine = (p) => !!p && !!((myGuild && p.guild === myGuild) || (myAlliance && p.alliance === myAlliance));
+
+  // ---- por qué NO hay distancia ni dirección de los jugadores ----
+  // El juego NO difunde la posición de los demás en claro: el evento Move (3) la manda en un
+  // buffer ofuscado (param 1) del que solo se lee la velocidad, y los params 4 y 5 —que sí
+  // valen para los mobs— traen basura para jugadores (capturado en vivo el 2026-08-21:
+  // -9.3e+24, 1.4e+15...). Ni ZQRadar ni el propio motor de datos lo resuelven: OpenRadar crea
+  // cada jugador con posición (0,0) y nunca la actualiza. No se intenta romper el cifrado, así
+  // que el panel no promete metros que no puede saber. Guardar esos params "por si acaso" es lo
+  // que hacía el código antes; no se hace, porque cualquiera que los lea creerá que son metros.
   // ---- zona / mapa (heredado del radar; jugadores y el capturador de mercado lo necesitan) ----
   const isAlly = (name) => !!(name && (partyNames.has(name) || hidden.has(name)));
+  const isFriend = (p) => !!p && (isAlly(p.name) || isMine(p));
   let currentMapId = null, mapBounds = {};
   // Las brumas NO están en zones.json: su id es "@MISTS@..." (y "@MISTSDUNGEON@..." el santuario),
   // así que la zona salía sin clasificar y el aviso de enemigo se quedaba mudo justo donde más
@@ -62,6 +85,12 @@
   function applyMapChange(mapId) {
     if (typeof mapId === 'string' && mapId && mapId !== currentMapId) {
       currentMapId = mapId; window.__ovMapId = mapId; window.__ovZone = zonePvp();
+      // La limpieza va AQUÍ, no en el temporizador de refresco: los spawns de la zona nueva
+      // llegan inmediatamente detrás del cambio, así que borrar hasta dos segundos después se
+      // llevaba por delante a los que ya habían aparecido — y el juego no los vuelve a anunciar
+      // (NewCharacter solo llega al ENTRAR en tu burbuja), así que el panel se quedaba vacío
+      // hasta que pasara alguien nuevo. Justo al entrar en una zona es cuando más importa.
+      players.clear(); selectedId = null;
       try { window.overlay.setMarketZone(mapId); } catch (_) {}
     }
   }
@@ -105,9 +134,21 @@
     if (!el || el.classList.contains('collapsed')) return false;   // panel cerrado o minimizado
     return getComputedStyle(el).display !== 'none';                // oculto con el toggle de la barra
   }
-  function alertEnemy() {
+  // Un mismo jugador entrando y saliendo del borde de tu burbuja disparaba el aviso cada vez:
+  // su objectId cambia en cada entrada, así que "es nuevo" era siempre cierto. Con el guid
+  // (que no cambia) se le da un descanso; de otro enemigo distinto sí vuelve a sonar al momento.
+  const alerted = new Map();
+  const ALERT_TTL = 45000;
+  function alertEnemy(who) {
     if (!playersPanelOpen()) return;   // solo avisa si el widget de Jugadores está abierto y desplegado
-    const now = Date.now(); if (now - lastAlert < 2500) return; lastAlert = now; flashAlert(); beep();
+    const now = Date.now();
+    const key = who && (who.guid || who.name);
+    if (key) {
+      if (now - (alerted.get(key) || 0) < ALERT_TTL) return;
+      alerted.set(key, now);
+      if (alerted.size > 200) alerted.forEach((t, k) => { if (now - t > ALERT_TTL) alerted.delete(k); });
+    }
+    if (now - lastAlert < 2500) return; lastAlert = now; flashAlert(); beep();
   }
   const unlockAudio = () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (_) {} };
   ['pointerdown', 'keydown', 'change'].forEach((e) => window.addEventListener(e, unlockAudio, { passive: true }));
@@ -293,9 +334,9 @@
     // sin el índice de items cargado toda IP sería 0 y el veredicto sería mentira
     if (!indexMap || !foes.length || window.__ovZone === 'safe') { balEl.style.display = 'none'; return; }
     balEl.style.display = '';
-    balEl.title = 'Your party and hidden allies against everyone else in range';
+    balEl.title = 'Your party, guild and hidden allies against everyone else in range';
     const ipOf = (p) => avgIP(p.equip) || 0;
-    const mates = [...players.values()].filter((p) => isAlly(p.name));
+    const mates = [...players.values()].filter(isFriend);
     const mine = mates.reduce((s, p) => s + ipOf(p), 0) + myIp;
     const theirs = foes.reduce((s, p) => s + ipOf(p), 0);
     const diff = mine - theirs;
@@ -311,7 +352,7 @@
   }
 
   function render() {
-    const inRange = [...players.values()].filter((p) => !partyNames.has(p.name) && !hidden.has(p.name)); // sin party ni ocultados
+    const inRange = [...players.values()].filter((p) => !isFriend(p)); // sin grupo, gremio/alianza ni ocultados
     const all = inRange.filter((p) => threatOf(p) === 'peligro');
     const passiveN = inRange.length - all.length;
     const guildCount = {};
@@ -334,8 +375,15 @@
     drawBalance(arr);
     const partyN = partyNames.size;
     const chips = [...hidden].map((n) => `<span class="hchip">${esc(n)}<button data-unhide="${esc(n)}" title="Stop hiding">✕</button></span>`).join('');
-    const hideBar = (hidden.size || partyN)
-      ? `<div class="hidden-bar">${partyN ? `<span class="hchip hparty" title="Party detected automatically: ${esc([...partyNames.keys()].join(', '))}">👥 party ×${partyN}<button data-clearparty="1" title="Forget the detected party">✕</button></span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
+    // El gremio se detecta solo: el chip está para poder comprobarlo de un vistazo (y borrarlo
+    // si el personaje cambia de gremio antes del siguiente cambio de zona).
+    const myTag = myGuild || myAlliance;
+    const mineN = [...players.values()].filter(isMine).length;
+    const guildChip = myTag
+      ? `<span class="hchip hguild" title="Your guild/alliance, hidden as allies: ${esc([myGuild, myAlliance].filter(Boolean).join(' / '))}">🛡 ${esc(myTag)}${mineN ? ' ×' + mineN : ''}<button data-clearguild="1" title="Forget the detected guild">✕</button></span>`
+      : '';
+    const hideBar = (hidden.size || partyN || myTag)
+      ? `<div class="hidden-bar">${guildChip}${partyN ? `<span class="hchip hparty" title="Party detected automatically: ${esc([...partyNames.keys()].join(', '))}">👥 party ×${partyN}<button data-clearparty="1" title="Forget the detected party">✕</button></span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
       : '';
     if (!arr.length) {
       const empty = passiveN
@@ -349,6 +397,13 @@
     const squads = Object.entries(guildCount).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]);
     const bits = [];
     if (hostiles) bits.push(`<b class="s-host">${hostiles} hostile${hostiles > 1 ? 's' : ''}</b>`);
+    // Tres recolectores no son lo mismo que dos DPS y un sanador: el número suelto no decía
+    // a qué te enfrentas, y el rol ya está calculado para pintar cada tarjeta.
+    const roleN = {};
+    arr.forEach((p) => { const w = wOf.get(p); if (w) roleN[w.role] = (roleN[w.role] || 0) + 1; });
+    const comp = ['tank', 'heal', 'dps', 'sup', 'gather'].filter((r) => roleN[r])
+      .map((r) => `<span style="color:${ROLE[r][1]}">${roleN[r]} ${ROLE[r][0]}</span>`).join(' ');
+    if (comp && hostiles > 1) bits.push(comp);
     if (squads.length) bits.push(`${inDanger ? '⚠ ' : ''}squad <b>${esc(squads[0][0])}</b> ×${squads[0][1]}`);
     const danger = inDanger && (squads.length > 0 || hostiles >= 3);
     const summary = bits.length ? `<div class="pl-summary${danger ? ' danger' : ''}">${bits.join(' · ')}</div>` : '';
@@ -372,15 +427,60 @@
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
       const risk = THREAT[th] ? `<span class="chip ${THREAT[th][1]}">${THREAT[th][0]}</span>` : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
-      return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}" data-id="${p.id}">
+      return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}${p.left ? ' leaving' : ''}" data-id="${p.id}">
         <div class="prow">${tierTag}${wTag}${risk}
           ${flag}<span class="mount${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted' : 'On foot'}">🐎</span>
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
         <div class="prow2"><span class="pguild">${p.guild ? esc(p.guild) + squad : ''}</span>
           <span class="pname">${esc(p.name || '???')}</span></div>
+        ${hpHtml(p)}${actHtml(p)}
         <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Estimated market value of the gear">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
       </div>`;
     }).join('');
+  }
+
+  // La vida solo se pinta cuando SABEMOS el máximo (llega con la regeneración, evento 91):
+  // al aparecer, un jugador trae 1/1 y dibujar eso sería inventarse que está a tope.
+  function hpHtml(p) {
+    if (!(p.hpMax > 1) || !(p.hp >= 0) || p.hp >= p.hpMax * 0.995) return '';
+    const pct = Math.max(0, Math.min(100, Math.round((p.hp / p.hpMax) * 100)));
+    const col = pct < 35 ? '#ff6b5c' : pct < 70 ? '#ffcf6b' : '#5fc88a';
+    return `<div class="hp" title="Health ${pct}%"><i style="width:${pct}%;background:${col}"></i></div>`;
+  }
+  function actHtml(p) {
+    const bits = [];
+    if ((p.fightUntil || 0) > Date.now()) {
+      const foe = p.hitBy || p.hitting;
+      bits.push(`<span class="pact-chip fight" title="Taking or dealing damage right now">⚔ in combat${foe ? ' vs ' + esc(foe) : ''}</span>`);
+    }
+    // Bajarse de la montura al lado de alguien es el gesto que precede a un ataque: quien va
+    // de paso sigue montado. Es la señal más temprana que hay, y llega gratis en el evento 211.
+    if (Date.now() - (p.dismount || 0) < DISMOUNT_TTL) bits.push('<span class="pact-chip cast" title="Just got off the mount: usually the move right before attacking">⚠ dismounted</span>');
+    if (p.left) bits.push('<span class="pact-chip">out of range</span>');
+    return bits.length ? `<div class="pact">${bits.join('')}</div>` : '';
+  }
+  const DISMOUNT_TTL = 8000;
+
+  // ---- señal de pelea (lo demás vive en el panel de Combate) ----
+  // Aquí solo interesa lo que cambia una decisión de huir o entrar: si el que tienes delante
+  // está peleando y contra quién. El desglose de daño, saqueos y habilidades es otro panel.
+  const COMBAT_TTL = 7000;
+  const isNum = (v) => typeof v === 'number' && isFinite(v);
+  const known = (id) => (isNum(id) ? players.get(id) : null);
+
+  function touchCombat(q, foe, incoming) {
+    if (!q) return;
+    q.fightUntil = Date.now() + COMBAT_TTL;
+    if (incoming) q.hitBy = foe || q.hitBy; else q.hitting = foe || q.hitting;
+  }
+  // El evento de vida ya se leía, pero solo el param 3 (vida resultante). El 2 es el cambio y
+  // el 6 quién lo causa: con eso se sabe quién pega a quién sin adivinar ningún código nuevo.
+  function applyDamage(p) {
+    const delta = isNum(p['2']) ? p['2'] : 0;
+    if (delta >= 0) return;                       // curación o regeneración: no es una pelea
+    const victim = known(p['0']), attacker = known(p['6']);
+    touchCombat(victim, attacker ? attacker.name : null, true);
+    touchCombat(attacker, victim ? victim.name : null, false);
   }
 
   // ---- WebSocket ----
@@ -409,32 +509,65 @@
     const p = dict && dict.parameters; if (!p) return;
     const op = p['253'], code = p['252'], id = p['0'];
     // cambio de mapa/zona (por operación): lo necesitan la clasificación de zona y el capturador de mercado
+    // tu gremio/alianza llegan SOLO aquí (ver MYGUILD_KEY): se lee antes del cambio de mapa
+    if (m.code === 'response' && op === 2) {
+      const g = typeof p['58'] === 'string' ? p['58'] : null;
+      const a = typeof p['79'] === 'string' ? p['79'] : null;
+      if ((g !== null && g !== myGuild) || (a !== null && a !== myAlliance)) {
+        if (g !== null) myGuild = g;
+        if (a !== null) myAlliance = a;
+        saveMine();
+        scheduleRender();
+      }
+    }
     if ((op === 2 || op === 3) && typeof p['8'] === 'string') applyMapChange(p['8']);
     else if (op === 41 && typeof p['0'] === 'string') applyMapChange(p['0']);
     let touched = true;
     switch (code) {
       case 29: {
         const isNew = !players.has(id);
-        players.set(id, { id, name: p['1'], guild: p['8'] || '', alliance: p['51'] || '',
+        // el guid (param 7) es el id ESTABLE del personaje: el objectId cambia cada vez que
+        // entra y sale de tu burbuja, el guid no. Sirve para no repetir el aviso del mismo tipo.
+        players.set(id, { id, guid: p['7'] || null, name: p['1'], guild: p['8'] || '', alliance: p['51'] || '',
           faction: p['53'] ?? 0, hp: 1, hpMax: 1, equip: p['40'] || null, spells: p['43'] || null,
-          mounted: false, posX: null, posY: null, last: Date.now() });
+          mounted: false, last: Date.now() });
         schedulePriceFetch();
         // solo avisa de quien REALMENTE puede atacarte: en amarilla/roja un recolector sin
         // marcar disparaba el beep igual que alguien que venía a matarte
-        if (isNew && !isAlly(p['1']) && threatOf(players.get(id)) === 'peligro') alertEnemy();
+        if (isNew && !isFriend(players.get(id)) && threatOf(players.get(id)) === 'peligro') alertEnemy(players.get(id));
         break;
       }
       case 1: {
         const q = players.get(id); if (q) q.left = Date.now();   // salió de rango: se borra tras un delay
         break;
       }
-      case 6: { const q = players.get(id); if (q) { q.hp = p['3'] ?? q.hp; q.last = Date.now(); } break; }
-      case 91: { const q = players.get(id); if (q) { q.hp = p['2'] ?? q.hp; q.hpMax = p['3'] ?? q.hpMax; q.last = Date.now(); } break; }
+      case 6: { const q = players.get(id); if (q) { q.hp = p['3'] ?? q.hp; if (q.hp > q.hpMax) q.hpMax = q.hp; q.last = Date.now(); } applyDamage(p); break; }
+      // La regeneración trae su ritmo (param 4) SOLO cuando el jugador está fuera de combate:
+      // en combate la vida no regenera, así que el propio evento dice si está peleando. Es la
+      // misma regla que usa albion-online-stats y no depende de ningún código que cambie de parche.
+      case 91: {
+        const q = players.get(id);
+        if (q) { q.hp = p['2'] ?? q.hp; q.hpMax = p['3'] ?? q.hpMax; q.last = Date.now();
+          if (p['4'] != null) { q.fightUntil = 0; q.hitBy = q.hitting = null; } else q.fightUntil = Math.max(q.fightUntil || 0, Date.now() + COMBAT_TTL); }
+        break;
+      }
       case 90: { const q = players.get(id); if (q) { q.equip = p['2'] || q.equip; q.last = Date.now(); schedulePriceFetch(); } break; }
-      case 211: { const q = players.get(id); if (q) { q.mounted = p['11'] === true || p['10'] === -1; q.last = Date.now(); } break; }
+      case 211: {
+        const q = players.get(id);
+        if (q) {
+          const was = q.mounted;
+          q.mounted = p['11'] === true || p['10'] === -1;
+          q.last = Date.now();
+          // Marca visual y nada más: sin distancia no se puede distinguir a quien se baja
+          // encima de ti de quien lo hace en el borde de la burbuja, y un beep por cada
+          // recolector que desmonta para picar sería insufrible.
+          if (was && !q.mounted) q.dismount = Date.now();
+        }
+        break;
+      }
       // alguien se marca en PvP a tu lado: antes esto no avisaba de nada, solo repintaba
-      case 363: { const q = players.get(id); if (q) { const was = q.faction; q.faction = p['1'] ?? q.faction; q.last = Date.now(); if (was !== 255 && q.faction === 255 && !isAlly(q.name) && threatOf(q) === 'peligro') alertEnemy(); } break; }
-      case 3: { const q = players.get(id); if (q) { if (p['4'] != null) { q.posX = p['4']; q.posY = p['5']; } q.last = Date.now(); } break; }
+      case 363: { const q = players.get(id); if (q) { const was = q.faction; q.faction = p['1'] ?? q.faction; q.last = Date.now(); if (was !== 255 && q.faction === 255 && !isFriend(q) && threatOf(q) === 'peligro') alertEnemy(q); } break; }
+      case 3: { const q = players.get(id); if (q) q.last = Date.now(); break; }   // solo dice que sigue ahí: la posición va ofuscada
       // ---- party (para ocultar a los tuyos): posición de un compañero, con su nombre ----
       case 182: {
         const nm = p['2'];
@@ -459,13 +592,8 @@
     if (ch) render();
   }, 4000);
 
-  // refresco periódico: distancia (cambia al MOVERTE tú) y antigüedad no llegan por evento.
-  // Al cambiar de zona, limpiar (si no, quedan jugadores viejos con distancias enormes).
-  let lastMapId;
-  setInterval(() => {
-    if (window.__ovMapId !== lastMapId) { lastMapId = window.__ovMapId; players.clear(); selectedId = null; }
-    render();
-  }, 2000);
+  // refresco periódico: distancia (cambia al MOVERTE tú) y antigüedad no llegan por evento
+  setInterval(render, 2000);
 
   setInterval(() => { for (const k in priceMap) delete priceMap[k]; schedulePriceFetch(); }, 300000);
 
@@ -480,6 +608,7 @@
   plist.addEventListener('click', (e) => {
     if (e.target.closest('#unhideAll')) { hidden.clear(); saveHidden(); render(); return; }
     if (e.target.closest('[data-clearparty]')) { e.stopPropagation(); partyNames.clear(); savePartyShared(); render(); return; }
+    if (e.target.closest('[data-clearguild]')) { e.stopPropagation(); myGuild = myAlliance = ''; saveMine(); render(); return; }
     const uh = e.target.closest('[data-unhide]');
     if (uh) { e.stopPropagation(); hidden.delete(uh.dataset.unhide); saveHidden(); render(); return; }
     const hb = e.target.closest('.phide');
@@ -489,6 +618,16 @@
     selectedId = (selectedId === id) ? null : id;
     render();
   });
+
+  window.__players = { players, isAlly, isMine, isFriend, partyNames, render,
+    me: () => ({ guild: myGuild, alliance: myAlliance }),
+    state: () => ({ map: currentMapId, zone: window.__ovZone }) };
+  // El panel de Combate necesita los mismos nombres de item; se comparten en vez de cargar
+  // otras 11k entradas en memoria para lo mismo.
+  window.__items = {
+    info: itemInfo,
+    label: (id) => { const it = itemInfo(id); if (!it || !it.name) return null; return cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || it.name); },
+  };
 
   render();
   connect();
