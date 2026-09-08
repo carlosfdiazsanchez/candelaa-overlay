@@ -112,7 +112,6 @@
     const sc = document.getElementById('craft-station-city'); if (sc && c.stationCity != null) sc.value = c.stationCity;
     const fo = document.getElementById('craft-focus'); if (fo && typeof c.focus === 'boolean') fo.checked = c.focus;
     const fa = document.getElementById('craft-focus-avail'); if (fa && c.focusAvail != null) fa.value = String(c.focusAvail);
-    const sm = document.getElementById('craft-session-mode'); if (sm && c.sessionMode) sm.value = c.sessionMode;
     const mg = document.getElementById('craft-margin'); if (mg && c.margin != null) mg.value = String(c.margin);
     const sf = document.getElementById('scan-fresh'); if (sf && c.scanFreshH != null) sf.value = String(c.scanFreshH);
     const sg = document.getElementById('scan-margin'); if (sg && c.scanMargin != null) sg.value = String(c.scanMargin);
@@ -121,13 +120,13 @@
     const pt = document.getElementById('premium-toggle'); const sr = document.getElementById('station-rate');
     const fr = document.getElementById('mkt-fresh'); const sc = document.getElementById('craft-station-city');
     const fo = document.getElementById('craft-focus');
-    const fa = document.getElementById('craft-focus-avail'); const sm = document.getElementById('craft-session-mode');
+    const fa = document.getElementById('craft-focus-avail');
     const mg = document.getElementById('craft-margin');
     try {
       localStorage.setItem(CFG_KEY, JSON.stringify({
         premium: !!(pt && pt.checked), stationRate: sr ? +sr.value || 0 : 400, freshMaxH: fr ? +fr.value || 0 : 6,
         stationCity: sc ? sc.value : '', focus: !!(fo && fo.checked),
-        focusAvail: fa ? +fa.value || 0 : 10000, sessionMode: sm ? sm.value : 'focus', margin: mg ? +mg.value || 0 : 20,
+        focusAvail: fa ? +fa.value || 0 : 10000, margin: mg ? +mg.value || 0 : 20,
         scanFreshH: (() => { const sf = document.getElementById('scan-fresh'); return sf ? +sf.value || 0 : 24; })(),
         scanMargin: (() => { const sg = document.getElementById('scan-margin'); return sg ? +sg.value || 0 : 30; })(),
       }));
@@ -1498,11 +1497,11 @@
       + `<div class="cr-kpi"><span class="cr-kpi-l">Cost</span><span class="cr-kpi-v silver">${fmt(netCost)}</span></div>`
       + `<div class="cr-kpi"><span class="cr-kpi-l">Net sale</span><span class="cr-kpi-v silver">${fmt(ventaNeta)}</span></div>`
       + '</div>'
-      + `<div class="cr-batch">For <b>${qty}</b> units (<b>${fmtInt(runs)}</b> crafts) → you invest <b class="silver">${fmt(netCost * qty)}</b> · you get back <b class="silver">${fmt((ventaNeta + jrPerUnit) * qty)}</b> · profit <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`
+      + `<div class="cr-batch">For <b>${qty}</b> units${amt > 1 ? ` (<b>${fmtInt(runs)}</b> crafts)` : ''} → you invest <b class="silver">${fmt(netCost * qty)}</b> · you get back <b class="silver">${fmt((ventaNeta + jrPerUnit) * qty)}</b> · profit <b class="${pc}">${profit >= 0 ? '+' : ''}${fmt(profit * qty)}</b></div>`
       + sessionLine(runs, jr, mats, qty)
       + warnHtml
       + offerHtml;
-    { const sum = document.getElementById('craft-adv-sum'); if (sum) sum.textContent = `return ${(returnR * 100).toFixed(1)}% · focus/unit ${fmtInt(fCost)} · ${((document.getElementById('craft-session-mode') || {}).value === 'mixed') ? 'focus + rest without' : 'all with focus'}`; }
+    { const sum = document.getElementById('craft-adv-sum'); if (sum) sum.textContent = `return ${(returnR * 100).toFixed(1)}% · focus/craft ${fmtInt(fCost)}`; }
     renderPlan({ mats, returnR, tax, fee, qty, amt, runs, jr, matOrder, sellFee, netCost, ventaNeta, sellPrice, profit, instant });
   }
 
@@ -1600,7 +1599,7 @@
   function craftSpecSumHtml() {
     const eff = craftSpecEff(currentBase);
     const cal = +focusEff[specLine(currentBase)] || 0;
-    return `<span class="sp-sum" title="Focus efficiency from your levels. ${cal > 0 ? 'A calibrated cost is in use, so this one is ignored.' : 'Type the exact cost the station shows into Focus/unit to calibrate it instead.'}">`
+    return `<span class="sp-sum" title="Focus efficiency from your levels. ${cal > 0 ? 'A calibrated cost is in use, so this one is ignored.' : 'Type the exact cost the station shows into Focus/craft to calibrate it instead.'}">`
       + `${cal > 0 ? 'calibrated ' + fmtInt(cal) : fmtInt(eff) + ' pts'} · ×${(Math.pow(2, -((cal || eff) / 10000))).toFixed(2)}</span>`;
   }
 
@@ -1646,7 +1645,6 @@
     const useFocus = !!(document.getElementById('craft-focus') || {}).checked;
     const focusAvail = +(document.getElementById('craft-focus-avail') || {}).value || 0;
     const focusCost = +(document.getElementById('craft-focus-cost') || {}).value || 0;
-    const mode = (document.getElementById('craft-session-mode') || {}).value || 'focus';
     const R = ctx.returnR, amt = ctx.amt || 1;
 
     // punto de equilibrio, como una línea más del resultado
@@ -1656,18 +1654,17 @@
     const cc = cushion >= 0 ? 'up' : 'down';
     let extra = `<div style="margin-top:5px" title="Below that price you lose silver: it already includes sales tax and, if you ticked it, the order fee.">You lose below <b>${fmtInt(breakEven)}</b> · you sell at <b>${fmtInt(ctx.sellPrice)}</b> <span class="${cc}">(${cushion >= 0 ? '+' : ''}${cushion.toFixed(1)}% cushion)</span></div>`;
 
-    // sesión de foco, otra línea
+    // Foco: lo que gasta ESTA tanda y lo que se gana por punto. Ya NO calcula un beneficio
+    // aparte: antes esta linea sacaba su propio total (con sus propias unidades y sin contar
+    // los diarios) y no cuadraba con el de la tanda de arriba, que es el bueno.
     if (useFocus && focusCost > 0) {
-      const perFocus = (ctx.profit * amt) / focusCost;
-      const craftsF = Math.floor(focusAvail / focusCost);
-      const R0 = returnRate(currentBase, { focus: false }).pct / 100;
-      let totalUnits = craftsF * amt, matCrafts = craftsF * amt * (1 - R);
-      if (mode === 'mixed') { totalUnits = (craftsF + (R < 1 ? (craftsF * R) / (1 - R0) : 0)) * amt; matCrafts = craftsF * amt; }
-      const invest = ctx.mats.reduce((s, m) => s + m.price * (m.fee || 1) * (m.c / amt) * (m.ret ? matCrafts : totalUnits), 0) + ctx.fee * totalUnits;
-      const gain = ctx.ventaNeta * totalUnits - invest;
-      const gc = gain >= 0 ? 'up' : 'down';
-      const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="No spec set: it uses the unspecialised focus cost, so it looks worse than reality. Fill in your levels in the Spec row (or type what the station shows into Focus/unit).">⚠ spec not calibrated</span>';
-      extra += `<div style="margin-top:5px" title="Focus is the scarce resource, not silver: profit per point is what decides what to craft.">${fmtInt(focusAvail)} focus → <b>${fmtInt(totalUnits)}</b> units · <b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b>/focus · session <b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b>${warn}</div>`;
+      const perFocus = (ctx.profit * amt) / focusCost;      // el foco se paga por craft, no por unidad
+      const spent = ctx.runs * focusCost;
+      const reach = Math.floor(focusAvail / focusCost) * amt;
+      const missing = ctx.qty - reach;
+      const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="Your destiny board levels are empty, so it uses the unspecialised focus cost and everything looks worse than it is. Fill in the Spec row, or type what the station shows into Focus/craft.">⚠ fill in your levels</span>';
+      const over = missing > 0 ? ` <span class="down" title="Your focus does not cover the whole quantity. Those units would be crafted without focus, so the station returns fewer materials and they cost more than shown here.">⚠ ${fmtInt(missing)} units without focus</span>` : '';
+      extra += `<div style="margin-top:5px" title="Focus is the scarce resource, not silver: what you earn per point is what decides what to craft.">${spent > focusAvail ? 'Needs' : 'Uses'} <b>${fmtInt(spent)}</b> of your <b>${fmtInt(focusAvail)}</b> focus · <b class="${ctx.profit >= 0 ? 'up' : 'down'}">${perFocus >= 0 ? '+' : ''}${perFocus.toFixed(1)}</b> per point${over}${warn}</div>`;
     }
     result.insertAdjacentHTML('beforeend', extra);
 
@@ -2684,7 +2681,6 @@
     });
   });
   ['craft-focus-avail', 'craft-margin'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { saveCfg(); if (currentBase) calcResult(); }); });
-  { const sm = document.getElementById('craft-session-mode'); if (sm) sm.addEventListener('change', () => { saveCfg(); if (currentBase) calcResult(); }); }
   { const fc = document.getElementById('craft-focus-cost'); if (fc) fc.addEventListener('change', () => {
       if (currentBase && calibrateFocus(currentBase, currentEnch, +fc.value || 0)) applyAutoFocusCost();
       if (currentBase) calcResult();
