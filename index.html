@@ -161,6 +161,10 @@
   .cr-adv-toggle[aria-pressed="true"]{border-style:solid;color:var(--text);}
   .cr-adv-sum{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
   .cr-adv{border-left:2px solid var(--border-strong);padding-left:10px;margin-top:-2px;}
+  /* los ajustes avanzados eran una lista plana de nueve controles: ahora van en tres bloques
+     con su titulo (foco / retorno / mercado) para poder ubicar cada cosa de un vistazo */
+  .adv-sec{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
+    border-bottom:1px solid var(--border);padding-bottom:2px;margin:7px 0 1px;cursor:help;}
   .cr-verdict{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
   .cr-verdict .big{font-size:22px;font-weight:800;line-height:1;}
   .cr-verdict .roi{font-size:13px;color:var(--dim);}
@@ -227,7 +231,7 @@
   #p-item .best-hint{background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:10px 12px;line-height:1.8;text-align:left;color:var(--dim);margin-top:11px;}
   #p-item .mkt-intro{font-size:13px;color:var(--dim);margin:2px 0 11px;line-height:1.55;background:var(--elev);border:1px solid var(--border);border-radius:7px;padding:9px 12px;}
   #p-item .mkt-intro b{color:var(--text);}
-  .mkt-item-head{display:flex;align-items:center;gap:10px;margin:2px 0 8px;}
+  .mkt-item-head{display:flex;align-items:center;gap:10px;margin:2px 0 8px;flex-wrap:wrap;}
   .mkt-item-icon{width:52px;height:52px;object-fit:contain;flex:0 0 auto;}
   .mkt-item-name{font-size:17px;font-weight:700;}
   .mkt-item-name .copyable{cursor:pointer;}
@@ -541,7 +545,11 @@
   .cr-hint{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.45;}
   .cr-wtb{width:100%;box-sizing:border-box;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:5px 7px;font:inherit;font-size:11px;margin-top:6px;resize:vertical;}
   #daily-row select{flex:1;min-width:0;}
+  /* los beneficios por encantamiento van en la MISMA fila que el icono del item, a la
+     derecha, para no gastar una linea entera del panel */
   .cr-mini-row{display:flex;gap:4px;margin-bottom:9px;}
+  .mkt-item-head>.cr-mini-row{margin:0 0 0 auto;flex:0 0 auto;max-width:56%;}
+  .mkt-item-head>.cr-mini-row .cr-mini{flex:0 0 auto;min-width:44px;}
   .cr-mini{flex:1;appearance:none;border:1px solid var(--border);background:var(--elev);border-radius:6px;padding:5px 2px;cursor:pointer;font:inherit;font-size:10px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px;}
   .cr-mini span{font-family:var(--mono);font-size:11px;font-weight:700;}
   .cr-mini.sel-row{border-color:rgba(90,169,196,.55);}
@@ -914,16 +922,19 @@
         <button class="cr-adv-toggle w3" id="craft-adv-toggle" aria-pressed="false">⚙ Advanced settings <span class="cr-adv-sum" id="craft-adv-sum"></span></button>
       </div>
       <div class="craft-cfg cr-adv" id="craft-adv" hidden>
-        <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Every day two item families get a +10% production bonus. Pick today's two: the bonus only applies when the item you're looking at belongs to one of them.">Today's bonus</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
+        <div class="adv-sec w3" title="Focus is the scarce resource: what you have, what each craft eats and what you do with the materials the station gives back.">Focus</div>
         <div class="cfg-row"><span class="cfg-lbl">Focus avail.</span><input type="number" id="craft-focus-avail" value="10000" min="0" step="500" title="Focus you plan to spend this session. With premium you regenerate 10,000/day."></div>
         <div class="cfg-row"><span class="cfg-lbl">Focus/unit</span><input type="number" id="craft-focus-cost" min="0" title="Focus cost per unit. Estimated from game data and your efficiency; type the EXACT value you see at the station and your spec is calibrated for this whole item line."><button class="mini-btn" id="craft-focus-auto" title="Back to the estimated cost (clears this item's calibration)">auto</button></div>
         <div class="cfg-row"><span class="cfg-lbl">Session</span><select id="craft-session-mode" title="How you spend the materials the station returns: craft them again with focus (more profit per point) or keep going without focus until they run out (more volume).">
           <option value="focus" selected>Everything with focus</option><option value="mixed">Focus + the rest without</option></select></div>
+        <div class="cfg-row w3 sp-row"><span class="cfg-lbl" title="Your levels on the destiny board (0-100). The node you are making counts 250 points per level, its branch siblings and the mastery 30 each, and 10,000 points halve the focus cost. Saved once and used everywhere in the panel.">🎓 Spec</span><div class="sp-grid" id="craft-specs"></div></div>
+        <div class="adv-sec w3" title="What the station gives back: it depends on where you craft, on focus and on the daily bonus.">Resource return</div>
+        <div class="cfg-row w2" id="daily-row"><span class="cfg-lbl" title="Every day two item families get a +10% production bonus. Pick today's two: the bonus only applies when the item you're looking at belongs to one of them.">Today's bonus</span><select id="craft-daily-1"></select><select id="craft-daily-2"></select></div>
         <div class="cfg-row"><span class="cfg-lbl">Return %</span><input type="number" id="craft-return" value="15.2" min="0" max="90" step="0.1" title="% of resources the station returns. Worked out from city + focus + daily bonus; if you type it by hand, your value wins (change any setting to go back to automatic)."><button class="mini-btn" id="craft-return-auto" title="Back to the calculated return">auto</button></div>
+        <div class="adv-sec w3" title="The fees behind every price: buy orders, sell orders and the labourer journals.">How you buy and sell</div>
         <label class="cfg-check" title="Placing a buy order costs 1 silver above the current best bid, plus a 2.5% setup fee. Cheaper than buying instantly, but it takes time to get filled."><input type="checkbox" id="craft-mat-order"> Mats via buy order (bid+1 and +2.5%)</label>
         <label class="cfg-check" title="With an order: you queue at the cheapest sell price in that market (Black Market included) and pay tax plus a 2.5% fee. Without: you sell instantly to the best bid and only pay tax."><input type="checkbox" id="craft-sell-order" checked> Sell via order (+2.5%)</label>
         <label class="cfg-check" title="Crafting fills a labourer journal that you can resell full. The empty one is bought before crafting (fame already earned does not go back in) and the full one is sold; both prices are read from the market."><input type="checkbox" id="craft-journals" checked> Buy and resell <b>journals</b></label>
-        <div class="cfg-row w3 sp-row"><span class="cfg-lbl" title="Your levels on the destiny board (0-100). The node you are making counts 250 points per level, its branch siblings and the mastery 30 each, and 10,000 points halve the focus cost. Saved once and used everywhere in the panel.">🎓 Spec</span><div class="sp-grid" id="craft-specs"></div></div>
       </div>
       <div id="craft-out"></div>
     </div>

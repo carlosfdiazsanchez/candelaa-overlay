@@ -408,13 +408,16 @@
     { const lg = document.getElementById('tab-ledger'); if (lg && !lg.hidden) renderLedger(); }
   }
   let t = null;
-  search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(doSearch, 180); });
+  search.addEventListener('input', () => {
+    lastTyped = search.value;
+    clearTimeout(t); t = setTimeout(() => doSearch(), 180);
+  });
   { const pb = document.getElementById('item-paste'); if (pb) pb.addEventListener('click', async () => {
       let txt = '';
       try { txt = await navigator.clipboard.readText(); } catch (_) { toast('Could not read the clipboard'); return; }
       txt = String(txt || '').replace(/\s+/g, ' ').trim().slice(0, 80);
       if (!txt) { toast('Clipboard empty'); return; }
-      search.value = txt; search.focus(); doSearch();
+      search.value = txt; lastTyped = txt; search.focus(); doSearch();
     }); }
   // "Bolsa de visión del maestro .1" o "vara 6.2": el sufijo dice el encantamiento (y el tier)
   let pendingEnch = null;
@@ -423,8 +426,11 @@
     if (!m) return { text: raw, tier: null, ench: null };
     return { text: raw.slice(0, m.index).trim(), tier: m[1] ? +m[1] : null, ench: +m[2] };
   }
-  function doSearch() {
-    const parsed = parseQuery(search.value.trim());
+  // Lo ultimo que TECLEASTE (no el nombre que el panel escribe al elegir un item): al volver
+  // a pinchar el buscador se despliega esa misma busqueda, que es lo que esperas encontrar.
+  let lastTyped = '';
+  function doSearch(raw) {
+    const parsed = parseQuery(String(raw != null ? raw : search.value).trim());
     pendingEnch = parsed.ench;
     const q = norm(parsed.text);
     if (q.length < 2) { results.innerHTML = ''; results.hidden = true; return; }
@@ -492,7 +498,12 @@
   // el desplegable se cierra con Esc o clicando fuera, y vuelve al enfocar el buscador
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') results.hidden = true; });
   document.addEventListener('click', (e) => { if (!e.target.closest('#p-item .search-row')) results.hidden = true; });
-  ['focus', 'click'].forEach((ev) => search.addEventListener(ev, () => { if (results.innerHTML) results.hidden = false; }));
+  ['focus', 'click'].forEach((ev) => search.addEventListener(ev, () => {
+    // se repite la busqueda tecleada, no el nombre completo del item que hay en la caja
+    if (lastTyped && norm(parseQuery(lastTyped.trim()).text).length >= 2) doSearch(lastTyped);
+    else if (results.innerHTML) results.hidden = false;
+    search.select();
+  }));
   const GROUP_MAX = 7;
   results.addEventListener('click', (e) => {
     const t = e.target.closest('.ires-t');
@@ -555,9 +566,9 @@
   });
 
   const QNAMES = ['All', 'Normal', 'Good', 'Outstanding', 'Excellent', 'Masterpiece'];
-  function itemHeadHtml(sub) {
+  function itemHeadHtml(sub, right) {
     const qid = currentEnch > 0 ? currentBase + '@' + currentEnch : currentBase;
-    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="icon://item/${encodeURIComponent(qid)}?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Remove from favourites' : 'Save to favourites'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div></div>`;
+    return `<div class="mkt-item-head"><img class="mkt-item-icon" src="icon://item/${encodeURIComponent(qid)}?size=64" alt=""><div><div class="mkt-item-name"><span class="copyable" data-copy="${esc(copyNameOf(currentBase, currentEnch, currentName))}" title="Clic para copiar «${esc(copyNameOf(currentBase, currentEnch, currentName))}»">${esc(currentName)}</span> <span class="enchtag">.${currentEnch}</span><span class="fav-star${isFav(currentBase) ? ' on' : ''}" data-favstar="1" title="${isFav(currentBase) ? 'Remove from favourites' : 'Save to favourites'}">${isFav(currentBase) ? '★' : '☆'}</span></div><div class="mkt-item-sub">${sub}</div></div>${right || ''}</div>`;
   }
 
   // ================= MERCADO =================
@@ -1266,8 +1277,7 @@
       ? `<div class="cr-vol" title="Units/day each market absorbs · ~ = average realised price">Absorbs/day: ${vsorted.map((x) => `<span class="${x[0] === sellCk ? 'cr-vol-best' : ''}" title="${histTip(x[2])}">${cityShort(x[0])} <b>${fmtVol(x[2].rate)}</b>${x[1].avg ? ` <span class="cr-vol-avg" title="average realised price">~${fmt(x[1].avg)}</span>` : ''}</span>`).join('')}</div>`
       : '<div class="cr-vol faint">Volume/day: no data</div>';
 
-    craftOut.innerHTML = itemHeadHtml('crafting · pick materials and where to sell')
-      + `<div class="cr-mini-row">${mini}</div>`
+    craftOut.innerHTML = itemHeadHtml('crafting · pick materials and where to sell', `<div class="cr-mini-row">${mini}</div>`)
       + '<div id="craft-result" class="craft-total"></div>'
       + `<div class="cr-row cr-prod"><span class="cr-name">Sell in ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Market where you sell the product · price per market (🏴 Black Market = instant sale to its buy order)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
       + volLine
