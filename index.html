@@ -36,7 +36,7 @@
   .panel.collapsed .panel__body{display:none;}
   .panel.collapsed{width:220px;}
   #p-players{width:390px;} #p-players.collapsed{width:220px;}
-  #p-item{width:900px;background:var(--panel-solid);}
+  #p-item{width:1040px;background:var(--panel-solid);}
   #p-item.collapsed{width:260px;} .panel.collapsed .panel__head{border-bottom:0;}
   /* Panel Mercado agrandado (uso fuera del juego): fuentes y espaciado mayores */
   #p-item .panel__title{font-size:17px;}
@@ -177,10 +177,6 @@
   .cr-batch{font-size:13px;color:var(--dim);line-height:1.6;}
   /* fama, diarios y peso de la tanda: datos de logistica, no de plata, asi que van en su
      propia linea con menos peso visual que los KPI */
-  /* topes de cantidad: rejilla de campos pequenos con su etiqueta encima */
-  .lim-grid{display:flex;flex-wrap:wrap;gap:6px 10px;margin:4px 0 6px;}
-  .lim-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--dim);cursor:help;}
-  .lim-grid input{width:84px;background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--fg);padding:3px 5px;font-size:12px;}
   .cr-session{margin-top:4px;font-size:12px;color:var(--dim);line-height:1.7;display:flex;flex-wrap:wrap;gap:2px 8px;}
   .cr-session>span{white-space:nowrap;cursor:help;}
   /* receta: nombre+chips a la izquierda y mercado/precio/subtotal en columnas fijas, para que
@@ -193,10 +189,6 @@
   #cr-mats .cr-pt,.cr-mat-hdr .cr-pt{flex:0 0 auto;width:104px;}
   #cr-mats .cr-pt{background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--fg);font-size:11px;padding:2px 3px;}
   .cr-age{font-size:10px;color:var(--dim);cursor:help;white-space:nowrap;}
-  /* balance de la tanda: plegado por defecto, es para auditar, no para mirar siempre */
-  .cr-bal>summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.02em;}
-  .cr-bal .bl-sec{margin:7px 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);}
-  .cr-bal .cr-tbl tfoot td{border-top:1px solid #2a3646;color:var(--dim);}
   .cr-mat-hdr{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:0 0 4px;border-bottom:1px solid var(--border);margin-bottom:2px;}
   .cr-mat-hdr span{background:none!important;border:0!important;color:var(--faint);font-weight:600;padding:0;font-family:var(--ui);font-size:10px;}
   .cr-mat-hdr .cr-price,.cr-mat-hdr .cr-subtot{text-align:right;}
@@ -217,7 +209,8 @@
   #p-item #tab-config .cfg-hint{line-height:1.5;}
   #p-item #tab-config #station-rate{width:96px;}
   /* volumen por mercado: era un párrafo corrido de 870px; ahora son chips que envuelven */
-  #craft-out .cr-vol{display:flex;flex-wrap:wrap;gap:5px 6px;align-items:center;line-height:1.5;}
+  /* absorbe/dia: una sola fila. Si no cabe, se desplaza en horizontal antes que partirse */
+  #craft-out .cr-vol{display:flex;flex-wrap:nowrap;gap:5px 6px;align-items:center;line-height:1.5;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px;}
   #craft-out .cr-vol>span{background:var(--elev);border:1px solid var(--border);border-radius:5px;padding:2px 7px;white-space:nowrap;}
   #craft-out .cr-vol>span.cr-vol-best{border-color:rgba(59,165,93,.45);background:rgba(59,165,93,.12);}
   .flip-grid{display:grid;grid-template-columns:auto minmax(90px,1fr) auto minmax(90px,1fr) auto minmax(90px,1fr);gap:6px 10px;align-items:center;}
@@ -548,8 +541,8 @@
   /* los beneficios por encantamiento van en la MISMA fila que el icono del item, a la
      derecha, para no gastar una linea entera del panel */
   .cr-mini-row{display:flex;gap:4px;margin-bottom:9px;}
-  .mkt-item-head>.cr-mini-row{margin:0 0 0 auto;flex:0 0 auto;max-width:56%;}
-  .mkt-item-head>.cr-mini-row .cr-mini{flex:0 0 auto;min-width:44px;}
+  .mkt-item-head>.cr-mini-row{margin:0 0 0 auto;flex:0 0 auto;max-width:62%;}
+  .mkt-item-head>.cr-mini-row .cr-mini{flex:0 0 auto;min-width:82px;padding:6px 8px;}
   .cr-mini{flex:1;appearance:none;border:1px solid var(--border);background:var(--elev);border-radius:6px;padding:5px 2px;cursor:pointer;font:inherit;font-size:10px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px;}
   .cr-mini span{font-family:var(--mono);font-size:11px;font-weight:700;}
   .cr-mini.sel-row{border-color:rgba(90,169,196,.55);}
@@ -562,6 +555,10 @@
   .cr-price{width:84px;flex:0 0 auto;background:var(--panel-solid);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 7px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;}
   .cr-subtot{width:72px;flex:0 0 auto;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;}
   .cr-buy{flex:0 0 auto;font-size:11px;font-weight:700;color:#86e0a3;font-variant-numeric:tabular-nums;background:rgba(59,165,93,.16);border-radius:4px;padding:2px 6px;white-space:nowrap;}
+  /* de donde sale el precio de venta con el que se planifica */
+  .cr-ref{display:flex;flex-wrap:wrap;gap:3px 8px;font-size:11px;color:var(--faint);margin:3px 0 0;}
+  .cr-ref>span{cursor:help;white-space:nowrap;}
+  .cr-ref b{color:var(--text);font-variant-numeric:tabular-nums;}
   .cr-vol{font-size:11px;color:var(--faint);margin-top:5px;line-height:1.6;}
   .cr-vol b{color:var(--text);font-variant-numeric:tabular-nums;}
   .cr-vol-best b{color:#86e0a3;}

@@ -13,6 +13,7 @@
   let items = [], nameById = {}, nameEnById = {}, recipes = {}, focusData = {}, enchIndex = {};
   let currentBase = null, currentName = '', currentEnch = 0, currentQuality = 0;
   let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null;
+  let craftDepth = {};   // libro de ordenes del producto: id -> ciudad -> {buy:[], sell:[]}
 
   const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -995,10 +996,13 @@
     // el historico de los materiales sirve para el tipo de precio "media": solo los de la
     // receta que se esta mirando, no todo el arbol de sustitutos
     const histIds = [...new Set([...prodIds, ...[0, 1, 2, 3, 4].flatMap((e) => craftRowsOf(currentBase, e).map((m) => m.priceId))])];
-    const [matRows, prodRows, vol] = await Promise.all([
+    const [matRows, prodRows, vol, depth] = await Promise.all([
       window.overlay.craftPrices([...matSet], BASE_CITIES, 0),
       window.overlay.craftPrices(prodIds, BASE_CITIES, prodQ),
       window.overlay.history(histIds, BASE_CITIES, HIST_WINDOW, 0),
+      // el libro de ordenes del producto: sin el, vender N unidades se valora al precio de
+      // UNA orden, que casi nunca tiene N unidades detras
+      window.overlay.depth ? window.overlay.depth(prodIds, BASE_CITIES, prodQ, 25).catch(() => []) : Promise.resolve([]),
     ]);
     craftPriceMap = {};
     [...(matRows || []), ...(prodRows || [])].forEach((r) => {
@@ -1009,6 +1013,8 @@
     });
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, days: r.days || 0, avg: r.avg_price || 0 }; });
+    craftDepth = {};
+    (depth || []).forEach((r) => { (craftDepth[r.item_id] = craftDepth[r.item_id] || {})[cityKey(r.city)] = { buy: r.buy || [], sell: r.sell || [] }; });
     renderCraft();
   }
   const matOrderOn = () => !!(document.getElementById('craft-mat-order') || {}).checked;
@@ -1072,6 +1078,55 @@
   // con orden de venta te pones en la cola al precio de la más barata (paga impuesto + 2,5%);
   // sin orden vendes ya a la mejor puja de ese mercado (solo impuesto). Vale igual para el BM.
   const sellUnitPrice = (cell) => (cell ? (sellOrderOn() ? (cell.sell || 0) : (cell.buy || 0)) : 0);
+  // A que precio vendes DE VERDAD.
+  // Tres numeros distintos y ninguno vale solo: el precio de ahora es una foto de UNA orden
+  // (y puede ser un pico o un valle), la media historica es lo que se cobra de normal pero no
+  // es lo que hay hoy en el mercado, y el libro de ordenes dice cuanto aguanta ese precio para
+  // tus unidades. Asi que se calcula el realizable (libro si vendes al instante, la orden si
+  // dejas orden) y se ACOTA a una banda alrededor de la media: ni contar con un pico, ni dar el
+  // negocio por muerto porque hoy haya una orden hundida.
+  const SELL_BAND = 0.15;
+  function sellRef(id, ck, qty, instant) {
+    const cell = (craftPriceMap[id] || {})[ck] || {};
+    const now = (instant ? cell.buy : cell.sell) || 0;
+    const avg = ((craftVolMap[id] || {})[ck] || {}).avg || 0;
+    const bk = (craftDepth[id] || {})[ck] || {};
+    let book = 0, fits = 0, queue = 0;
+    if (instant) {
+      // vender al instante = ir bajando por las pujas hasta colocar tus unidades
+      let left = Math.max(1, qty || 1), silver = 0;
+      (bk.buy || []).forEach((lv) => {
+        if (left <= 0) return;
+        const take = Math.min(left, lv.amount || 0);
+        silver += take * (lv.price || 0); left -= take; fits += take;
+      });
+      if (fits > 0) book = silver / fits;
+    } else if (now > 0) {
+      // con orden te pones en la cola: lo que hay por delante al mismo precio o mejor
+      queue = (bk.sell || []).filter((lv) => (lv.price || 0) <= now).reduce((a, lv) => a + (lv.amount || 0), 0);
+    }
+    const real = book || now;
+    let used = real, capped = '';
+    if (avg > 0 && real > 0) {
+      const hi = avg * (1 + SELL_BAND), lo = avg * (1 - SELL_BAND);
+      if (real > hi) { used = hi; capped = 'hi'; }
+      else if (real < lo) { used = lo; capped = 'lo'; }
+    }
+    return { now, avg, book, fits, queue, real, used, capped, qty: Math.max(1, qty || 1), instant };
+  }
+  // linea que explica de donde sale el precio que se esta usando
+  function sellRefLine(ref) {
+    if (!ref || !ref.real) return '';
+    const bits = [];
+    bits.push(`<span title="Cheapest sell order right now (or the best bid if you are selling instantly). It is one order: it may not hold your units.">now <b>${fmtInt(ref.now)}</b></span>`);
+    if (ref.avg > 0) bits.push(`<span title="Average price actually realised over the panel's history window: what this item usually goes for.">average <b>${fmtInt(ref.avg)}</b></span>`);
+    if (ref.book > 0) bits.push(`<span title="Weighted price of walking down the buy orders until your units are placed. This is what an instant sale really pays.">book <b>${fmtInt(ref.book)}</b> (${fmtInt(Math.min(ref.fits, ref.qty))}/${fmtInt(ref.qty)} units)</span>`);
+    if (ref.queue > 0) bits.push(`<span title="Units already queued at that price or better: your order sells after them.">queue <b>${fmtInt(ref.queue)}</b></span>`);
+    if (ref.capped === 'hi') bits.push(`<span class="down" title="The price right now is a spike over the average: the panel plans with the average plus 15%, not with the spike.">capped at average +15%</span>`);
+    if (ref.capped === 'lo') bits.push(`<span class="up" title="The price right now is well under the average: the panel plans with the average minus 15%. Check it in game before selling that low.">floored at average −15%</span>`);
+    return `<div class="cr-ref">${bits.join(' · ')}</div>`;
+  }
+
   const bestSellOf = (id, tax, sellFee) => {
     const c = craftPriceMap[id]; if (!c) return { gross: 0, net: 0, city: null, instant: false };
     const noBM = !bmBuys(String(id).split('@')[0]);
@@ -1265,8 +1320,11 @@
     const prodInstant = !!chosenRow.instant;
     const prodAvg = ((craftVolMap[prodEnch(currentBase, e)] || {})[cityKey(chosenSell || '')] || {}).avg || 0;
     const rawProd = chosenRow.p || Math.round(bs.gross) || 0;
-    // si el precio de ahora es un pico, calcula con el MEDIO histórico (sostenible)
-    const prodPrice = prodAvg > 0 ? Math.min(rawProd, prodAvg) : rawProd;
+    // el precio con el que se planifica sale del libro de ordenes y de la media, acotado a una
+    // banda alrededor de ella (ver sellRef): antes era min(ahora, media), que con un valle de
+    // hoy hundia el negocio y con un pico no avisaba de nada
+    const ref = sellRef(prodEnch(currentBase, e), cityKey(chosenSell || ''), craftQty, prodInstant);
+    const prodPrice = ref.used || (prodAvg > 0 ? Math.min(rawProd, prodAvg) : rawProd);
     const prodChip = prodAvg > 0 ? sostChip(rawProd, prodAvg) : '';
     const prodOpts = prodCityRows.map((x) => `<option value="${x.p}" data-instant="${x.instant ? 1 : 0}" data-city="${esc(x.c)}"${x.c === chosenSell ? ' selected' : ''}>${x.c === 'Black Market' ? '🏴 Black Market' : esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}${x.instant && x.p ? ' ⚡' : ''}</option>`).join('');
     const vmap = craftVolMap[prodEnch(currentBase, e)] || {};
@@ -1279,15 +1337,15 @@
 
     craftOut.innerHTML = itemHeadHtml('crafting · pick materials and where to sell', `<div class="cr-mini-row">${mini}</div>`)
       + '<div id="craft-result" class="craft-total"></div>'
-      + `<div class="cr-row cr-prod"><span class="cr-name">Sell in ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Market where you sell the product · price per market (🏴 Black Market = instant sale to its buy order)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
+      + `<div class="cr-row cr-prod"><span class="cr-name">Sell in ${prodChip}</span><select class="cr-city" id="cr-prod-city" title="Market where you sell the product · price per market (🏴 Black Market = instant sale to its buy order)">${prodOpts}</select><input class="cr-price" id="cr-prod-price" type="number" data-auto="1" data-instant="${prodInstant ? 1 : 0}" data-sellck="${cityKey(chosenSell || '')}" data-sellcity="${esc(chosenSell || '')}" value="${Math.round(prodPrice)}"></div>`
+      + sellRefLine(ref)
       + volLine
       + variantPicker(currentBase, e)
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Recipe E${e}${amtE > 1 ? ` <span class="faint" title="This recipe produces several units per craft: the costs shown are already per unit">(${amtE} per craft)</span>` : ''} <button class="mini-btn" id="cr-cheapest" title="Sets every material to the price of the market where it is cheapest (careful: may mean several trips)">💸 cheapest</button></div>`
       + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-pt">Price type</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot">Subtotal</span></div>'
       + `${matRows}</div>`
       + '<div id="craft-budget-out"></div>'
-      + '<div id="craft-balance-out"></div>'
-      + '<div id="craft-limits-out"></div>';
+;
     calcResult();
   }
 
@@ -1352,6 +1410,14 @@
     const netMat = (ret * (1 - returnR) + non) / amt;
     const netCost = netMat + fee;
     const prod = document.getElementById('cr-prod-price');
+    // el precio realizable depende de cuantas unidades vendes (el libro se agota), asi que se
+    // recalcula al cambiar la cantidad. Si has escrito el precio a mano, manda el tuyo.
+    if (prod) {
+      const ref = sellRef(prodEnch(currentBase, currentEnch), prod.dataset.sellck || '', qty, prod.dataset.instant === '1');
+      const line = craftOut.querySelector('.cr-ref');
+      if (line) line.outerHTML = sellRefLine(ref) || '';
+      if (ref.used && prod.dataset.auto !== '0') prod.value = Math.round(ref.used);
+    }
     const sellPrice = prod ? +prod.value || 0 : 0;
     const instant = prod && prod.dataset.instant === '1';
     const ventaNeta = sellPrice * (1 - tax - (instant ? 0 : sellFee));
@@ -1606,163 +1672,7 @@
       + (leftovers.length
         ? `<div class="cr-kv"><span title="What is still in the box when the batch ends: the station keeps giving materials back on the last crafts. Sell them or start the next batch with them.">Left over at the end</span><span>${leftovers.map((m) => `${fmtInt(m.plan.leftover)}× ${esc(m.name)}`).join(' · ')}</span></div>`
         : '');
-    renderBalance(ctx);
-    renderLimits(ctx);
   }
-
-  // ---------- balance de la tanda, linea a linea ----------
-  // El veredicto de arriba es por unidad; esto es el dinero real de la tanda entera, con las
-  // tasas separadas para poder auditarlo: lo que se compra, lo que se revende de las sobras,
-  // lo que se vende y la tarifa de estacion.
-  function renderBalance(ctx) {
-    const box = document.getElementById('craft-balance-out'); if (!box) return;
-    const tax = ctx.tax, sellFee = ctx.instant ? 0 : ctx.sellFee;
-    const rows = (title, cols, body, total) => `<div class="bl-sec">${title}</div>`
-      + `<table class="cr-tbl"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>`
-      + `<tbody>${body}</tbody><tfoot><tr><td colspan="${cols.length - 1}">Total</td><td class="silver"><b>${total}</b></td></tr></tfoot></table>`;
-
-    let inTot = 0;
-    const inBody = ctx.mats.map((m) => {
-      const feeMul = m.fee || 1;
-      const cost = m.plan.buy * m.price * feeMul;
-      inTot += cost;
-      return `<tr><td class="name">${esc(m.name)}</td><td>${fmtInt(m.plan.buy)}</td><td>${fmtInt(m.price)}</td>`
-        + `<td class="${feeMul > 1 ? '' : 'faint'}">${feeMul > 1 ? '2.5%' : '—'}</td><td class="silver">−${fmt(cost)}</td></tr>`;
-    });
-    if (ctx.jr && ctx.jr.on && ctx.jr.j && ctx.jr.count > 0 && ctx.jr.empty > 0) {
-      const n = Math.ceil(ctx.jr.count), cost = n * ctx.jr.empty * (matOrderOn() ? 1.025 : 1);
-      inTot += cost;
-      inBody.push(`<tr><td class="name">${esc(nameById[ctx.jr.j.empty] || ctx.jr.j.empty)}</td><td>${fmtInt(n)}</td><td>${fmtInt(ctx.jr.empty)}</td><td class="faint">—</td><td class="silver">−${fmt(cost)}</td></tr>`);
-    }
-
-    let leftTot = 0;
-    const leftBody = ctx.mats.filter((m) => m.plan.leftover >= 1).map((m) => {
-      const gross = m.plan.leftover * m.price;
-      const net = gross * (1 - tax - (sellOrderOn() ? 0.025 : 0));
-      leftTot += net;
-      return `<tr><td class="name">${esc(m.name)}</td><td>${fmtInt(m.plan.leftover)}</td><td>${fmtInt(m.price)}</td><td class="faint">−${fmt(gross - net)}</td><td class="silver">+${fmt(net)}</td></tr>`;
-    });
-
-    let outTot = 0;
-    const grossOut = ctx.sellPrice * ctx.qty;
-    const netOut = grossOut * (1 - tax - sellFee);
-    outTot += netOut;
-    const outBody = [`<tr><td class="name">${esc(currentName)}${currentEnch ? '.' + currentEnch : ''}</td><td>${fmtInt(ctx.qty)}</td><td>${fmtInt(ctx.sellPrice)}</td><td class="faint">−${fmt(grossOut - netOut)}</td><td class="silver">+${fmt(netOut)}</td></tr>`];
-    if (ctx.jr && ctx.jr.on && ctx.jr.j && ctx.jr.count > 0 && ctx.jr.full > 0) {
-      const gross = ctx.jr.count * ctx.jr.full;
-      const net = gross * (1 - tax - sellFee);
-      outTot += net;
-      outBody.push(`<tr><td class="name">${esc(nameById[ctx.jr.j.full] || ctx.jr.j.full)}</td><td>${ctx.jr.count >= 10 ? fmtInt(ctx.jr.count) : ctx.jr.count.toFixed(2)}</td><td>${fmtInt(ctx.jr.full)}</td><td class="faint">−${fmt(gross - net)}</td><td class="silver">+${fmt(net)}</td></tr>`);
-    }
-
-    const station = ctx.fee * ctx.qty;
-    const spent = inTot + station;
-    const earned = outTot + leftTot;
-    const gain = earned - spent;
-    const roi = spent > 0 ? (gain / spent) * 100 : 0;
-    const gc = gain >= 0 ? 'up' : 'down';
-    box.className = 'cr-block';
-    box.innerHTML = '<details class="cr-bal"><summary>🧾 Batch balance'
-      + ` <span class="faint">· ${fmtInt(ctx.qty)} units · profit </span><b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b> <span class="faint">(${roiTxt(roi)})</span></summary>`
-      + rows('Bought', ['Item', 'Units', 'Price/u', 'Order fee', 'Cost'], inBody.join(''), '−' + fmt(inTot))
-      + (leftBody.length ? rows('Leftovers sold back', ['Item', 'Units', 'Price/u', 'Tax and fees', 'Net'], leftBody.join(''), '+' + fmt(leftTot)) : '')
-      + rows('Sold', ['Item', 'Units', 'Price/u', 'Tax and fees', 'Net'], outBody.join(''), '+' + fmt(outTot))
-      + `<div class="cr-kv"><span title="Station fee: item value x 0.1125 x the rate you set in the settings tab.">Station fee</span><span class="silver">−${fmt(station)}</span></div>`
-      + `<div class="cr-kv"><span>Total spent</span><span class="silver">−${fmt(spent)}</span></div>`
-      + `<div class="cr-kv"><span>Total in</span><span class="silver">+${fmt(earned)}</span></div>`
-      + `<div class="cr-kv"><span><b>Profit</b> <span class="faint">· leftovers sold included</span></span><span><b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b> <span class="${gc}">${roiTxt(roi)}</span></span></div>`
-      + '</details>';
-  }
-
-  // ---------- cuantas unidades hacer: el minimo de lo que te ata ----------
-  // No decide la gana, deciden los topes: el foco que tienes, los materiales que ya estan en
-  // el banco, lo que te cabe en la montura y lo que el mercado se traga al dia. La cantidad
-  // final es el MINIMO de los topes activos (los que estan a 0 no cuentan).
-  const LIM_KEY = 'candelaa-craft-limits-v1';
-  let limCfg = { target: 0, kg: 0, demand: 0, have: {} };
-  try { limCfg = Object.assign(limCfg, JSON.parse(localStorage.getItem(LIM_KEY) || '{}')); } catch (_) {}
-  const saveLim = () => { try { localStorage.setItem(LIM_KEY, JSON.stringify(limCfg)); } catch (_) {} };
-
-  // runs que dan de si N unidades de un material (invierte netMatPlan, que no es lineal
-  // porque compra en enteros)
-  function runsFromStock(perRun, have, R, recycles) {
-    if (!(perRun > 0) || !(have > 0)) return 0;
-    let lo = 0, hi = Math.ceil(have / (perRun * (recycles && R > 0 ? Math.max(0.05, 1 - R) : 1))) + 2;
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      if (netMatPlan(perRun, mid, R, recycles).buy <= have) lo = mid; else hi = mid - 1;
-    }
-    return lo;
-  }
-
-  function limitsOf(ctx) {
-    const amt = ctx.amt || 1, R = ctx.returnR;
-    const out = [];
-    if (limCfg.target > 0) out.push({ k: 'target', n: limCfg.target, why: 'your target' });
-    const fCost = +(document.getElementById('craft-focus-cost') || {}).value || 0;
-    const fAvail = +(document.getElementById('craft-focus-avail') || {}).value || 0;
-    if (useFocusOn() && fCost > 0 && fAvail > 0) out.push({ k: 'focus', n: Math.floor(fAvail / fCost) * amt, why: `${fmtInt(fAvail)} focus, ${fmtInt(fCost)} per craft` });
-    ctx.mats.forEach((m) => {
-      const have = +(limCfg.have || {})[m.id] || 0;
-      if (have > 0) out.push({ k: 'have:' + m.id, n: runsFromStock(m.c, have, R, m.ret) * amt, why: `${fmtInt(have)}× ${m.name} in the bank` });
-    });
-    if (limCfg.kg > 0) {
-      const inKg = ctx.mats.reduce((a, m) => a + (m.plan.buy / Math.max(1, ctx.qty)) * weightOf(m.id), 0);
-      const outKg = weightOf(prodEnch(currentBase, currentEnch));
-      const per = Math.max(inKg, outKg);
-      if (per > 0) out.push({ k: 'kg', n: Math.floor(limCfg.kg / per), why: `${fmtInt(limCfg.kg)} kg of load at ${per.toFixed(2).replace('.', ',')} kg/unit` });
-    }
-    if (limCfg.demand > 0) {
-      const ck = (document.getElementById('cr-prod-price') || {}).dataset ? document.getElementById('cr-prod-price').dataset.sellck : '';
-      const cell = (craftVolMap[prodEnch(currentBase, currentEnch)] || {})[ck];
-      const rate = cell ? histRate(cell, HIST_WINDOW).rate : 0;
-      if (rate > 0) out.push({ k: 'demand', n: Math.floor(rate * limCfg.demand / 100), why: `${limCfg.demand}% of ${fmtVol(rate)}/day in ${cityShort(ck)}` });
-    }
-    return out.filter((x) => x.n > 0);
-  }
-  const useFocusOn = () => !!(document.getElementById('craft-focus') || {}).checked;
-
-  function renderLimits(ctx) {
-    const box = document.getElementById('craft-limits-out'); if (!box) return;
-    const key = currentBase + '@' + currentEnch + ':' + ctx.mats.map((m) => m.id).join(',');
-    if (box.dataset.k !== key) {
-      box.dataset.k = key;
-      box.className = 'cr-block';
-      box.innerHTML = '<div class="cr-b-title">🎯 How many to make <span class="faint">· the smallest limit wins</span></div>'
-        + '<div class="lim-grid">'
-        + `<label title="Units you want, whatever else says.">Target<input type="number" min="0" class="lim-in" data-lim="target" value="${limCfg.target || ''}"></label>`
-        + `<label title="Max load you can carry in one trip (your mount plus what you already have on you). The panel turns it into units.">Max load kg<input type="number" min="0" class="lim-in" data-lim="kg" value="${limCfg.kg || ''}"></label>`
-        + `<label title="Share of what that market actually absorbs per day. 100% means dumping a full day of demand at once: the price will drop.">% of daily demand<input type="number" min="0" max="200" class="lim-in" data-lim="demand" value="${limCfg.demand || ''}"></label>`
-        + ctx.mats.map((m) => `<label title="Units of ${esc(m.name)} you already have. They come off the shopping list.">Have ${esc(m.name)}<input type="number" min="0" class="lim-in" data-have="${esc(m.id)}" value="${+(limCfg.have || {})[m.id] || ''}"></label>`).join('')
-        + '</div><div id="lim-out" class="cr-kv"></div>';
-    }
-    updateLimits(ctx);
-  }
-
-  function updateLimits(ctx) {
-    const el = document.getElementById('lim-out'); if (!el) return;
-    const lims = limitsOf(ctx);
-    if (!lims.length) { el.innerHTML = '<span class="faint">No limit set: fill in whatever ties you and the quantity is worked out.</span>'; return; }
-    const win = lims.reduce((a, b) => (b.n < a.n ? b : a));
-    const rest = lims.filter((x) => x !== win).map((x) => `${fmtInt(x.n)} (${esc(x.why)})`).join(' · ');
-    el.innerHTML = `<span>Fits <b>${fmtInt(win.n)}</b> units <span class="faint">· ${esc(win.why)}</span>${rest ? `<br><span class="faint">others: ${rest}</span>` : ''}</span>`
-      + `<span><button class="mini-btn" id="lim-apply" data-n="${win.n}" title="Write that quantity into the panel">use ${fmtInt(win.n)}</button></span>`;
-  }
-
-  document.getElementById('p-item').addEventListener('input', (e) => {
-    const li = e.target.closest('.lim-in'); if (!li) return;
-    const v = Math.max(0, +li.value || 0);
-    if (li.dataset.lim) limCfg[li.dataset.lim] = v;
-    else if (li.dataset.have) { limCfg.have = limCfg.have || {}; limCfg.have[li.dataset.have] = v; }
-    saveLim();
-    if (currentBase) calcResult();
-  });
-  document.getElementById('p-item').addEventListener('click', (e) => {
-    const b = e.target.closest('#lim-apply'); if (!b) return;
-    const n = +b.dataset.n || 0;
-    const q = document.getElementById('craft-qty');
-    if (q && n > 0) { q.value = n; q.dataset.auto = '0'; calcResult(); }
-  });
 
   // (La antigua pestaña Comparar quedó fusionada en Crafteo: el input "Te ofrecen"
   //  se evalúa dentro de calcResult y muestra el veredicto de rentabilidad.)
@@ -2638,7 +2548,11 @@
 
   // ================= TOP (lo que más se mueve · base de la cartera) =================
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
-  craftOut.addEventListener('input', (ev) => { if (ev.target.classList && ev.target.classList.contains('cr-price')) calcResult(); });
+  craftOut.addEventListener('input', (ev) => {
+    if (!ev.target.classList || !ev.target.classList.contains('cr-price')) return;
+    if (ev.target.id === 'cr-prod-price') ev.target.dataset.auto = '0';   // tu precio manda
+    calcResult();
+  });
   // cambiar la ciudad de un material → coge su precio en esa ciudad y recalcula
   craftOut.addEventListener('change', (ev) => {
     if (!ev.target.classList || !ev.target.classList.contains('cr-city')) return;
@@ -2647,6 +2561,12 @@
     if (ev.target.id === 'cr-prod-city' && inp) {
       const opt = ev.target.selectedOptions && ev.target.selectedOptions[0];
       if (opt) { inp.dataset.instant = opt.dataset.instant || '0'; inp.dataset.sellcity = opt.dataset.city || ''; inp.dataset.sellck = cityKey(opt.dataset.city || ''); }
+      // el mercado nuevo tiene su libro y su media: se recalcula el precio de referencia
+      const qty = +(document.getElementById('craft-qty') || {}).value || 1;
+      const ref = sellRef(prodEnch(currentBase, currentEnch), inp.dataset.sellck, qty, inp.dataset.instant === '1');
+      if (ref.used) inp.value = Math.round(ref.used);
+      const line = craftOut.querySelector('.cr-ref');
+      if (line) line.outerHTML = sellRefLine(ref) || '';
     }
     calcResult();
   });
