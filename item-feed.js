@@ -996,13 +996,15 @@
     // el historico de los materiales sirve para el tipo de precio "media": solo los de la
     // receta que se esta mirando, no todo el arbol de sustitutos
     const histIds = [...new Set([...prodIds, ...[0, 1, 2, 3, 4].flatMap((e) => craftRowsOf(currentBase, e).map((m) => m.priceId))])];
-    const [matRows, prodRows, vol, depth] = await Promise.all([
+    const [matRows, prodRows, vol, depth, matDepth] = await Promise.all([
       window.overlay.craftPrices([...matSet], BASE_CITIES, 0),
       window.overlay.craftPrices(prodIds, BASE_CITIES, prodQ),
       window.overlay.history(histIds, BASE_CITIES, HIST_WINDOW, 0),
       // el libro de ordenes del producto: sin el, vender N unidades se valora al precio de
       // UNA orden, que casi nunca tiene N unidades detras
       window.overlay.depth ? window.overlay.depth(prodIds, BASE_CITIES, prodQ, 25).catch(() => []) : Promise.resolve([]),
+      // y el de los materiales: comprar al instante recorre la escalera de venta, no una orden
+      window.overlay.depth ? window.overlay.depth(histIds.filter((x) => prodIds.indexOf(x) < 0), BASE_CITIES, 0, 25).catch(() => []) : Promise.resolve([]),
     ]);
     craftPriceMap = {};
     [...(matRows || []), ...(prodRows || [])].forEach((r) => {
@@ -1014,44 +1016,48 @@
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, days: r.days || 0, avg: r.avg_price || 0 }; });
     craftDepth = {};
-    (depth || []).forEach((r) => { (craftDepth[r.item_id] = craftDepth[r.item_id] || {})[cityKey(r.city)] = { buy: r.buy || [], sell: r.sell || [] }; });
+    [...(depth || []), ...(matDepth || [])].forEach((r) => { (craftDepth[r.item_id] = craftDepth[r.item_id] || {})[cityKey(r.city)] = { buy: r.buy || [], sell: r.sell || [] }; });
     renderCraft();
   }
   const matOrderOn = () => !!(document.getElementById('craft-mat-order') || {}).checked;
 
-  // ---------- tipo de precio por fila de material ----------
-  // El global "mats con orden de compra" sigue mandando por defecto, pero cada material puede
-  // fijar el suyo: hay materiales que compras al instante y otros que dejas en orden.
-  // 'avg' es el medio historico de la ventana del panel: sirve de referencia de lo que suele
-  // costar, no de lo que pagarias hoy.
-  const PTYPE_KEY = 'candelaa-craft-ptype-v1';
-  let ptype = {};
-  try { ptype = JSON.parse(localStorage.getItem(PTYPE_KEY) || '{}') || {}; } catch (_) { ptype = {}; }
-  Object.keys(ptype).forEach((k) => { if (!k || k === 'null' || k === 'undefined') delete ptype[k]; });
-  const savePtype = () => { try { localStorage.setItem(PTYPE_KEY, JSON.stringify(ptype)); } catch (_) {} };
-  const PTYPES = [['', 'as set above'], ['now', 'buy now'], ['order', 'buy order'], ['avg', 'average']];
-  const ptypeOf = (id) => ptype[id] || '';
-  // precio de una celda segun el tipo pedido (sin el 2,5% de la orden, que se aplica aparte)
-  function cellPrice(cell, kind) {
-    if (!cell) return 0;
-    if (kind === 'order') return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
-    if (kind === 'now') return cell.sell || 0;
-    return cityUnitPrice(cell);
-  }
-  const matAvgOf = (id, ck) => ((craftVolMap[id] || {})[ck] || {}).avg || 0;
-  // la antiguedad que importa es la del precio que se esta usando
-  const cellDate = (cell, kind) => {
-    if (!cell) return '';
-    const useBuy = kind === 'order' || (!kind && matOrderOn());
-    return useBuy ? (cell.bd || cell.sd || '') : (cell.sd || '');
-  };
-  // lo que te cuesta la unidad: comprando al instante es la venta más barata; dejando orden
-  // de compra es superar en 1 la puja actual (la tasa del 2,5% se suma aparte)
+  // lo que te cuesta la unidad segun el modo: al instante es la venta mas barata, dejando
+  // orden es superar en 1 la puja (la tasa del 2,5% se suma aparte, en data-fee)
   const cityUnitPrice = (cell) => {
     if (!cell) return 0;
     if (matOrderOn()) return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
     return cell.sell || 0;
   };
+
+  // ---------- a que precio compras un material ----------
+  // Una sola decision, la de arriba: comprar inmediato o dejar orden de compra. Cada una mira
+  // el lado que le toca del libro de ordenes.
+  //  - inmediato: se recorre la escalera de VENTA (lo que piden) hasta juntar tus unidades, que
+  //    es lo que pagas de verdad; la orden mas barata casi nunca las tiene todas.
+  //  - con orden: superas en 1 la mejor PUJA y pagas la tasa del 2,5% (va aparte, en data-fee).
+  function matRef(id, ck, units, order) {
+    const cell = (craftPriceMap[id] || {})[ck] || {};
+    const bk = (craftDepth[id] || {})[ck] || {};
+    if (order) {
+      const bid = cell.buy || 0;
+      const ahead = (bk.buy || []).filter((lv) => (lv.price || 0) >= bid).reduce((a, lv) => a + (lv.amount || 0), 0);
+      return { price: bid > 0 ? bid + 1 : (cell.sell || 0), fits: 0, need: units, ahead, order: true, book: false };
+    }
+    let left = Math.max(1, units || 1), silver = 0, fits = 0;
+    (bk.sell || []).forEach((lv) => {
+      if (left <= 0) return;
+      const take = Math.min(left, lv.amount || 0);
+      silver += take * (lv.price || 0); left -= take; fits += take;
+    });
+    if (fits > 0) return { price: silver / fits, fits, need: units, ahead: 0, order: false, book: true };
+    return { price: cell.sell || 0, fits: 0, need: units, ahead: 0, order: false, book: false };
+  }
+  // la antiguedad que importa es la del precio que se esta usando
+  const cellDate = (cell, order) => {
+    if (!cell) return '';
+    return (order ? (cell.bd || cell.sd) : cell.sd) || '';
+  };
+
   const craftCityPrice = (id) => {
     const c = craftPriceMap[id]; if (!c) return 0;
     const all = CRAFT_CITIES.map((ct) => cityUnitPrice(c[ct])).filter((x) => x > 0);
@@ -1219,6 +1225,21 @@
     return parts.length ? `<div class="cr-session">${parts.join(' · ')}</div>` : '';
   }
 
+  // chip que dice de donde sale el precio del material y si el libro cubre tus unidades
+  function bookChipOf(mref) {
+    if (!mref) return '';
+    if (mref.order) {
+      return mref.ahead > 0
+        ? `<span class="cr-age" title="Units already bidding at that price or better: your buy order fills after theirs.">🧾 ${fmtInt(mref.ahead)} ahead</span>`
+        : '';
+    }
+    if (!mref.book) return '';
+    const short = mref.fits < mref.need;
+    return `<span class="cr-age${short ? ' down' : ''}" title="${short
+      ? 'The sell orders on the market do not hold all the units you need: the price shown is the average of what there IS.'
+      : 'Weighted price of walking down the sell orders until your units are covered, not the price of the cheapest single order.'}">📖 ${fmtInt(mref.fits)}/${fmtInt(mref.need)}</span>`;
+  }
+
   function renderCraft() {
     const rec = recipes[currentBase]; if (!rec) return;
     renderCraftSpecs();
@@ -1264,12 +1285,11 @@
       if (!chosen) { const ch = cheapestOf(id); chosen = perCity.find((x) => x.c === ch.city && x.p > 0); }
       if (!chosen) chosen = withPrice.slice().sort((a, b) => a.p - b.p)[0];
       const chosenCity = chosen ? chosen.c : defaultCity;
-      // el tipo de precio de esta fila manda sobre el ajuste global
-      const kind = ptypeOf(id);
       const chosenCell = cm[chosenCity];
-      let det = chosen ? chosen.p : 0;
-      if (kind === 'avg') det = matAvgOf(id, cityKey(chosenCity)) || det;
-      else if (kind) det = cellPrice(chosenCell, kind) || det;
+      // unidades REALES de esta fila para la tanda: es lo que decide cuanto del libro te comes
+      const needUnits = netMatPlan(m.c, Math.max(1, Math.ceil(craftQty / amtE)), returnR, returnable(m.nameId)).buy;
+      const mref = matRef(id, cityKey(chosenCity), needUnits, matOrder);
+      const det = mref.price || (chosen ? chosen.p : 0);
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
       const enchTag = (e > 0 && enchantable(m.nameId)) ? '.' + e : '';
       const ret = returnable(m.nameId) ? 1 : 0;
@@ -1303,21 +1323,19 @@
       // el precio y el subtotal quedan alineados de una fila a otra
       // antiguedad del precio que se esta usando: un margen calculado sobre un precio de
       // hace dias es un deseo, no una oportunidad
-      const age = kind === 'avg' ? '' : agoStr(cellDate(chosenCell, kind));
-      const stale = kind !== 'avg' && freshMaxH() > 0 && ageHours(cellDate(chosenCell, kind)) > freshMaxH();
+      const age = agoStr(cellDate(chosenCell, matOrder));
+      const stale = freshMaxH() > 0 && ageHours(cellDate(chosenCell, matOrder)) > freshMaxH();
       const ageChip = age
         ? `<span class="cr-age${stale ? ' down' : ''}" title="How old the price being used is${stale ? ', over your freshness limit' : ''}">⏱ ${age}</span>`
-        : (kind === 'avg' ? `<span class="cr-age" title="Average realised price over the panel's history window, not today's order">~ ${HIST_WINDOW}d</span>` : '');
-      const ptSel = `<select class="cr-pt" data-pt="${esc(id)}" title="Price type for this material: what the cheapest order asks right now, what you would pay leaving a buy order (best bid + 1, plus the 2.5% fee), or the historical average as a reference.">`
-        + PTYPES.map(([v, l]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
+        : '';
+      const bookChip = bookChipOf(mref);
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}" data-id="${esc(id)}" data-name="${esc(copyName)}">`
         + '<span class="cr-mat-left">'
         + `<span class="cr-name copyable" data-copy="${esc(copyName)}" title="Click to copy «${esc(copyName)}» (the exact name to search in game)">${m.c}× ${esc(mnm)}${enchTag}</span>`
-        + subChip + trChip + ageChip + '</span>'
-        + ptSel
+        + subChip + trChip + ageChip + bookChip + '</span>'
         + `<span class="cr-buy" title="Exact units of this material to buy for the given quantity">🛒 ${fmtInt(Math.ceil(m.c * craftQty / amtE))}</span>`
         + `<select class="cr-city" title="Market where you buy this material">${opts}</select>`
-        + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" data-fee="${(kind === 'order' || (!kind && matOrder)) ? '1' : '0'}" value="${Math.round(det)}">`
+        + `<input class="cr-price" type="number" data-auto="1" data-c="${m.c}" data-ret="${ret}" data-fee="${matOrder ? '1' : '0'}" value="${Math.round(det)}">`
         + `<span class="cr-subtot silver" title="Subtotal (price × quantity)">${fmt(det * m.c)}</span>`
         + `</div>`;
     }).join('');
@@ -1351,7 +1369,7 @@
       + volLine
       + variantPicker(currentBase, e)
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Recipe E${e}${amtE > 1 ? ` <span class="faint" title="This recipe produces several units per craft: the costs shown are already per unit">(${amtE} per craft)</span>` : ''} <button class="mini-btn" id="cr-cheapest" title="Sets every material to the price of the market where it is cheapest (careful: may mean several trips)">💸 cheapest</button></div>`
-      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-pt">Price type</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot" title="Cost of that material for the whole batch">Subtotal</span></div>'
+      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot" title="Cost of that material for the whole batch">Subtotal</span></div>'
       + `${matRows}</div>`
       + '<div id="craft-budget-out"></div>'
 ;
@@ -1399,11 +1417,28 @@
       const inp = row.querySelector('.cr-price'); if (!inp) return;
       const c = +inp.dataset.c || 0, isRet = inp.dataset.ret === '1';
       const fee = inp.dataset.fee === '1' ? 1.025 : 1;
+      // lo que hay que comprar de verdad: el retorno se recicla en la tanda siguiente
+      const plan = netMatPlan(c, runs, returnR, isRet);
+      // comprando al instante el precio depende de CUANTAS unidades te llevas (te comes la
+      // escalera de ordenes), asi que se recalcula con la cantidad de ahora. Si escribiste el
+      // precio a mano, manda el tuyo (data-auto="0").
+      if (inp.dataset.auto !== '0') {
+        const citySel = row.querySelector('.cr-city');
+        const ck = citySel && citySel.selectedOptions && citySel.selectedOptions[0]
+          ? cityKey((citySel.selectedOptions[0].textContent || '').split(' ·')[0].trim()) : '';
+        const mref = matRef(row.dataset.id || '', ck, plan.buy, fee > 1);
+        if (mref.price > 0) inp.value = Math.round(mref.price);
+        const host = row.querySelector('.cr-mat-left');
+        if (host) {
+          const mark = [...host.querySelectorAll('.cr-age')].find((x) => /📖|🧾/.test(x.textContent));
+          const html = bookChipOf(mref);
+          if (mark) mark.outerHTML = html || '';
+          else if (html) host.insertAdjacentHTML('beforeend', html);
+        }
+      }
       const price = +inp.value || 0;          // precio de mercado, sin la tasa de la orden
       const sub = price * fee * c;            // por craft: es la base del coste por unidad
       if (isRet) ret += sub; else non += sub;
-      // lo que hay que comprar de verdad: el retorno se recicla en la tanda siguiente
-      const plan = netMatPlan(c, runs, returnR, isRet);
       // el subtotal que se ENSEÑA es el de la tanda entera (lo que te vas a gastar en esa
       // fila), no el de un craft: para 100 items nadie quiere el precio de uno
       const st = row.querySelector('.cr-subtot');
@@ -2565,7 +2600,7 @@
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
   craftOut.addEventListener('input', (ev) => {
     if (!ev.target.classList || !ev.target.classList.contains('cr-price')) return;
-    if (ev.target.id === 'cr-prod-price') ev.target.dataset.auto = '0';   // tu precio manda
+    ev.target.dataset.auto = '0';   // lo que escribes manda sobre el precio automatico
     calcResult();
   });
   // cambiar la ciudad de un material → coge su precio en esa ciudad y recalcula
@@ -2599,7 +2634,7 @@
     const chip = ev.target.closest('.cr-sub-chip');
     if (chip) {
       const row = chip.closest('.cr-row'); const inp = row && row.querySelector('.cr-price');
-      if (inp) { inp.value = chip.dataset.sub; calcResult(); toast('🔨 Using the cost to make it'); }
+      if (inp) { inp.value = chip.dataset.sub; inp.dataset.auto = '0'; calcResult(); toast('🔨 Using the cost to make it'); }
       return;
     }
     if (ev.target.closest('#cr-cheapest')) {
@@ -2640,13 +2675,6 @@
   });
   { const sc = document.getElementById('craft-station-city'); if (sc) sc.addEventListener('change', syncHideoutRow); }
   syncHideoutRow();
-  document.getElementById('p-item').addEventListener('change', (e) => {
-    const sel = e.target.closest('select.cr-pt'); if (!sel) return;
-    const id = sel.getAttribute('data-pt'); if (!id) return;
-    if (sel.value) ptype[id] = sel.value; else delete ptype[id];
-    savePtype();
-    if (currentBase && recipes[currentBase]) renderCraft();
-  });
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;
     el.addEventListener('change', () => {
