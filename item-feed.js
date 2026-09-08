@@ -1085,7 +1085,12 @@
   // tus unidades. Asi que se calcula el realizable (libro si vendes al instante, la orden si
   // dejas orden) y se ACOTA a una banda alrededor de la media: ni contar con un pico, ni dar el
   // negocio por muerto porque hoy haya una orden hundida.
-  const SELL_BAND = 0.15;
+  const SELL_BAND = 0.15;    // banda alrededor de la media con la que se planifica
+  // Y un limite a fiarse de la media: si el mercado de hoy esta MUY por debajo de ella (mas de
+  // un 40%), la media ya no describe el presente — el mercado se ha caido, o ese medio es de
+  // otro momento. Ahi manda el precio de hoy y se avisa, porque asumir la media inventaria un
+  // beneficio que no existe (medido: media 290K contra ordenes de 52K daba +542% de colchon).
+  const SELL_TRUST = 0.6;
   function sellRef(id, ck, qty, instant) {
     const cell = (craftPriceMap[id] || {})[ck] || {};
     const now = (instant ? cell.buy : cell.sell) || 0;
@@ -1110,7 +1115,10 @@
     if (avg > 0 && real > 0) {
       const hi = avg * (1 + SELL_BAND), lo = avg * (1 - SELL_BAND);
       if (real > hi) { used = hi; capped = 'hi'; }
-      else if (real < lo) { used = lo; capped = 'lo'; }
+      else if (real < lo) {
+        if (real >= avg * SELL_TRUST) { used = lo; capped = 'lo'; }
+        else { used = real; capped = 'far'; }
+      }
     }
     return { now, avg, book, fits, queue, real, used, capped, qty: Math.max(1, qty || 1), instant };
   }
@@ -1123,7 +1131,8 @@
     if (ref.book > 0) bits.push(`<span title="Weighted price of walking down the buy orders until your units are placed. This is what an instant sale really pays.">book <b>${fmtInt(ref.book)}</b> (${fmtInt(Math.min(ref.fits, ref.qty))}/${fmtInt(ref.qty)} units)</span>`);
     if (ref.queue > 0) bits.push(`<span title="Units already queued at that price or better: your order sells after them.">queue <b>${fmtInt(ref.queue)}</b></span>`);
     if (ref.capped === 'hi') bits.push(`<span class="down" title="The price right now is a spike over the average: the panel plans with the average plus 15%, not with the spike.">capped at average +15%</span>`);
-    if (ref.capped === 'lo') bits.push(`<span class="up" title="The price right now is well under the average: the panel plans with the average minus 15%. Check it in game before selling that low.">floored at average −15%</span>`);
+    if (ref.capped === 'lo') bits.push(`<span class="up" title="The price right now is a bit under the average: the panel plans with the average minus 15%. Check it in game before selling that low.">floored at average −15%</span>`);
+    if (ref.capped === 'far') bits.push(`<span class="down" title="Today's market is more than 40% below the average, so the average no longer describes it: the panel plans with today's price. Either the item crashed or that average is from another moment.">market far below the average</span>`);
     return `<div class="cr-ref">${bits.join(' · ')}</div>`;
   }
 
@@ -1342,7 +1351,7 @@
       + volLine
       + variantPicker(currentBase, e)
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Recipe E${e}${amtE > 1 ? ` <span class="faint" title="This recipe produces several units per craft: the costs shown are already per unit">(${amtE} per craft)</span>` : ''} <button class="mini-btn" id="cr-cheapest" title="Sets every material to the price of the market where it is cheapest (careful: may mean several trips)">💸 cheapest</button></div>`
-      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-pt">Price type</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot">Subtotal</span></div>'
+      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-pt">Price type</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot" title="Cost of that material for the whole batch">Subtotal</span></div>'
       + `${matRows}</div>`
       + '<div id="craft-budget-out"></div>'
 ;
@@ -1391,12 +1400,18 @@
       const c = +inp.dataset.c || 0, isRet = inp.dataset.ret === '1';
       const fee = inp.dataset.fee === '1' ? 1.025 : 1;
       const price = +inp.value || 0;          // precio de mercado, sin la tasa de la orden
-      const sub = price * fee * c;            // lo que cuesta de verdad la fila
+      const sub = price * fee * c;            // por craft: es la base del coste por unidad
       if (isRet) ret += sub; else non += sub;
-      const st = row.querySelector('.cr-subtot');
-      if (st) { st.textContent = fmt(sub); if (fee > 1) st.title = 'Includes the 2.5% buy-order setup fee'; }
       // lo que hay que comprar de verdad: el retorno se recicla en la tanda siguiente
       const plan = netMatPlan(c, runs, returnR, isRet);
+      // el subtotal que se ENSEÑA es el de la tanda entera (lo que te vas a gastar en esa
+      // fila), no el de un craft: para 100 items nadie quiere el precio de uno
+      const st = row.querySelector('.cr-subtot');
+      if (st) {
+        st.textContent = fmt(price * fee * plan.buy);
+        st.title = `What this material costs for the whole batch: ${fmtInt(plan.buy)} units at ${fmtInt(price)}`
+          + (fee > 1 ? ' plus the 2.5% buy-order fee' : '');
+      }
       const buy = row.querySelector('.cr-buy');
       if (buy) {
         buy.textContent = '🛒 ' + fmtInt(plan.buy);
