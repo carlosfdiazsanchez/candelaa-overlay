@@ -393,61 +393,6 @@
     if (chip) { e.stopPropagation(); selectItem(chip.getAttribute('data-fav'), chip.getAttribute('data-favn')); }
   });
 
-  // ---------- navegador por familias (el arbol, sin escribir nada) ----------
-  // La familia es la craftingcategory que ya viene en items-focus.json, la misma clave con la
-  // que el juego da los bonos de ciudad: no hay que inventar agrupaciones.
-  const TREE_KEY = 'candelaa-tree-v1';
-  let treeCfg = { fam: '', tier: '8' };
-  try { treeCfg = Object.assign(treeCfg, JSON.parse(localStorage.getItem(TREE_KEY) || '{}')); } catch (_) {}
-  const saveTree = () => { try { localStorage.setItem(TREE_KEY, JSON.stringify(treeCfg)); } catch (_) {} };
-  let treeByFam = null;
-  function treeIndex() {
-    if (treeByFam) return treeByFam;
-    treeByFam = {};
-    Object.keys(focusData).forEach((id) => {
-      const c = (focusData[id] || {}).c;
-      if (!c || !recipes[id]) return;
-      (treeByFam[c] = treeByFam[c] || []).push(id);
-    });
-    Object.values(treeByFam).forEach((a) => a.sort((x, y) => (nameById[x] || x).localeCompare(nameById[y] || y, 'es')));
-    return treeByFam;
-  }
-  const treeCell = (id, name, on) => `<button class="tree-cell" data-tree="${esc(id)}" aria-pressed="${on ? 'true' : 'false'}" title="${esc(name)}">`
-    + `<img src="icon://item/${encodeURIComponent(id)}?size=40" loading="lazy" alt=""></button>`;
-  function renderTree() {
-    const famBox = document.getElementById('tree-fams'); if (!famBox) return;
-    const idx = treeIndex();
-    const fams = Object.keys(idx).filter((c) => idx[c].some((id) => tierStrOf(id) === treeCfg.tier))
-      .sort((a, b) => (CAT_ES[a] || a).localeCompare(CAT_ES[b] || b, 'es'));
-    if (!treeCfg.fam || !idx[treeCfg.fam]) treeCfg.fam = fams[0] || '';
-    const tierBox = document.getElementById('tree-tier');
-    if (tierBox) {
-      tierBox.innerHTML = ['4', '5', '6', '7', '8'].map((t) => `<button data-treet="${t}" aria-pressed="${t === treeCfg.tier ? 'true' : 'false'}">T${t}</button>`).join('');
-    }
-    // una familia se representa con su item del tier elegido (el primero de la linea)
-    famBox.innerHTML = fams.map((c) => {
-      const rep = idx[c].find((id) => tierStrOf(id) === treeCfg.tier) || idx[c][0];
-      return `<button class="tree-cell" data-treef="${esc(c)}" aria-pressed="${c === treeCfg.fam ? 'true' : 'false'}" title="${esc(CAT_ES[c] || c)}">`
-        + `<img src="icon://item/${encodeURIComponent(rep)}?size=40" loading="lazy" alt=""></button>`;
-    }).join('');
-    const itemBox = document.getElementById('tree-items');
-    if (itemBox) {
-      const line = (idx[treeCfg.fam] || []).filter((id) => tierStrOf(id) === treeCfg.tier);
-      itemBox.innerHTML = line.length
-        ? line.map((id) => treeCell(id, (nameById[id] || id), id === currentBase)).join('')
-        : '<span class="faint" style="font-size:11px">Nothing craftable of this family at that tier.</span>';
-    }
-  }
-  document.getElementById('p-item').addEventListener('click', (e) => {
-    const t = e.target.closest('[data-treet]');
-    if (t) { treeCfg.tier = t.getAttribute('data-treet'); saveTree(); renderTree(); return; }
-    const f = e.target.closest('[data-treef]');
-    if (f) { treeCfg.fam = f.getAttribute('data-treef'); saveTree(); renderTree(); return; }
-    const it = e.target.closest('[data-tree]');
-    if (it) { const id = it.getAttribute('data-tree'); selectItem(id, nameById[id]); renderTree(); }
-  });
-  { const box = document.getElementById('item-tree'); if (box) box.addEventListener('toggle', () => { if (box.open) renderTree(); }); }
-
   // ---------- buscador ----------
   function selectItem(id, fallbackName) {
     currentBase = id; currentName = nameById[id] || fallbackName || id;
@@ -485,10 +430,62 @@
     if (q.length < 2) { results.innerHTML = ''; results.hidden = true; return; }
     // solo items base (sin @ench): una fila por item; el encantamiento se elige con el filtro Ench.
     const matches = items.filter((it) => it.id.indexOf('@') < 0 && norm(it.n).includes(q)
-      && (!parsed.tier || it.id.startsWith('T' + parsed.tier + '_'))).slice(0, 14);
+      && (!parsed.tier || it.id.startsWith('T' + parsed.tier + '_'))).slice(0, 240);
     const tierOf = (id) => { const m = /^T(\d)_/.exec(id); return m ? m[1] : ''; };
-    results.innerHTML = matches.length
-      ? matches.map((m) => `<div class="mres" data-id="${esc(m.id)}"><img class="ires-icon" src="icon://item/${encodeURIComponent(m.id)}?size=40" loading="lazy" alt=""><span class="ires-name">${esc(m.n)}</span>${tierOf(m.id) ? `<span class="ires-tier">T${tierOf(m.id)}</span>` : ''}<span class="mid">${recipes[m.id] ? '🔨' : ''}</span></div>`).join('')
+    // Un item es UNA fila, no una por tier: "bolsa" devolvia ocho bolsas que son la misma.
+    // Se agrupa por la linea del item (el id sin el tier) y los tiers van como botones.
+    const groups = [];
+    const byLine = new Map();
+    matches.forEach((it) => {
+      const line = it.id.replace(/^T\d+_/, '');
+      let g = byLine.get(line);
+      if (!g) { g = { line, items: [] }; byLine.set(line, g); groups.push(g); }
+      g.items.push(it);
+    });
+    // el nombre de la fila es lo que comparten los nombres de sus tiers: "Bolsa del maestro"
+    // y "Bolsa del novato" dan "Bolsa" (asi no hace falta una tabla de rangos por idioma)
+    const commonName = (g) => {
+      if (g.items.length === 1) return g.items[0].n;
+      let pre = g.items[0].n;
+      for (const it of g.items) {
+        let i = 0;
+        while (i < pre.length && i < it.n.length && pre[i] === it.n[i]) i++;
+        pre = pre.slice(0, i);
+      }
+      // el corte cae a mitad de la ultima palabra ("Bolsa del nov|ato"): se tira esa palabra y
+      // los conectores que se quedan colgando, o el nombre seria "Bolsa del"
+      pre = pre.replace(/\s+\S*$/, '').replace(/[\s,·-]+$/, '')
+        .replace(/(\s+(?:de las|de los|de la|del|de|las|los|la|el|of the|of|the))+$/i, '');
+      return pre.length >= 3 ? pre : g.items[g.items.length - 1].n;
+    };
+    // primero lo que EMPIEZA por lo que has escrito: buscando "arco" no manda "Marco dorado"
+    groups.forEach((g) => { g.name = commonName(g); });
+    // dos lineas distintas pueden dar el mismo nombre recortado (los guisos cambian de
+    // ingrediente en cada tier): las que choquen se quedan con el nombre completo
+    const seen = {};
+    groups.forEach((g) => { seen[g.name] = (seen[g.name] || 0) + 1; });
+    groups.forEach((g) => {
+      if (seen[g.name] > 1) {
+        const main = g.items.find((x) => +(/^T(\d)_/.exec(x.id) || [])[1] >= 4) || g.items[g.items.length - 1];
+        g.name = main.n;
+      }
+    });
+    groups.sort((a, b) => {
+      const sa = norm(a.name).startsWith(q) ? 0 : 1, sb = norm(b.name).startsWith(q) ? 0 : 1;
+      return sa - sb || a.name.length - b.name.length || a.name.localeCompare(b.name, 'es');
+    });
+    results.innerHTML = groups.length
+      ? groups.slice(0, GROUP_MAX).map((g) => {
+        const tiers = g.items.slice().sort((a, b) => (+tierOf(a.id) || 0) - (+tierOf(b.id) || 0));
+        // al pinchar el nombre entra el primer tier util (T4 en adelante es donde se craftea)
+        const main = tiers.find((x) => +tierOf(x.id) >= 4) || tiers[tiers.length - 1];
+        const chips = tiers.length > 1
+          ? tiers.map((x) => `<button class="ires-t${x.id === currentBase ? ' on' : ''}" data-id="${esc(x.id)}" title="${esc(x.n)}">T${tierOf(x.id) || '?'}</button>`).join('')
+          : `<span class="ires-tier">T${tierOf(main.id) || '?'}</span>`;
+        return `<div class="mres" data-id="${esc(main.id)}"><img class="ires-icon" src="icon://item/${encodeURIComponent(main.id)}?size=40" loading="lazy" alt="">`
+          + `<span class="ires-name">${esc(g.name)}</span><span class="ires-tiers">${chips}</span>`
+          + `<span class="mid">${recipes[main.id] ? '🔨' : ''}</span></div>`;
+      }).join('')
       : '<div class="mempty">No results</div>';
     results.hidden = false;
   }
@@ -496,7 +493,10 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') results.hidden = true; });
   document.addEventListener('click', (e) => { if (!e.target.closest('#p-item .search-row')) results.hidden = true; });
   ['focus', 'click'].forEach((ev) => search.addEventListener(ev, () => { if (results.innerHTML) results.hidden = false; }));
+  const GROUP_MAX = 7;
   results.addEventListener('click', (e) => {
+    const t = e.target.closest('.ires-t');
+    if (t) { e.stopPropagation(); results.hidden = true; selectItem(t.dataset.id); return; }
     const r = e.target.closest('.mres'); if (!r) return;
     selectItem(r.dataset.id);
   });
@@ -804,11 +804,9 @@
   // allí no hay estaciones ni bono de ciudad, y falsearía "la ciudad más barata".
   const extraMarkets = { rest: [], smuggler: [] };
   let marketTypes = {};
-  const SCOPE_KEY = 'albion-overlay-markets-v1';
-  const marketScope = () => {
-    const el = document.getElementById('mkt-scope');
-    return (el && el.value) || localStorage.getItem(SCOPE_KEY) || 'rest';
-  };
+  // Solo ciudades reales (peticion 2026-09-08): el filtro 🏪 con Rests y contrabandistas se
+  // quito de la UI — los precios eran reales pero llevar mercancia a zona negra no compensa.
+  const marketScope = () => 'city';
   // sin catálogo (backend caído) se asume lo restrictivo: solo las de siempre son de ciudad
   const BASE_SET = new Set(BASE_CITIES.map((c) => String(c).replace(/\s+/g, '')));
   const marketTypeOf = (city) => marketTypes[cityKey(city)] || (BASE_SET.has(cityKey(city)) ? 'royal' : 'smuggler');
@@ -869,21 +867,7 @@
       }
     });
   }
-  {
-    const sel = document.getElementById('mkt-scope');
-    if (sel) {
-      const saved = localStorage.getItem(SCOPE_KEY);
-      if (saved && [...sel.options].some((o) => o.value === saved)) sel.value = saved;
-      sel.addEventListener('change', () => {
-        localStorage.setItem(SCOPE_KEY, sel.value);
-        fillScanCityOptions();
-        if (currentBase) loadMarket();
-        onScanFilterChange();
-        { const lv = document.getElementById('tab-level'); if (lv && !lv.hidden) loadLevel(); }
-      });
-    }
-    loadMarketCatalog();
-  }
+  loadMarketCatalog();
   // datos de refino (recetas alternativas y transmutación de items.xml)
   let refineData = { refine: {}, transmute: {}, hearts: {} };
   // los recursos encantados cotizan como T8_HIDE_LEVEL1@1: el json trae el id sin el @n

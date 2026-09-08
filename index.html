@@ -52,8 +52,8 @@
   #p-item input,#p-item select{font-size:15px;padding:6px 9px;}
   #p-item .cfg-check{font-size:13.5px;}
   #p-item .minitoggles button{width:auto;min-width:26px;height:28px;font-size:12.5px;padding:0 9px;}
-  #p-item .mres{font-size:15px;padding:6px 9px;gap:10px;}
-  #p-item .ires-icon{width:40px;height:40px;}
+  #p-item .mres{font-size:14px;padding:4px 9px;gap:9px;}
+  #p-item .ires-icon{width:32px;height:32px;}
   #p-item .mempty{font-size:13.5px;}
   #p-item .flip-title,#p-item .cr-sub,#p-item .best-hint{font-size:12px;}
   #p-item .flip-result,#p-item .cmp-line,#p-item .craft-total{font-size:14.5px;}
@@ -106,6 +106,11 @@
   #p-item .search-row .market-results{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;margin:0;padding:4px;max-height:380px;overflow-y:auto;
     background:var(--panel-solid);border:1px solid var(--border-strong);border-radius:9px;box-shadow:0 12px 32px rgba(0,0,0,.55);}
   #p-item .ires-tier{flex:0 0 auto;font-family:var(--mono);font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px;background:rgba(90,169,196,.18);color:#cdeaf2;border:1px solid rgba(90,169,196,.45);}
+  /* un resultado = un item; sus tiers son botones a la derecha del nombre */
+  #p-item .ires-tiers{flex:0 0 auto;display:flex;gap:2px;}
+  #p-item .ires-t{font-family:var(--mono);font-size:11px;font-weight:700;border-radius:5px;padding:1px 5px;background:#0e141c;color:var(--dim);border:1px solid #2a3646;cursor:pointer;}
+  #p-item .ires-t:hover{color:#cdeaf2;border-color:rgba(90,169,196,.65);}
+  #p-item .ires-t.on{background:rgba(90,169,196,.18);color:#cdeaf2;border-color:rgba(90,169,196,.45);}
   #p-item .tab-scroll{max-height:calc(100vh - 330px);overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
   #p-item .tab-scroll::-webkit-scrollbar{width:8px;} #p-item .tab-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
   #p-item .filter-row select{font-size:13px;padding:5px 26px 5px 9px;}
@@ -184,19 +189,6 @@
   #cr-mats .cr-pt,.cr-mat-hdr .cr-pt{flex:0 0 auto;width:104px;}
   #cr-mats .cr-pt{background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--fg);font-size:11px;padding:2px 3px;}
   .cr-age{font-size:10px;color:var(--dim);cursor:help;white-space:nowrap;}
-  /* navegador por familias: dos filas de iconos (familia y su linea de items) */
-  .tree-box{margin:2px 0 4px;}
-  .tree-box>summary{cursor:pointer;font-size:11px;color:var(--dim);}
-  .tree-body{padding:4px 0 2px;}
-  .tree-tier{display:flex;gap:4px;margin-bottom:5px;}
-  .tree-tier button{background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--dim);font-size:11px;padding:2px 7px;cursor:pointer;}
-  .tree-tier button[aria-pressed="true"]{border-color:var(--accent);color:var(--fg);}
-  .tree-fams,.tree-items{display:flex;flex-wrap:wrap;gap:3px;}
-  .tree-items{margin-top:6px;padding-top:6px;border-top:1px solid #1e2836;}
-  .tree-cell{width:38px;height:38px;padding:0;background:#0e141c;border:1px solid #2a3646;border-radius:6px;cursor:pointer;position:relative;}
-  .tree-cell img{width:100%;height:100%;object-fit:contain;}
-  .tree-cell:hover{border-color:var(--accent);}
-  .tree-cell[aria-pressed="true"]{border-color:var(--accent);background:#16202c;}
   /* balance de la tanda: plegado por defecto, es para auditar, no para mirar siempre */
   .cr-bal>summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.02em;}
   .cr-bal .bl-sec{margin:7px 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);}
@@ -882,8 +874,6 @@
     <div class="search-row"><input class="search" id="item-search" placeholder="Search item… (cape, bow, stew)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Search whatever you have copied">📋</button>
       <div class="market-results" id="item-results" hidden></div></div>
     <div class="fav-row" id="item-favs" hidden></div>
-    <details class="tree-box" id="item-tree"><summary title="Pick the item by its family instead of typing: choose a family and its whole line shows up for the tier you want.">🌳 Browse by family</summary>
-      <div class="tree-body"><div class="tree-tier" id="tree-tier"></div><div class="tree-fams" id="tree-fams"></div><div class="tree-items" id="tree-items"></div></div></details>
     <div class="filter-row">
     <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
       <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
@@ -897,10 +887,6 @@
       <button class="tab-btn" data-tab="level">Level</button>
       <button class="tab-btn" data-tab="ledger" title="What you bought, the exact break-even price and what each sale made">Ledger</button>
       <button class="tab-btn" data-tab="config" title="Set once, applies to the whole panel">⚙</button>
-      <div class="cfg-row tabs-right" id="item-markets"><span class="cfg-lbl" title="Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.">🏪</span><select id="mkt-scope">
-        <option value="city">Cities only</option>
-        <option value="rest" selected>Cities + Rests</option>
-        <option value="all">All (+ smugglers)</option></select></div>
     </div>
     <div class="tab-scroll" id="item-tabscroll">
     <div id="tab-market"></div>

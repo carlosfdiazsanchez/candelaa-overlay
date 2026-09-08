@@ -601,9 +601,6 @@
   "Quality 4": "Calidad 4",
   "Quality 5": "Calidad 5",
   "Quality 6": "Calidad 6",
-  "🌳 Browse by family": "🌳 Buscar por familia",
-  "Pick the item by its family instead of typing: choose a family and its whole line shows up for the tier you want.": "Elige el item por su familia en vez de escribir: eliges familia y sale su linea entera del tier que quieras.",
-  "Nothing craftable of this family at that tier.": "Nada crafteable de esta familia en ese tier.",
   // v0.2.74: cantidades netas, fama, diarios, peso y topes de cantidad en Crafteo
   "journals": "diarios",
   "Buy and resell ": "Comprar y revender ",
