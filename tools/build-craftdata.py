@@ -167,6 +167,8 @@ def main():
             if city:
                 loc[city] = entry
         elif el.get('biome') and el.get('clusterquality'):
+            # los hideouts no traen <craftingbonus>: el bono de crafteo va SOLO por categoria
+            # (0,01 a 0,26 segun la calidad del cluster) y el de refino es el plano de 0,15
             ho.setdefault(el.get('biome'), {})[el.get('clusterquality')] = entry
 
     keep = set(fames) | set(jr) | set(journals)

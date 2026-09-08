@@ -319,17 +319,37 @@
     if (!j) return null;
     return { fam, tier: t, maxfame: j[0], weight: j[1], empty: 'T' + t + '_JOURNAL_' + fam.toUpperCase() + '_EMPTY', full: 'T' + t + '_JOURNAL_' + fam.toUpperCase() + '_FULL' };
   }
+  const hoBiome = () => (document.getElementById('craft-ho-biome') || {}).value || 'FOREST';
+  const hoQ = () => (document.getElementById('craft-ho-q') || {}).value || 'Q6';
   function returnRate(baseId, opts) {
-    const bon = productionBonus(baseId || currentBase);
+    const id = baseId || currentBase;
+    const bon = productionBonus(id);
     const st = (opts && typeof opts.city === 'string')
       ? opts.city : ((document.getElementById('craft-station-city') || {}).value || '');
     const focus = (opts && typeof opts.focus === 'boolean')
       ? opts.focus : !!(document.getElementById('craft-focus') || {}).checked;
-    const daily = dailyPct(baseId || currentBase);
-    const match = !!(bon && ((opts && opts.best) || (st && cityKey(st) === cityKey(bon.city))));
-    const B = RET_BASE + (match ? bon.pct : 0) + (focus ? RET_FOCUS : 0) + daily / 100;
+    const daily = dailyPct(id);
+    const cat = catOf(baseOf(id));
+    const refine = !!REFINE_CATS[cat];
+    // base de la estacion y bono de la categoria, segun DONDE crafteas: la isla no tiene bono
+    // de estacion (islandvalue = 0 en el dump) y el refugio solo tiene el de refino y el de su
+    // bioma segun la calidad del cluster
+    let base = RET_BASE, catPct = 0, match = false, where = st;
+    if (opts && opts.best) { catPct = bon ? bon.pct : 0; match = !!bon; where = bon ? bon.city : ''; }
+    else if (st === 'island') { base = 0; }
+    else if (st === 'hideout') {
+      const h = (cx.ho[hoBiome()] || {})[hoQ()] || null;
+      base = refine ? (h ? h.r : 0.15) : 0;
+      catPct = (!refine && h) ? ((h.c || {})[cat] || 0) : 0;
+      match = catPct > 0 || (refine && base > 0);
+    } else if (st) {
+      const l = cx.loc[cityKey(st)] || null;
+      if (l) { base = refine ? l.r : l.b; catPct = (l.c || {})[cat] || 0; match = catPct > 0; }
+      else { match = !!(bon && cityKey(st) === cityKey(bon.city)); catPct = match ? bon.pct : 0; }
+    }
+    const B = base + catPct + (focus ? RET_FOCUS : 0) + daily / 100;
     const pct = (1 - 1 / (1 + B)) * 100;
-    return { pct: Math.floor(pct * 10) / 10, match, bon, focus, daily, station: st };
+    return { pct: Math.max(0, Math.floor(pct * 10) / 10), match, bon, focus, daily, station: st, where };
   }
   function applyAutoReturn() {
     const inp = document.getElementById('craft-return');
@@ -372,6 +392,61 @@
     const chip = e.target.closest('[data-fav]');
     if (chip) { e.stopPropagation(); selectItem(chip.getAttribute('data-fav'), chip.getAttribute('data-favn')); }
   });
+
+  // ---------- navegador por familias (el arbol, sin escribir nada) ----------
+  // La familia es la craftingcategory que ya viene en items-focus.json, la misma clave con la
+  // que el juego da los bonos de ciudad: no hay que inventar agrupaciones.
+  const TREE_KEY = 'candelaa-tree-v1';
+  let treeCfg = { fam: '', tier: '8' };
+  try { treeCfg = Object.assign(treeCfg, JSON.parse(localStorage.getItem(TREE_KEY) || '{}')); } catch (_) {}
+  const saveTree = () => { try { localStorage.setItem(TREE_KEY, JSON.stringify(treeCfg)); } catch (_) {} };
+  let treeByFam = null;
+  function treeIndex() {
+    if (treeByFam) return treeByFam;
+    treeByFam = {};
+    Object.keys(focusData).forEach((id) => {
+      const c = (focusData[id] || {}).c;
+      if (!c || !recipes[id]) return;
+      (treeByFam[c] = treeByFam[c] || []).push(id);
+    });
+    Object.values(treeByFam).forEach((a) => a.sort((x, y) => (nameById[x] || x).localeCompare(nameById[y] || y, 'es')));
+    return treeByFam;
+  }
+  const treeCell = (id, name, on) => `<button class="tree-cell" data-tree="${esc(id)}" aria-pressed="${on ? 'true' : 'false'}" title="${esc(name)}">`
+    + `<img src="icon://item/${encodeURIComponent(id)}?size=40" loading="lazy" alt=""></button>`;
+  function renderTree() {
+    const famBox = document.getElementById('tree-fams'); if (!famBox) return;
+    const idx = treeIndex();
+    const fams = Object.keys(idx).filter((c) => idx[c].some((id) => tierStrOf(id) === treeCfg.tier))
+      .sort((a, b) => (CAT_ES[a] || a).localeCompare(CAT_ES[b] || b, 'es'));
+    if (!treeCfg.fam || !idx[treeCfg.fam]) treeCfg.fam = fams[0] || '';
+    const tierBox = document.getElementById('tree-tier');
+    if (tierBox) {
+      tierBox.innerHTML = ['4', '5', '6', '7', '8'].map((t) => `<button data-treet="${t}" aria-pressed="${t === treeCfg.tier ? 'true' : 'false'}">T${t}</button>`).join('');
+    }
+    // una familia se representa con su item del tier elegido (el primero de la linea)
+    famBox.innerHTML = fams.map((c) => {
+      const rep = idx[c].find((id) => tierStrOf(id) === treeCfg.tier) || idx[c][0];
+      return `<button class="tree-cell" data-treef="${esc(c)}" aria-pressed="${c === treeCfg.fam ? 'true' : 'false'}" title="${esc(CAT_ES[c] || c)}">`
+        + `<img src="icon://item/${encodeURIComponent(rep)}?size=40" loading="lazy" alt=""></button>`;
+    }).join('');
+    const itemBox = document.getElementById('tree-items');
+    if (itemBox) {
+      const line = (idx[treeCfg.fam] || []).filter((id) => tierStrOf(id) === treeCfg.tier);
+      itemBox.innerHTML = line.length
+        ? line.map((id) => treeCell(id, (nameById[id] || id), id === currentBase)).join('')
+        : '<span class="faint" style="font-size:11px">Nothing craftable of this family at that tier.</span>';
+    }
+  }
+  document.getElementById('p-item').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-treet]');
+    if (t) { treeCfg.tier = t.getAttribute('data-treet'); saveTree(); renderTree(); return; }
+    const f = e.target.closest('[data-treef]');
+    if (f) { treeCfg.fam = f.getAttribute('data-treef'); saveTree(); renderTree(); return; }
+    const it = e.target.closest('[data-tree]');
+    if (it) { const id = it.getAttribute('data-tree'); selectItem(id, nameById[id]); renderTree(); }
+  });
+  { const box = document.getElementById('item-tree'); if (box) box.addEventListener('toggle', () => { if (box.open) renderTree(); }); }
 
   // ---------- buscador ----------
   function selectItem(id, fallbackName) {
@@ -922,18 +997,53 @@
     if (jrn) { matSet.add(jrn.empty); matSet.add(jrn.full); }
     const prodIds = []; for (let e = 0; e <= 4; e++) prodIds.push(prodEnch(currentBase, e));
     const prodQ = currentQuality || 1;
+    // el historico de los materiales sirve para el tipo de precio "media": solo los de la
+    // receta que se esta mirando, no todo el arbol de sustitutos
+    const histIds = [...new Set([...prodIds, ...[0, 1, 2, 3, 4].flatMap((e) => craftRowsOf(currentBase, e).map((m) => m.priceId))])];
     const [matRows, prodRows, vol] = await Promise.all([
       window.overlay.craftPrices([...matSet], BASE_CITIES, 0),
       window.overlay.craftPrices(prodIds, BASE_CITIES, prodQ),
-      window.overlay.history(prodIds, BASE_CITIES, 21, 0),
+      window.overlay.history(histIds, BASE_CITIES, HIST_WINDOW, 0),
     ]);
     craftPriceMap = {};
-    [...(matRows || []), ...(prodRows || [])].forEach((r) => { (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[cityKey(r.city)] = { sell: r.sell_price_min || 0, buy: r.buy_price_max || 0 }; });
+    [...(matRows || []), ...(prodRows || [])].forEach((r) => {
+      (craftPriceMap[r.item_id] = craftPriceMap[r.item_id] || {})[cityKey(r.city)] = {
+        sell: r.sell_price_min || 0, buy: r.buy_price_max || 0,
+        sd: r.sell_price_min_date || '', bd: r.buy_price_max_date || '',
+      };
+    });
     craftVolMap = {};
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, days: r.days || 0, avg: r.avg_price || 0 }; });
     renderCraft();
   }
   const matOrderOn = () => !!(document.getElementById('craft-mat-order') || {}).checked;
+
+  // ---------- tipo de precio por fila de material ----------
+  // El global "mats con orden de compra" sigue mandando por defecto, pero cada material puede
+  // fijar el suyo: hay materiales que compras al instante y otros que dejas en orden.
+  // 'avg' es el medio historico de la ventana del panel: sirve de referencia de lo que suele
+  // costar, no de lo que pagarias hoy.
+  const PTYPE_KEY = 'candelaa-craft-ptype-v1';
+  let ptype = {};
+  try { ptype = JSON.parse(localStorage.getItem(PTYPE_KEY) || '{}') || {}; } catch (_) { ptype = {}; }
+  Object.keys(ptype).forEach((k) => { if (!k || k === 'null' || k === 'undefined') delete ptype[k]; });
+  const savePtype = () => { try { localStorage.setItem(PTYPE_KEY, JSON.stringify(ptype)); } catch (_) {} };
+  const PTYPES = [['', 'as set above'], ['now', 'buy now'], ['order', 'buy order'], ['avg', 'average']];
+  const ptypeOf = (id) => ptype[id] || '';
+  // precio de una celda segun el tipo pedido (sin el 2,5% de la orden, que se aplica aparte)
+  function cellPrice(cell, kind) {
+    if (!cell) return 0;
+    if (kind === 'order') return cell.buy > 0 ? cell.buy + 1 : (cell.sell || 0);
+    if (kind === 'now') return cell.sell || 0;
+    return cityUnitPrice(cell);
+  }
+  const matAvgOf = (id, ck) => ((craftVolMap[id] || {})[ck] || {}).avg || 0;
+  // la antiguedad que importa es la del precio que se esta usando
+  const cellDate = (cell, kind) => {
+    if (!cell) return '';
+    const useBuy = kind === 'order' || (!kind && matOrderOn());
+    return useBuy ? (cell.bd || cell.sd || '') : (cell.sd || '');
+  };
   // lo que te cuesta la unidad: comprando al instante es la venta más barata; dejando orden
   // de compra es superar en 1 la puja actual (la tasa del 2,5% se suma aparte)
   const cityUnitPrice = (cell) => {
@@ -1095,7 +1205,12 @@
       if (!chosen) { const ch = cheapestOf(id); chosen = perCity.find((x) => x.c === ch.city && x.p > 0); }
       if (!chosen) chosen = withPrice.slice().sort((a, b) => a.p - b.p)[0];
       const chosenCity = chosen ? chosen.c : defaultCity;
-      const det = chosen ? chosen.p : 0;
+      // el tipo de precio de esta fila manda sobre el ajuste global
+      const kind = ptypeOf(id);
+      const chosenCell = cm[chosenCity];
+      let det = chosen ? chosen.p : 0;
+      if (kind === 'avg') det = matAvgOf(id, cityKey(chosenCity)) || det;
+      else if (kind) det = cellPrice(chosenCell, kind) || det;
       const opts = perCity.map((x) => `<option value="${x.p}"${x.c === chosenCity ? ' selected' : ''}>${esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}</option>`).join('');
       const enchTag = (e > 0 && enchantable(m.nameId)) ? '.' + e : '';
       const ret = returnable(m.nameId) ? 1 : 0;
@@ -1127,13 +1242,23 @@
       }
       // nombre y chips van juntos en un bloque que absorbe el ancho variable: así el mercado,
       // el precio y el subtotal quedan alineados de una fila a otra
+      // antiguedad del precio que se esta usando: un margen calculado sobre un precio de
+      // hace dias es un deseo, no una oportunidad
+      const age = kind === 'avg' ? '' : agoStr(cellDate(chosenCell, kind));
+      const stale = kind !== 'avg' && freshMaxH() > 0 && ageHours(cellDate(chosenCell, kind)) > freshMaxH();
+      const ageChip = age
+        ? `<span class="cr-age${stale ? ' down' : ''}" title="How old the price being used is${stale ? ', over your freshness limit' : ''}">⏱ ${age}</span>`
+        : (kind === 'avg' ? `<span class="cr-age" title="Average realised price over the panel's history window, not today's order">~ ${HIST_WINDOW}d</span>` : '');
+      const ptSel = `<select class="cr-pt" data-pt="${esc(id)}" title="Price type for this material: what the cheapest order asks right now, what you would pay leaving a buy order (best bid + 1, plus the 2.5% fee), or the historical average as a reference.">`
+        + PTYPES.map(([v, l]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
       return `<div class="cr-row" data-c="${m.c}" data-ret="${ret}" data-id="${esc(id)}" data-name="${esc(copyName)}">`
         + '<span class="cr-mat-left">'
         + `<span class="cr-name copyable" data-copy="${esc(copyName)}" title="Click to copy «${esc(copyName)}» (the exact name to search in game)">${m.c}× ${esc(mnm)}${enchTag}</span>`
-        + subChip + trChip + '</span>'
+        + subChip + trChip + ageChip + '</span>'
+        + ptSel
         + `<span class="cr-buy" title="Exact units of this material to buy for the given quantity">🛒 ${fmtInt(Math.ceil(m.c * craftQty / amtE))}</span>`
         + `<select class="cr-city" title="Market where you buy this material">${opts}</select>`
-        + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" value="${Math.round(det)}">`
+        + `<input class="cr-price" type="number" data-c="${m.c}" data-ret="${ret}" data-fee="${(kind === 'order' || (!kind && matOrder)) ? '1' : '0'}" value="${Math.round(det)}">`
         + `<span class="cr-subtot silver" title="Subtotal (price × quantity)">${fmt(det * m.c)}</span>`
         + `</div>`;
     }).join('');
@@ -1164,9 +1289,10 @@
       + volLine
       + variantPicker(currentBase, e)
       + `<div class="cr-recipe" id="cr-mats"><div class="cr-sub">Recipe E${e}${amtE > 1 ? ` <span class="faint" title="This recipe produces several units per craft: the costs shown are already per unit">(${amtE} per craft)</span>` : ''} <button class="mini-btn" id="cr-cheapest" title="Sets every material to the price of the market where it is cheapest (careful: may mean several trips)">💸 cheapest</button></div>`
-      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot">Subtotal</span></div>'
+      + '<div class="cr-mat-hdr"><span class="cr-mat-left">Material</span><span class="cr-pt">Price type</span><span class="cr-buy">Units</span><span class="cr-city">Market</span><span class="cr-price">Price/u</span><span class="cr-subtot">Subtotal</span></div>'
       + `${matRows}</div>`
       + '<div id="craft-budget-out"></div>'
+      + '<div id="craft-balance-out"></div>'
       + '<div id="craft-limits-out"></div>';
     calcResult();
   }
@@ -1210,10 +1336,13 @@
     let ret = 0, non = 0; const mats = [];
     document.querySelectorAll('#cr-mats .cr-row').forEach((row) => {
       const inp = row.querySelector('.cr-price'); if (!inp) return;
-      const c = +inp.dataset.c || 0, price = +inp.value || 0, isRet = inp.dataset.ret === '1';
-      const sub = price * c;
+      const c = +inp.dataset.c || 0, isRet = inp.dataset.ret === '1';
+      const fee = inp.dataset.fee === '1' ? 1.025 : 1;
+      const price = +inp.value || 0;          // precio de mercado, sin la tasa de la orden
+      const sub = price * fee * c;            // lo que cuesta de verdad la fila
       if (isRet) ret += sub; else non += sub;
-      const st = row.querySelector('.cr-subtot'); if (st) st.textContent = fmt(sub);
+      const st = row.querySelector('.cr-subtot');
+      if (st) { st.textContent = fmt(sub); if (fee > 1) st.title = 'Includes the 2.5% buy-order setup fee'; }
       // lo que hay que comprar de verdad: el retorno se recicla en la tanda siguiente
       const plan = netMatPlan(c, runs, returnR, isRet);
       const buy = row.querySelector('.cr-buy');
@@ -1223,10 +1352,10 @@
           ? 'Units to buy. The recipe eats more than this, but the station gives part of them back and you craft those again; what is left at the end is listed under the shopping table.'
           : 'Exact units to buy for this batch. This material gets no resource return.';
       }
-      mats.push({ id: row.dataset.id || '', name: row.dataset.name || '', c, price, ret: isRet, plan, city: (row.querySelector('.cr-city') || {}).selectedOptions ? row.querySelector('.cr-city').selectedOptions[0].textContent.split(' ·')[0] : '' });
+      mats.push({ id: row.dataset.id || '', name: row.dataset.name || '', c, price, fee, ret: isRet, plan, city: (row.querySelector('.cr-city') || {}).selectedOptions ? row.querySelector('.cr-city').selectedOptions[0].textContent.split(' ·')[0] : '' });
     });
-    let netMat = (ret * (1 - returnR) + non) / amt;
-    if (matOrder) netMat *= 1.025;
+    // el 2,5% de la orden ya va incluido en cada fila que lo paga (data-fee)
+    const netMat = (ret * (1 - returnR) + non) / amt;
     const netCost = netMat + fee;
     const prod = document.getElementById('cr-prod-price');
     const sellPrice = prod ? +prod.value || 0 : 0;
@@ -1408,7 +1537,7 @@
     const focusAvail = +(document.getElementById('craft-focus-avail') || {}).value || 0;
     const focusCost = +(document.getElementById('craft-focus-cost') || {}).value || 0;
     const mode = (document.getElementById('craft-session-mode') || {}).value || 'focus';
-    const R = ctx.returnR, mo = ctx.matOrder ? 1.025 : 1, amt = ctx.amt || 1;
+    const R = ctx.returnR, amt = ctx.amt || 1;
 
     // punto de equilibrio, como una línea más del resultado
     const netSell = 1 - ctx.tax - (ctx.instant ? 0 : ctx.sellFee);
@@ -1424,7 +1553,7 @@
       const R0 = returnRate(currentBase, { focus: false }).pct / 100;
       let totalUnits = craftsF * amt, matCrafts = craftsF * amt * (1 - R);
       if (mode === 'mixed') { totalUnits = (craftsF + (R < 1 ? (craftsF * R) / (1 - R0) : 0)) * amt; matCrafts = craftsF * amt; }
-      const invest = ctx.mats.reduce((s, m) => s + m.price * (m.c / amt) * (m.ret ? matCrafts : totalUnits), 0) * mo + ctx.fee * totalUnits;
+      const invest = ctx.mats.reduce((s, m) => s + m.price * (m.fee || 1) * (m.c / amt) * (m.ret ? matCrafts : totalUnits), 0) + ctx.fee * totalUnits;
       const gain = ctx.ventaNeta * totalUnits - invest;
       const gc = gain >= 0 ? 'up' : 'down';
       const warn = effOf(currentBase) > 0 ? '' : ' <span class="down" title="No spec set: it uses the unspecialised focus cost, so it looks worse than reality. Fill in your levels in the Spec row (or type what the station shows into Focus/unit).">⚠ spec not calibrated</span>';
@@ -1447,7 +1576,7 @@
       const cheap = cheapestOf(m.id);
       const ask = cheap.price || m.price;
       // hasta aquí puedes pagar sin dejar de ganar (con el resto de materiales igual)
-      const weight = (m.c / amt) * (m.ret ? (1 - R) : 1) * mo;
+      const weight = (m.c / amt) * (m.ret ? (1 - R) : 1) * (m.fee || 1);
       const maxPay = weight > 0 ? m.price + ctx.profit / weight : 0;
       const sellerNet = bid * (1 - ctx.tax);
       const myCost = ctx.matOrder ? (bid ? (bid + 1) * 1.025 : ask * 1.025) : ask;
@@ -1483,7 +1612,72 @@
       + (leftovers.length
         ? `<div class="cr-kv"><span title="What is still in the box when the batch ends: the station keeps giving materials back on the last crafts. Sell them or start the next batch with them.">Left over at the end</span><span>${leftovers.map((m) => `${fmtInt(m.plan.leftover)}× ${esc(m.name)}`).join(' · ')}</span></div>`
         : '');
+    renderBalance(ctx);
     renderLimits(ctx);
+  }
+
+  // ---------- balance de la tanda, linea a linea ----------
+  // El veredicto de arriba es por unidad; esto es el dinero real de la tanda entera, con las
+  // tasas separadas para poder auditarlo: lo que se compra, lo que se revende de las sobras,
+  // lo que se vende y la tarifa de estacion.
+  function renderBalance(ctx) {
+    const box = document.getElementById('craft-balance-out'); if (!box) return;
+    const tax = ctx.tax, sellFee = ctx.instant ? 0 : ctx.sellFee;
+    const rows = (title, cols, body, total) => `<div class="bl-sec">${title}</div>`
+      + `<table class="cr-tbl"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>`
+      + `<tbody>${body}</tbody><tfoot><tr><td colspan="${cols.length - 1}">Total</td><td class="silver"><b>${total}</b></td></tr></tfoot></table>`;
+
+    let inTot = 0;
+    const inBody = ctx.mats.map((m) => {
+      const feeMul = m.fee || 1;
+      const cost = m.plan.buy * m.price * feeMul;
+      inTot += cost;
+      return `<tr><td class="name">${esc(m.name)}</td><td>${fmtInt(m.plan.buy)}</td><td>${fmtInt(m.price)}</td>`
+        + `<td class="${feeMul > 1 ? '' : 'faint'}">${feeMul > 1 ? '2.5%' : '—'}</td><td class="silver">−${fmt(cost)}</td></tr>`;
+    });
+    if (ctx.jr && ctx.jr.on && ctx.jr.j && ctx.jr.count > 0 && ctx.jr.empty > 0) {
+      const n = Math.ceil(ctx.jr.count), cost = n * ctx.jr.empty * (matOrderOn() ? 1.025 : 1);
+      inTot += cost;
+      inBody.push(`<tr><td class="name">${esc(nameById[ctx.jr.j.empty] || ctx.jr.j.empty)}</td><td>${fmtInt(n)}</td><td>${fmtInt(ctx.jr.empty)}</td><td class="faint">—</td><td class="silver">−${fmt(cost)}</td></tr>`);
+    }
+
+    let leftTot = 0;
+    const leftBody = ctx.mats.filter((m) => m.plan.leftover >= 1).map((m) => {
+      const gross = m.plan.leftover * m.price;
+      const net = gross * (1 - tax - (sellOrderOn() ? 0.025 : 0));
+      leftTot += net;
+      return `<tr><td class="name">${esc(m.name)}</td><td>${fmtInt(m.plan.leftover)}</td><td>${fmtInt(m.price)}</td><td class="faint">−${fmt(gross - net)}</td><td class="silver">+${fmt(net)}</td></tr>`;
+    });
+
+    let outTot = 0;
+    const grossOut = ctx.sellPrice * ctx.qty;
+    const netOut = grossOut * (1 - tax - sellFee);
+    outTot += netOut;
+    const outBody = [`<tr><td class="name">${esc(currentName)}${currentEnch ? '.' + currentEnch : ''}</td><td>${fmtInt(ctx.qty)}</td><td>${fmtInt(ctx.sellPrice)}</td><td class="faint">−${fmt(grossOut - netOut)}</td><td class="silver">+${fmt(netOut)}</td></tr>`];
+    if (ctx.jr && ctx.jr.on && ctx.jr.j && ctx.jr.count > 0 && ctx.jr.full > 0) {
+      const gross = ctx.jr.count * ctx.jr.full;
+      const net = gross * (1 - tax - sellFee);
+      outTot += net;
+      outBody.push(`<tr><td class="name">${esc(nameById[ctx.jr.j.full] || ctx.jr.j.full)}</td><td>${ctx.jr.count >= 10 ? fmtInt(ctx.jr.count) : ctx.jr.count.toFixed(2)}</td><td>${fmtInt(ctx.jr.full)}</td><td class="faint">−${fmt(gross - net)}</td><td class="silver">+${fmt(net)}</td></tr>`);
+    }
+
+    const station = ctx.fee * ctx.qty;
+    const spent = inTot + station;
+    const earned = outTot + leftTot;
+    const gain = earned - spent;
+    const roi = spent > 0 ? (gain / spent) * 100 : 0;
+    const gc = gain >= 0 ? 'up' : 'down';
+    box.className = 'cr-block';
+    box.innerHTML = '<details class="cr-bal"><summary>🧾 Batch balance'
+      + ` <span class="faint">· ${fmtInt(ctx.qty)} units · profit </span><b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b> <span class="faint">(${roiTxt(roi)})</span></summary>`
+      + rows('Bought', ['Item', 'Units', 'Price/u', 'Order fee', 'Cost'], inBody.join(''), '−' + fmt(inTot))
+      + (leftBody.length ? rows('Leftovers sold back', ['Item', 'Units', 'Price/u', 'Tax and fees', 'Net'], leftBody.join(''), '+' + fmt(leftTot)) : '')
+      + rows('Sold', ['Item', 'Units', 'Price/u', 'Tax and fees', 'Net'], outBody.join(''), '+' + fmt(outTot))
+      + `<div class="cr-kv"><span title="Station fee: item value x 0.1125 x the rate you set in the settings tab.">Station fee</span><span class="silver">−${fmt(station)}</span></div>`
+      + `<div class="cr-kv"><span>Total spent</span><span class="silver">−${fmt(spent)}</span></div>`
+      + `<div class="cr-kv"><span>Total in</span><span class="silver">+${fmt(earned)}</span></div>`
+      + `<div class="cr-kv"><span><b>Profit</b> <span class="faint">· leftovers sold included</span></span><span><b class="${gc}">${gain >= 0 ? '+' : ''}${fmt(gain)}</b> <span class="${gc}">${roiTxt(roi)}</span></span></div>`
+      + '</details>';
   }
 
   // ---------- cuantas unidades hacer: el minimo de lo que te ata ----------
@@ -2507,6 +2701,23 @@
   { const so = document.getElementById('craft-sell-order'); if (so) so.addEventListener('change', () => { if (currentBase && recipes[currentBase]) renderCraft(); }); }
   { const mo = document.getElementById('craft-mat-order'); if (mo) mo.addEventListener('change', () => { if (currentBase && recipes[currentBase]) renderCraft(); onScanFilterChange(); }); }
   { const jo = document.getElementById('craft-journals'); if (jo) jo.addEventListener('change', () => { if (currentBase && recipes[currentBase]) calcResult(); }); }
+  function syncHideoutRow() {
+    const row = document.getElementById('craft-ho-row');
+    if (row) row.hidden = ((document.getElementById('craft-station-city') || {}).value !== 'hideout');
+  }
+  ['craft-ho-biome', 'craft-ho-q'].forEach((idn) => {
+    const el = document.getElementById(idn);
+    if (el) el.addEventListener('change', () => { applyAutoReturn(); if (currentBase && recipes[currentBase]) renderCraft(); });
+  });
+  { const sc = document.getElementById('craft-station-city'); if (sc) sc.addEventListener('change', syncHideoutRow); }
+  syncHideoutRow();
+  document.getElementById('p-item').addEventListener('change', (e) => {
+    const sel = e.target.closest('select.cr-pt'); if (!sel) return;
+    const id = sel.getAttribute('data-pt'); if (!id) return;
+    if (sel.value) ptype[id] = sel.value; else delete ptype[id];
+    savePtype();
+    if (currentBase && recipes[currentBase]) renderCraft();
+  });
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;
     el.addEventListener('change', () => {

@@ -566,6 +566,44 @@
   "focus + rest without": "foco + resto sin",
   "focus/unit": "foco/ud",
   "return ": "retorno ",
+  // v0.2.75: tipo de precio por fila, balance de la tanda, isla/refugio y arbol por familias
+  "as set above": "como arriba",
+  "buy now": "comprar ya",
+  "buy order": "orden de compra",
+  "average": "media",
+  "Price type": "Tipo de precio",
+  "Price type for this material: what the cheapest order asks right now, what you would pay leaving a buy order (best bid + 1, plus the 2.5% fee), or the historical average as a reference.": "Tipo de precio de este material: lo que pide la orden mas barata ahora, lo que pagarias dejando una orden de compra (la mejor puja + 1, mas la tasa del 2,5%), o la media historica como referencia.",
+  "How old the price being used is": "Que antiguedad tiene el precio que se esta usando",
+  "How old the price being used is, over your freshness limit": "Que antiguedad tiene el precio que se esta usando: pasa de tu limite de frescura",
+  "Average realised price over the panel's history window, not today's order": "Precio medio realizado en la ventana de historico del panel, no la orden de hoy",
+  "Includes the 2.5% buy-order setup fee": "Incluye la tasa del 2,5% de la orden de compra",
+  "🧾 Batch balance": "🧾 Balance de la tanda",
+  " units · profit ": " uds · beneficio ",
+  "Leftovers sold back": "Sobras revendidas",
+  "Order fee": "Tasa de orden",
+  "Tax and fees": "Impuesto y tasas",
+  "Station fee": "Tarifa de estacion",
+  "Station fee: item value x 0.1125 x the rate you set in the settings tab.": "Tarifa de estacion: valor del item x 0,1125 x la tasa que pusiste en la pestana de ajustes.",
+  "Total spent": "Total gastado",
+  "Total in": "Total ingresado",
+  "· leftovers sold included": "· incluye la venta de las sobras",
+  "Island (no station bonus)": "Isla (sin bono de estacion)",
+  "Hideout": "Refugio",
+  "A hideout's crafting bonus depends on the biome of its zone and on the cluster quality; refining always gets a flat 15%.": "El bono de crafteo de un refugio depende del bioma de su zona y de la calidad del cluster; el refino siempre lleva un 15% plano.",
+  "Forest": "Bosque",
+  "Swamp": "Pantano",
+  "Mountain": "Montana",
+  "Highland": "Tierras altas",
+  "Steppe": "Estepa",
+  "Quality 1": "Calidad 1",
+  "Quality 2": "Calidad 2",
+  "Quality 3": "Calidad 3",
+  "Quality 4": "Calidad 4",
+  "Quality 5": "Calidad 5",
+  "Quality 6": "Calidad 6",
+  "🌳 Browse by family": "🌳 Buscar por familia",
+  "Pick the item by its family instead of typing: choose a family and its whole line shows up for the tier you want.": "Elige el item por su familia en vez de escribir: eliges familia y sale su linea entera del tier que quieras.",
+  "Nothing craftable of this family at that tier.": "Nada crafteable de esta familia en ese tier.",
   // v0.2.74: cantidades netas, fama, diarios, peso y topes de cantidad en Crafteo
   "journals": "diarios",
   "Buy and resell ": "Comprar y revender ",
@@ -1082,7 +1120,9 @@
   "Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.": "Qué mercados usan el Escáner y las pestañas Vender y Nivel (Precios enseña siempre las ciudades reales y el Black Market). Los Rests (Arthur's, Merlyn's, Morgana's) y los contrabandistas están en zonas negras: los precios son reales, pero llevar la mercancía allí tiene riesgo."
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "hit", "Now", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools"]);
+  const NO_SUB = new Set(["All", "hit", "Now", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
+    // biomas y refugio: son opciones de un select, pero como trozo pisarian nombres de zona
+    "Forest", "Swamp", "Mountain", "Highland", "Steppe", "Hideout"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);
   // en inputs y textareas se traducen los atributos pero NUNCA el contenido (es dato del usuario)
   const SKIP_TAGS = { SCRIPT: 1, STYLE: 1, CANVAS: 1 };

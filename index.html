@@ -180,6 +180,27 @@
   #cr-mats .cr-name{flex:0 1 auto;}
   #cr-mats .cr-city{flex:0 0 auto;width:188px;}
   #cr-mats .cr-buy{flex:0 0 auto;min-width:58px;text-align:right;}
+  /* tipo de precio y antiguedad por fila de material */
+  #cr-mats .cr-pt,.cr-mat-hdr .cr-pt{flex:0 0 auto;width:104px;}
+  #cr-mats .cr-pt{background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--fg);font-size:11px;padding:2px 3px;}
+  .cr-age{font-size:10px;color:var(--dim);cursor:help;white-space:nowrap;}
+  /* navegador por familias: dos filas de iconos (familia y su linea de items) */
+  .tree-box{margin:2px 0 4px;}
+  .tree-box>summary{cursor:pointer;font-size:11px;color:var(--dim);}
+  .tree-body{padding:4px 0 2px;}
+  .tree-tier{display:flex;gap:4px;margin-bottom:5px;}
+  .tree-tier button{background:#0e141c;border:1px solid #2a3646;border-radius:5px;color:var(--dim);font-size:11px;padding:2px 7px;cursor:pointer;}
+  .tree-tier button[aria-pressed="true"]{border-color:var(--accent);color:var(--fg);}
+  .tree-fams,.tree-items{display:flex;flex-wrap:wrap;gap:3px;}
+  .tree-items{margin-top:6px;padding-top:6px;border-top:1px solid #1e2836;}
+  .tree-cell{width:38px;height:38px;padding:0;background:#0e141c;border:1px solid #2a3646;border-radius:6px;cursor:pointer;position:relative;}
+  .tree-cell img{width:100%;height:100%;object-fit:contain;}
+  .tree-cell:hover{border-color:var(--accent);}
+  .tree-cell[aria-pressed="true"]{border-color:var(--accent);background:#16202c;}
+  /* balance de la tanda: plegado por defecto, es para auditar, no para mirar siempre */
+  .cr-bal>summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.02em;}
+  .cr-bal .bl-sec{margin:7px 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);}
+  .cr-bal .cr-tbl tfoot td{border-top:1px solid #2a3646;color:var(--dim);}
   .cr-mat-hdr{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:0 0 4px;border-bottom:1px solid var(--border);margin-bottom:2px;}
   .cr-mat-hdr span{background:none!important;border:0!important;color:var(--faint);font-weight:600;padding:0;font-family:var(--ui);font-size:10px;}
   .cr-mat-hdr .cr-price,.cr-mat-hdr .cr-subtot{text-align:right;}
@@ -861,6 +882,8 @@
     <div class="search-row"><input class="search" id="item-search" placeholder="Search item… (cape, bow, stew)" autocomplete="off"><button class="icon-btn paste-btn" id="item-paste" title="Search whatever you have copied">📋</button>
       <div class="market-results" id="item-results" hidden></div></div>
     <div class="fav-row" id="item-favs" hidden></div>
+    <details class="tree-box" id="item-tree"><summary title="Pick the item by its family instead of typing: choose a family and its whole line shows up for the tier you want.">🌳 Browse by family</summary>
+      <div class="tree-body"><div class="tree-tier" id="tree-tier"></div><div class="tree-fams" id="tree-fams"></div><div class="tree-items" id="tree-items"></div></div></details>
     <div class="filter-row">
     <div class="cfg-row" id="item-ench"><span class="cfg-lbl">Ench.</span><div class="minitoggles">
       <button data-e="0" aria-pressed="true">0</button><button data-e="1">1</button><button data-e="2">2</button><button data-e="3">3</button><button data-e="4">4</button></div></div>
@@ -896,7 +919,11 @@
         <div class="cfg-row"><span class="cfg-lbl">Quantity</span><input type="number" id="craft-qty" value="1" min="1"></div>
         <div class="cfg-row"><span class="cfg-lbl">Craft in</span><select id="craft-station-city" title="City where you'll craft/refine. If it matches this item's bonus city, the return rate is worked out for you.">
           <option value="">— no bonus</option>
-          <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option></select></div>
+          <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option>
+          <option value="island">Island (no station bonus)</option><option value="hideout">Hideout</option></select></div>
+        <div class="cfg-row w2" id="craft-ho-row" hidden><span class="cfg-lbl" title="A hideout's crafting bonus depends on the biome of its zone and on the cluster quality; refining always gets a flat 15%.">Hideout</span>
+          <select id="craft-ho-biome"><option value="FOREST">Forest</option><option value="SWAMP">Swamp</option><option value="MOUNTAIN">Mountain</option><option value="HIGHLAND">Highland</option><option value="STEPPE">Steppe</option></select>
+          <select id="craft-ho-q"><option value="Q1">Quality 1</option><option value="Q2">Quality 2</option><option value="Q3">Quality 3</option><option value="Q4">Quality 4</option><option value="Q5">Quality 5</option><option value="Q6" selected>Quality 6</option></select></div>
         <label class="cfg-check"><input type="checkbox" id="craft-focus"> Use <b>focus</b> (+59% to the production bonus)</label>
         <button class="cr-adv-toggle w3" id="craft-adv-toggle" aria-pressed="false">⚙ Advanced settings <span class="cr-adv-sum" id="craft-adv-sum"></span></button>
       </div>
