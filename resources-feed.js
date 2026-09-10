@@ -659,14 +659,17 @@
       case 123: newMob(p); break;
       case 98: newNamedMob(p); break;
       case 47: { const mo = mobs.get(p['0']); if (mo) { mo.ench = num(p['1'], mo.ench); mo.last = Date.now(); } break; }
-      // Los códigos ALTOS se desplazaron +2 en algún parche (capturado en vivo 2026-08-08:
-      // portales 323->325, cofres 391->393, pesca 359->361); los bajos (recursos 39/40/46,
-      // mobs 123/47) siguen igual. Se aceptan ambos: el viejo por si se juega otra versión,
-      // el nuevo porque es el que llega hoy. Cada handler valida el payload antes de usarlo.
-      case 323: case 325: newPortal(p); break;
-      case 530: case 532: newCage(p); break;
-      case 531: case 533: cages.delete(id); break;
-      default: if (!parseRoads286(p)) maybeTunnelExit(p, code); break;
+      // Los códigos ALTOS bailan con cada parche y ya no se despachan por número: se acepta
+      // cualquier evento cuyo PAYLOAD tenga la forma del portal o de la jaula. Medido en vivo
+      // 2026-09-10: los portales llegan en 528 (antes 323 -> 325) y las jaulas en 533, que
+      // además era el case de BORRADO, así que cada jaula que llegaba se borraba al instante.
+      // El borrado por código se quita: para eso están el Leave (evt 1), el cambio de mapa y
+      // el barrido de caducados, que no dependen de ningún número.
+      default:
+        if (newPortal(p)) break;
+        if (newCage(p)) break;
+        if (!parseRoads286(p)) maybeTunnelExit(p, code);
+        break;
     }
   }
 
@@ -790,15 +793,45 @@
     rememberNode(h);
   }
 
+  // El índice donde viaja el nombre en el NewMob se mueve con los parches: hasta 2026-08 el
+  // nombre estaba en [32]/[31] y el encantamiento en [33], y hoy esos tres índices ni siquiera
+  // llegan en el payload (medido en vivo 2026-09-10: el NewMob acaba en [34]). Leerlos por
+  // número dejaba a las candilejas sin nombre, y sin nombre caen por la rama de mob normal y
+  // no salen nunca en el radar. Se busca por FORMA: el primer uniquename del payload, mire en
+  // el índice que mire.
+  function namedKey(p) {
+    for (const k in p) {
+      if (k === '252' || k === '253') continue;
+      const v = p[k];
+      if (typeof v === 'string' && /^[A-Z][A-Z0-9_]{3,}$/.test(v)) return k;
+    }
+    return null;
+  }
+  // El encantamiento viaja pegado al nombre (era [33] con el nombre en [32]): se acepta el
+  // primer entero 0-4 de los índices siguientes.
+  function enchNear(p, k) {
+    const base = Number(k);
+    if (!Number.isFinite(base)) return 0;
+    for (let i = base + 1; i <= base + 3; i++) {
+      const v = p[String(i)];
+      if (Number.isInteger(v) && v >= 0 && v <= 4) return v;
+    }
+    return 0;
+  }
+
   // ---- mobs / living resources / mists (event 123) ----
   function newMob(p) {
     const id = p['0'];
     const typeId = num(p['1']);
     const loc = Array.isArray(p['7']) ? p['7'] : [0, 0];
     const posX = num(loc[0]), posY = num(loc[1]);
-    const ench = num(p['33'], 0);
-    const name = p['32'] || p['31'] || null;
-    if (name) { // named entity in NewMob = Mists portal / feu-follet
+    const nk = namedKey(p);
+    const name = nk ? p[nk] : null;
+    const ench = nk ? enchNear(p, nk) : 0;
+    // Una entidad con nombre dentro del NewMob es un portal de las Brumas (candileja), salvo
+    // que el nombre diga _MOB_: esos son mobs de Avalon con nombre y van por la rama de mob.
+    if (name && !/_MOB_/.test(name)) {
+      sampleShape('mists', p);
       if (!mists.has(id)) mists.set(id, { id, posX, posY, name, ench, last: Date.now() });
       else mists.get(id).last = Date.now();
       return;
@@ -807,7 +840,7 @@
     // vida máxima en [14], energía máxima en [19] (los [13]/[18] son los valores ACTUALES y
     // bajan en cuanto al bicho le pegan, así que con ellos la firma no encontraría nada)
     const info = mobBySig(p['14'], p['19']);
-    const rec = mobRecord(id, typeId, posX, posY, ench, info);
+    const rec = mobRecord(id, typeId, posX, posY, ench, info, name || undefined);
     // muestreo de vivos: aún no sabemos en qué parámetro viaja el nº de cargas del bicho
     // (el [19] que ZQRadar llama "rarity" es aquí la energía máxima, verificado con la firma).
     // Se guarda el payload crudo de cada recurso vivo para compararlo en vivo entre un
@@ -837,23 +870,43 @@
     mobs.set(id, mobRecord(id, num(p['1']), num(pos[0]), num(pos[1]), 0, mobByName(raw), raw));
   }
 
-  // ---- dungeon / mists portals (event 323) ----
-  function newPortal(p) {
-    const id = p['0'];
-    const pos = p['1']; if (!Array.isArray(pos)) return;
-    const name = p['3'] || p['15'] || '';
-    const ench = num(p['8'], 0);
-    const ex = portals.get(id);
-    if (ex) { ex.last = Date.now(); return; }
-    portals.set(id, { id, posX: pos[0], posY: pos[1], name: String(name), ench, last: Date.now() });
+  // Un par de coordenadas de mundo plausible, para no aceptar cualquier array del payload.
+  function isPos(v) {
+    return Array.isArray(v) && v.length >= 2 && Number.isFinite(+v[0]) && Number.isFinite(+v[1])
+      && Math.abs(v[0]) < 4000 && Math.abs(v[1]) < 4000;
   }
 
-  // ---- wisp cages (event 530) ----
+  // ---- dungeon / mists portals (forma: id + posición en [1] + uniquename en [3]/[15]) ----
+  const PORTAL_NAME = /MISTS_|DUNGEON|HELLGATE|CORRUPTED|EXPEDITION|ENTRANCE|PORTAL|TUNNEL|AVALON|RANDOM/i;
+  function newPortal(p) {
+    const id = p['0'];
+    const name = typeof p['3'] === 'string' ? p['3'] : (typeof p['15'] === 'string' ? p['15'] : '');
+    if (typeof id !== 'number' || !isPos(p['1']) || !PORTAL_NAME.test(name)) return false;
+    sampleShape('portal', p);
+    const ex = portals.get(id);
+    if (ex) { ex.last = Date.now(); return true; }
+    portals.set(id, { id, posX: p['1'][0], posY: p['1'][1], name, ench: num(p['8'], 0), last: Date.now() });
+    return true;
+  }
+
+  // ---- wisp cages (forma: id + posición en [2] + uniquename de jaula en [4]) ----
+  const CAGE_NAME = /CAGE|WISP/i;
   function newCage(p) {
     const id = p['0'];
-    const pos = p['2']; if (id === undefined || !Array.isArray(pos)) return;
-    if (cages.has(id)) { cages.get(id).last = Date.now(); return; }
-    cages.set(id, { id, posX: pos[0], posY: pos[1], name: p['4'] || '', last: Date.now() });
+    const name = typeof p['4'] === 'string' ? p['4'] : '';
+    if (typeof id !== 'number' || !isPos(p['2']) || !CAGE_NAME.test(name)) return false;
+    sampleShape('cage', p);
+    if (cages.has(id)) { cages.get(id).last = Date.now(); return true; }
+    cages.set(id, { id, posX: p['2'][0], posY: p['2'][1], name, last: Date.now() });
+    return true;
+  }
+
+  // Muestras crudas por tipo de entidad, para poder comprobar en vivo contra el tráfico real
+  // cuando un parche vuelva a mover algo: window.__radar.shapes().
+  const shapeSamples = {};
+  function sampleShape(kind, p) {
+    const arr = shapeSamples[kind] = shapeSamples[kind] || [];
+    if (arr.length < 20) arr.push({ code: p['252'], p: JSON.parse(JSON.stringify(p)) });
   }
 
   // ---- portal classification (label + colour) ----
@@ -1226,7 +1279,7 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, portals, cages, filters, sub, priceMap, collect, handleMessage, render, setMobs: (d) => { mobsDB = d; markDirty(); render(); }, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, selectedId }), livingSamples: () => livingSamples, regenDB, nodeMem };
+  window.__radar = { harvestables, mobs, mists, portals, cages, filters, sub, priceMap, collect, handleMessage, render, setMobs: (d) => { mobsDB = d; markDirty(); render(); }, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, selectedId }), livingSamples: () => livingSamples, shapes: () => shapeSamples, regenDB, nodeMem };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }
