@@ -515,6 +515,7 @@
   "Mounted right now": "Montado ahora mismo",
   "Carries this mount, on foot": "Lleva esta montura, va a pie",
   "Cape": "Capa",
+  "Cape:": "Capa:",
   "Guild": "Gremio",
   "Alliance": "Alianza",
   "No guild": "Sin gremio",

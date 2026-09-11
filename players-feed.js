@@ -311,21 +311,19 @@
   // qué ciudad o facción viene (y es lo que sostiene una pelea larga) y la montura dice si puede
   // escapar de ti —o alcanzarte—. El estado montado/a pie va en el color del chip de la montura,
   // así que el icono suelto de la fila de arriba sobra.
+  // El rango del nombre ("del maestro", "del anciano") se cambia por el tier escrito: nadie
+  // traduce "maestro" a T6 sobre la marcha con un enemigo delante, y el tier es justo lo que
+  // decide si esa montura te alcanza. El nombre completo queda en el tooltip.
+  const tierBadge = (it) => (it.tier ? ` <b>T${it.tier}${it.ench ? '.' + it.ench : ''}</b>` : '');
   function kitHtml(p) {
     const eq = p.equip;
     const bits = [];
     const cape = eqFind(eq, 'cape');
-    if (cape) {
-      const t = cape.tier ? ' <b>' + cape.tier + (cape.ench ? '.' + cape.ench : '') + '</b>' : '';
-      bits.push(`<span class="kchip" title="Cape">🧣 ${esc(itemLabel(cape))}${t}</span>`);
-    }
+    if (cape) bits.push(`<span class="kchip" title="Cape: ${esc(itemName(cape))}">🧣 ${esc(itemLabel(cape))}${tierBadge(cape)}</span>`);
     const mount = eqFind(eq, 'mount');
     if (mount) {
-      // el badge de tier solo cuando el nombre no lo dice ya: las que llevan rango ("del
-      // experto") repetirían el número, y las de nombre propio (Huargo, Alce) lo necesitan
-      const full = itemName(mount);
-      const t = (mount.tier && full === cleanTier(full)) ? ' <b>' + mount.tier + (mount.ench ? '.' + mount.ench : '') + '</b>' : '';
-      bits.push(`<span class="kchip${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted right now' : 'Carries this mount, on foot'}">🐎 ${esc(full)}${t}</span>`);
+      const state = p.mounted ? 'Mounted right now' : 'Carries this mount, on foot';
+      bits.push(`<span class="kchip${p.mounted ? ' on' : ''}" title="${state}: ${esc(itemName(mount))}">🐎 ${esc(itemLabel(mount))}${tierBadge(mount)}</span>`);
     } else if (p.mounted) {
       bits.push('<span class="kchip on" title="Mounted right now">🐎 Mounted</span>');
     }
