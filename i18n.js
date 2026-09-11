@@ -559,7 +559,7 @@
   "Hide (mark as ally)": "Ocultar (marcar aliado)",
   "Role:": "Rol:",
   "Weapon not identified": "Arma sin identificar",
-  "Estimated market value of the gear": "Valor de mercado estimado del equipo",
+  "Estimated market value of the lootable gear": "Valor de mercado estimado de lo que se le puede saquear",
   "connected": "conectado",
   "disconnected": "desconectado",
   "connecting…": "conectando…",

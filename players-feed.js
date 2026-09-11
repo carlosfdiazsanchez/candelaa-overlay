@@ -214,39 +214,45 @@
   try { new ResizeObserver(() => { if (plist.clientHeight) localStorage.setItem(PLH_KEY, plist.clientHeight); }).observe(plist); } catch (_) {}
 
   const nameToCat = {};
-  fetch(ITEMS_URL).then((r) => (r.ok ? r.json() : null)).then((d) => { itemsDB = d; if (Array.isArray(d)) d.forEach((e) => { if (e && e.n) { nameToP[e.n] = e.p; nameToCat[e.n] = e.cat; } }); schedulePriceFetch(); render(); }).catch(() => {});
-  try { window.overlay.itemsByIndex().then((a) => { indexMap = a || null; schedulePriceFetch(); render(); }); } catch (_) {}
+  fetch(ITEMS_URL).then((r) => (r.ok ? r.json() : null)).then((d) => { itemsDB = d; if (Array.isArray(d)) d.forEach((e) => { if (e && e.n) { nameToP[e.n] = e.p; nameToCat[e.n] = e.cat; } }); infoCache.clear(); schedulePriceFetch(); render(); }).catch(() => {});
+  try { window.overlay.itemsByIndex().then((a) => { indexMap = a || null; infoCache.clear(); schedulePriceFetch(); render(); }); } catch (_) {}
 
+  // QUÉ es cada pieza se lee de su nombre, NO de su posición en el array de equipo. La posición
+  // estaba mal: se daba por hecho capa en 5, montura en 6 y bolsa en 7, y lo que salía en la
+  // tarjeta como capa era la BOLSA (el usuario lo vio en pantalla) y la montura no aparecía
+  // nunca. El orden real del array del juego pone la bolsa antes que la capa, pero da igual:
+  // leyendo el uniquename no hay orden que se pueda torcer con un parche.
+  const kindOf = (u) => {
+    const b = u.replace(/^(T\d+_|UNIQUE_)/, '').replace(/@\d+$/, '');
+    if (/^MOUNT_/.test(b)) return 'mount';
+    if (/^CAPE/.test(b)) return 'cape';
+    if (/^BAG/.test(b)) return 'bag';
+    if (/^(MEAL|POTION|FISHSAUCE|ALCHEMY|JOURNAL)/.test(b)) return 'consumable';
+    return 'gear';
+  };
+  const infoCache = new Map();
   function itemInfo(id) {
     if (!id || id <= 0 || !indexMap) return null;
+    const hit = infoCache.get(id); if (hit !== undefined) return hit;
     const u = indexMap[id]; if (!u) return null;
     const tm = u.match(/^T(\d)/), em = u.match(/@(\d)/);
     const base = u.replace(/@\d+$/, '');
     const ip = nameToP[u] || nameToP[base] || null;
-    return { name: u, tier: tm ? +tm[1] : null, ench: em ? +em[1] : 0, ip, cat: nameToCat[u] || nameToCat[base] || '' };
+    const it = { name: u, tier: tm ? +tm[1] : null, ench: em ? +em[1] : 0, ip, kind: kindOf(u), cat: nameToCat[u] || nameToCat[base] || '' };
+    infoCache.set(id, it);
+    return it;
   }
-  // Slots que aportan IP al personaje: arma, mano izq., casco, armadura, botas y CAPA.
-  // La montura (6), la bolsa (7) y la comida (8) también traen `p` en el dump, pero no cuentan
-  // para el poder en combate: colar la montura hundía el IP de cualquiera que fuese en un
-  // caballo barato con equipo T8 — justo al que más te interesa no subestimar.
-  const IP_SLOTS = [0, 1, 2, 3, 4, 5];
+  const eqItems = (eq) => (eq || []).map(itemInfo).filter(Boolean);
+  const eqFind = (eq, kind) => eqItems(eq).find((it) => it.kind === kind) || null;
+  // Las piezas que aportan IP son las del juego: arma, mano izquierda, casco, armadura, botas y
+  // CAPA. La montura, la bolsa y la comida también traen `p` en el dump y no cuentan; colarlas
+  // hunde el IP de cualquiera que vaya en un caballo barato con equipo T8, justo al que más te
+  // interesa no subestimar. Antes se elegían por posición (0..5) y con el orden real eso metía
+  // la bolsa y dejaba fuera la capa.
+  const IP_KINDS = { gear: 1, cape: 1 };
   function avgIP(eq) {
-    if (!eq) return null;
-    let s = 0, n = 0;
-    IP_SLOTS.forEach((i) => { const it = itemInfo(eq[i]); if (it && it.ip) { s += it.ip; n++; } });
-    return n ? Math.round(s / n) : null;
-  }
-  const SLOT_ICON = ['🗡️', '🛡️', '🪖', '🧥', '👢', '🧣', '🐎', '🎒', '🍖'];
-  function gearHtml(eq) {
-    if (!eq) return '';
-    let h = '<div class="gear">';
-    [0, 2, 3, 4, 5, 8].forEach((i) => {
-      const it = itemInfo(eq[i]);
-      const tag = it && it.tier ? `<span class="t">${it.tier}${it.ench ? '.' + it.ench : ''}</span>` : '';
-      const dim = (!eq[i] || eq[i] <= 0) ? ' style="opacity:.35"' : '';
-      h += `<div class="slot"${dim}>${SLOT_ICON[i] || '·'}${tag}</div>`;
-    });
-    return h + '</div>';
+    const v = eqItems(eq).filter((it) => IP_KINDS[it.kind] && it.ip > 0);
+    return v.length ? Math.round(v.reduce((s, it) => s + it.ip, 0) / v.length) : null;
   }
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
@@ -306,14 +312,14 @@
   // escapar de ti —o alcanzarte—. El estado montado/a pie va en el color del chip de la montura,
   // así que el icono suelto de la fila de arriba sobra.
   function kitHtml(p) {
-    const eq = p.equip || [];
+    const eq = p.equip;
     const bits = [];
-    const cape = itemInfo(eq[5]);
+    const cape = eqFind(eq, 'cape');
     if (cape) {
       const t = cape.tier ? ' <b>' + cape.tier + (cape.ench ? '.' + cape.ench : '') + '</b>' : '';
       bits.push(`<span class="kchip" title="Cape">🧣 ${esc(itemLabel(cape))}${t}</span>`);
     }
-    const mount = itemInfo(eq[6]);
+    const mount = eqFind(eq, 'mount');
     if (mount) {
       // el badge de tier solo cuando el nombre no lo dice ya: las que llevan rango ("del
       // experto") repetirían el número, y las de nombre propio (Huargo, Alce) lo necesitan
@@ -353,7 +359,6 @@
       render();
     });
   }
-  const THREAT = { peligro: ['Hostile', 'h'] };
   function threatOf(p) {
     const z = window.__ovZone;
     if (z === 'safe') return 'pasivo';
@@ -370,12 +375,11 @@
   const trimD = (v) => v.toFixed(1).replace('.', ',').replace(',0', '');
   const fmtK = (n) => { const a = Math.abs(n || 0); if (a >= 1e9) return trimD(n / 1e9) + 'B'; if (a >= 1e6) return trimD(n / 1e6) + 'M'; if (a >= 1e3) return Math.round(n / 1e3) + 'K'; return String(Math.round(n || 0)); };
   const PRICE_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling'];
-  const VALUE_SLOTS = [0, 1, 2, 3, 4, 5, 6, 7];
   const priceMap = {};
   let priceT = null;
   function neededNames() {
     const s = new Set();
-    players.forEach((p) => { if (p.equip) VALUE_SLOTS.forEach((i) => { const it = itemInfo(p.equip[i]); if (it && it.name && !(it.name in priceMap)) s.add(it.name); }); });
+    players.forEach((p) => { valued(p.equip).forEach((it) => { if (!(it.name in priceMap)) s.add(it.name); }); });
     return [...s];
   }
   async function fetchPrices() {
@@ -389,11 +393,10 @@
     } catch (_) {}
   }
   function schedulePriceFetch() { if (!priceT) priceT = setTimeout(fetchPrices, 1500); }
+  // lo que se le puede saquear: la montura no se cae al morir, así que no suma
+  const valued = (eq) => eqItems(eq).filter((it) => it.kind !== 'mount');
   function gearValue(p) {
-    if (!p.equip) return 0;
-    let sum = 0;
-    VALUE_SLOTS.forEach((i) => { const it = itemInfo(p.equip[i]); if (it && it.name && priceMap[it.name] > 0) sum += priceMap[it.name]; });
-    return sum;
+    return valued(p.equip).reduce((sum, it) => sum + (priceMap[it.name] > 0 ? priceMap[it.name] : 0), 0);
   }
 
   // ---- balance de fuerzas: los tuyos contra los que tienes al lado ----
@@ -506,7 +509,6 @@
         ? `<span class="wtype">${esc(w.es)}</span><span class="wrole" style="color:${ROLE[w.role][1]}">${ROLE[w.role][0]}</span>`
         : '<span class="wtype wt-unk">weapon ?</span>';
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
-      const risk = THREAT[th] ? `<span class="chip ${THREAT[th][1]}">${THREAT[th][0]}</span>` : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
       // El gremio iba delante del nombre y en gris claro: se leía como parte del nombre. Ahora
       // manda el nombre y detrás van gremio y alianza, que es como los nombra el juego.
@@ -514,12 +516,17 @@
         ? `<span class="pguild" title="Guild">${esc(p.guild)}${squad}</span>`
         : '<span class="pnog" title="No guild">no guild</span>';
       const alliTag = p.alliance ? `<span class="palli" title="Alliance">[${esc(p.alliance)}]</span>` : '';
+      // Los dos números van SIEMPRE, con su etiqueta y en el mismo sitio de la tarjeta: si el
+      // valor solo aparecía cuando había precio, parecía que el panel no lo calculaba. Sin
+      // precios todavía (o sin índice de items) se dice con un guion.
+      const ipCell = `<span class="pdat"><i>IP</i><b>${ip ? '~' + ip : '—'}</b></span>`;
+      const gvCell = `<span class="pdat" title="Estimated market value of the lootable gear"><i>Value</i><b class="v">${gv > 0 ? fmtK(gv) : '—'}</b></span>`;
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}${p.left ? ' leaving' : ''}" data-id="${p.id}">
-        <div class="prow">${tierTag}${wTag}${risk}${flag}
+        <div class="prow">${tierTag}${wTag}${flag}
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
         <div class="prow2"><span class="pname">${esc(p.name || '???')}</span>${guildTag}${alliTag}</div>
         ${kitHtml(p)}${hpHtml(p)}${actHtml(p)}
-        <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Estimated market value of the gear">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
+        <div class="pmeta">${ipCell}${gvCell}<span class="page">${age}s</span></div>
       </div>`;
     }).join('');
   }
