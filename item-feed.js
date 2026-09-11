@@ -680,14 +680,14 @@
     const QN2 = ['', 'Normal', 'Good', 'Outstanding', 'Excellent', 'Masterpiece'];
     let qualHtml = '';
     if (Array.isArray(marketQuality) && marketQuality.some((x) => x.buy || x.bm)) {
-      qualHtml = '<div class="mkt-quality"><div class="mkt-q-title" title="What you pay for it and what the Black Market pays you, by quality">💎 By quality</div>'
-        + '<table><thead><tr><th style="text-align:left">Quality</th><th>Buy</th><th>BM pays</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
-        + marketQuality.map((x) => { const age = agoStr(x.date); const stale = ageHours(x.date) > (freshMaxH() || 24); return `<tr><td class="name">${QN2[x.q]}</td><td class="silver">${x.buy ? fmt(x.buy) : '—'}</td><td class="${x.bm ? 'best-sell' : 'faint'}">${x.bm ? fmt(x.bm) : '—'} ${sostChip(x.bm, x.avg)}</td><td class="${x.vol ? '' : 'faint'}">${x.vol ? fmtInt(x.vol) : '—'}</td><td class="${stale ? 'down' : 'faint'}">${stale ? '⚠ ' : ''}${age || '—'}</td></tr>`; }).join('')
+      qualHtml = '<div class="mkt-quality"><div class="mkt-q-title" title="What you pay for it and what the Black Market closes at, by quality">💎 By quality</div>'
+        + '<table><thead><tr><th style="text-align:left">Quality</th><th>Buy</th><th title="What it actually closes at on the Black Market: this is what you get leaving a sell order">BM average</th><th title="The best buy order right now: selling instantly, only worth it when it beats the average by a lot">BM now</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
+        + marketQuality.map((x) => { const age = agoStr(x.date); const stale = ageHours(x.date) > (freshMaxH() || 24); return `<tr><td class="name">${QN2[x.q]}</td><td class="silver">${x.buy ? fmt(x.buy) : '—'}</td><td class="${x.avg ? 'best-sell' : 'faint'}">${x.avg ? fmt(x.avg) : '—'}</td><td class="faint">${x.bm ? fmt(x.bm) : '—'} ${sostChip(x.bm, x.avg)}</td><td class="${x.vol ? '' : 'faint'}">${x.vol ? fmtInt(x.vol) : '—'}</td><td class="${stale ? 'down' : 'faint'}">${stale ? '⚠ ' : ''}${age || '—'}</td></tr>`; }).join('')
         + '</tbody></table></div>';
     }
     // con Rests y contrabandistas la lista de mercados se va a ~46 filas: scroll propio para que
     // el panel no crezca sin fin (la mejor jugada y la tabla por calidad se quedan fuera del scroll)
-    const tableHtml = '<div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Market</th><th title="The cheapest sell offer: this is what you pay if you buy it now">Buy</th><th title="The best buy order: this is what you get if you sell instantly">Sell now</th><th title="What it actually closes at (historical)">Average</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
+    const tableHtml = '<div class="mkt-scroll"><table><thead><tr><th style="text-align:left">Market</th><th title="The cheapest sell offer: this is what you pay if you buy it now">Buy</th><th title="The best buy order: this is what you get if you sell instantly">Sell now</th><th title="What it actually closes at (historical): the price you get leaving a sell order, and what to plan with">Average</th><th>Vol/day</th><th>Seen</th></tr></thead><tbody>'
       + rows.map((r) => {
         const isBM = r.city === 'Black Market';
         const sp = r.sell_price_min;
@@ -704,9 +704,16 @@
         // el chip solo tiene sentido con una calidad concreta: en "Todas" el buy_max coge
         // la calidad más cara y el medio es la mezcla → daría un pico falso.
         const chip = (isBM && currentQuality) ? sostChip(r.buy_price_max, avg) : '';
-        const fast = r.buy_price_max > 0 ? `<td class="${isBM && !bmStale ? 'best-sell' : 'faint'}" title="the best buy order: paid to you instantly · seen ${bAge || '—'} ago${isBM && bmStale ? ' · over the freshness limit: left out of the calculation' : ''}">${isBM ? (bmStale ? '⏳🏴 ' : '🏴 ') : ''}${fmt(r.buy_price_max)}${qBadge(r.buy_price_max_quality)}${chip}</td>` : '<td class="faint">—</td>';
+        // En el Black Market el número que manda es el MEDIO de cierre, no la puja instantánea:
+        // se vende dejando una orden, y la venta inmediata solo compensa cuando la diferencia es
+        // grande. Así que el medio va destacado y "Vender ya" queda en segundo plano con su chip
+        // de pico/flojo, que es lo que dice si hoy merece la pena no esperar.
+        const fast = r.buy_price_max > 0 ? `<td class="faint" title="the best buy order: paid to you instantly, without waiting · seen ${bAge || '—'} ago${isBM && bmStale ? ' · over the freshness limit: left out of the calculation' : ''}">${isBM ? (bmStale ? '⏳🏴 ' : '🏴 ') : ''}${fmt(r.buy_price_max)}${qBadge(r.buy_price_max_quality)}${chip}</td>` : '<td class="faint">—</td>';
         const volCell = vd > 0 ? `<td title="Units sold per day here, spread over the whole period: ${histTip(vh)}">${fmtVol(vd)}</td>` : '<td class="faint">—</td>';
-        const avgCell = avg > 0 ? `<td class="cr-vol-avg" title="Average price it really closes at (historical). However high or low the order sits, this is what it sells for.">~${fmt(avg)}</td>` : '<td class="faint">—</td>';
+        const avgTip = `Average price it really closes at (historical): what you get leaving a sell order. Beware: the API returns the average of the LAST DAY WITH SALES, not of the whole window${vc.days ? ` · sold on ${vc.days} of the last ${HIST_WINDOW} days` : ''}`;
+        const avgCell = avg > 0
+          ? `<td class="${isBM ? 'best-sell' : 'cr-vol-avg'}" title="${avgTip}">${isBM ? '🏴 ' : '~'}${fmt(avg)}${isBM && vc.days && vc.days < HIST_WINDOW ? ` <u class="days">${vc.days}/${HIST_WINDOW}</u>` : ''}</td>`
+          : `<td class="faint" title="No sale on record in the last ${HIST_WINDOW} days">—</td>`;
         const sAge = agoStr(r.sell_price_min_date);
         const shownAge = isBM ? (bAge || sAge) : (sAge || bAge);
         const shownDate = isBM ? (r.buy_price_max_date || r.sell_price_min_date) : (r.sell_price_min_date || r.buy_price_max_date);
