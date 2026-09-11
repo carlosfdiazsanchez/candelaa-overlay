@@ -482,13 +482,12 @@
   "Gathering tool": "Herramienta de recolección",
   "Gathering": "Recolección",
   "Hostile": "Hostil",
-  "⚖ Even fight": "⚖ Combate igualado",
-  "Ahead by": "Ventaja de",
-  "Behind by": "Desventaja de",
-  "(not counting you)": "(sin contarte a ti)",
-  "Your IP": "Tu IP",
-  "Your character's IP: it never travels over the network, so type it once": "La IP de tu personaje: no viaja por la red, así que se escribe una vez",
-  "Your faction: it never travels over the network either, so pick it once. Your own faction is hidden from the list; rival factions are listed as hostile": "Tu facción: tampoco viaja por la red, así que se elige una vez. Los de tu propia facción no salen en la lista; los de una facción rival salen como hostiles",
+  "⚖ Same gear on both sides": "⚖ Mismo equipo en los dos bandos",
+  "▲ Better gear by": "▲ Mejor equipo por",
+  "▼ Worse gear by": "▼ Peor equipo por",
+  " in range": " en rango",
+  "IP avg": "IP media",
+  "Your faction: it does not travel over the network, so pick it once. Your own faction is hidden from the list; rival factions are listed as hostile": "Tu facción: no viaja por la red, así que se elige una vez. Los de tu propia facción no salen en la lista; los de una facción rival salen como hostiles",
   "None": "Ninguna",
   "Your party, guild and hidden allies against everyone else in range": "Tu grupo, gremio y aliados ocultos contra todos los demás en rango",
   "Your guild/alliance, hidden as allies:": "Tu gremio/alianza, ocultos como aliados:",
@@ -513,7 +512,13 @@
   "PvP flagged (hostile faction)": "Marcado PvP (facción hostil)",
   "from this guild in range": "de este gremio en rango",
   "Mounted": "Montado",
-  "On foot": "A pie",
+  "Mounted right now": "Montado ahora mismo",
+  "Carries this mount, on foot": "Lleva esta montura, va a pie",
+  "Cape": "Capa",
+  "Guild": "Gremio",
+  "Alliance": "Alianza",
+  "No guild": "Sin gremio",
+  "no guild": "sin gremio",
   "in combat": "en combate",
   "dismounted": "desmontado",
   "Just got off the mount: usually the move right before attacking": "Se acaba de bajar de la montura: suele ser el paso previo a atacar",
@@ -894,7 +899,7 @@
   "spike visible": "pico visible",
   " with data · ": " con datos · ",
   " hostile": " hostil",
-  "party ×": "grupo ×",
+  "👥 party": "👥 grupo",
   "⬇ Updating ": "⬇ Actualizando ",
   "✓ Restart to update": "✓ Reiniciar para actualizar",
   " to v": " a v",
@@ -1146,7 +1151,7 @@
   "Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.": "Qué mercados usan el Escáner y las pestañas Vender y Nivel (Precios enseña siempre las ciudades reales y el Black Market). Los Rests (Arthur's, Merlyn's, Morgana's) y los contrabandistas están en zonas negras: los precios son reales, pero llevar la mercancía allí tiene riesgo."
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "hit", "Now", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
+  const NO_SUB = new Set(["All", "hit", "Now", "Cape", "Guild", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
     // biomas y refugio: son opciones de un select, pero como trozo pisarian nombres de zona
     "Forest", "Swamp", "Mountain", "Highland", "Steppe", "Hideout"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);

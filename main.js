@@ -270,6 +270,12 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
   ensureMarket();         // arranca el capturador de mercado EN VIVO (http://localhost:5002)
   startMarketWatchdog();
   createWindow();
+  // Ctrl+Alt+D: consola de desarrollo. La ventana no tiene marco ni menú, así que sin esto no
+  // hay forma de mirar nada en la app instalada — y algunos fallos (el código del ping de grupo,
+  // que se mueve con cada parche) solo se pueden medir con el juego delante.
+  globalShortcut.register('Control+Alt+D', () => {
+    if (win && !win.isDestroyed()) win.webContents.openDevTools({ mode: 'detach' });
+  });
   // Ctrl+Alt+R: leer el nombre del portal de Caminos bajo el cursor (OCR) y enviarlo al Buscador.
   roadsOcr.register((r) => { if (win && !win.isDestroyed()) win.webContents.send('roads-ocr', r); });
   // Auto-update desde GitHub Releases (solo en la app empaquetada).

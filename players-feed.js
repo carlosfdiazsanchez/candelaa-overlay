@@ -4,6 +4,7 @@
 //
 // Event codes:  29 NewCharacter · 1 Leave · 6 Health · 91 RegenHealth ·
 //               90 EquipmentChanged · 211 Mounted · 363 FlaggingFinished · 3 Move
+// El ping de grupo NO se busca por código (era el 182): se acepta por la forma del payload.
 // Spawn (29) params: 0 id · 1 name · 8 guild · 51 alliance · 53 faction ·
 //                    40 equipment[10] · 43 spells[14]
 // Faction: 0 pasivo · 1-6 facción · 255 hostil
@@ -19,11 +20,15 @@
   let itemsDB = null, indexMap = null;
   const nameToP = {};
   let selectedId = null;
-  // El grupo NO se deduce ya de listas de nombres (PartyJoined y compañía): cualquier evento con
+  // El grupo NO se deduce de listas de nombres (PartyJoined y compañía): cualquier evento con
   // un array de textos colaba —las pestañas del chat entraban tal cual—, los nombres se sumaban
-  // uno a uno sin que nada los quitara y encima quedaban guardados para siempre. Verificado en el
-  // tráfico real: el evento 182 emite la posición de CADA compañero de grupo con su nombre
-  // (param 0 = [x,y], param 2 = nombre) y de nadie más, así que la pertenencia se lee de ahí.
+  // uno a uno sin que nada los quitara y encima quedaban guardados para siempre. Lo que SÍ dice
+  // quién va contigo es el ping de posición que emite CADA compañero de grupo y nadie más
+  // (una posición de mundo y su nombre).
+  // Ese ping era el evento 182, pero 182 está en la franja alta de códigos, la que se mueve con
+  // cada parche (el Buscador ya perdió portales y jaulas exactamente así), y cuando se mueve el
+  // grupo entero pasa a contarse como hostil: es el fallo que se veía en pantalla. Así que ya no
+  // se despacha por número, se acepta por FORMA (ver partyPing).
   // Con caducidad: al salir del grupo dejan de llegar y el nombre se cae solo.
   const PARTY_KEY = 'albion-overlay-party-v3';
   const PARTY_TTL = 900000;
@@ -41,6 +46,57 @@
     if (ch) savePartyShared();
     return ch;
   }
+  // Un ping de grupo es: un payload MÍNIMO (una posición de mundo y un nombre de jugador, poco
+  // más), que se REPITE, y cuya posición SE MUEVE. Los tres a la vez, porque la forma sola mete
+  // basura: probado aquí mismo, un evento cualquiera con un nombre y unas coordenadas que llega
+  // dos veces pasaba por compañero de grupo — y un falso positivo aquí es grave, porque oculta a
+  // un enemigo y le quita el aviso. Un saqueo o una muerte no se repiten; un evento periódico no
+  // cambia de coordenadas cada vez. El ping de alguien que camina a tu lado hace las tres cosas.
+  // Hace falta que el mismo nombre llegue PING_MIN_HITS veces, repartidas en PING_MIN_SPAN, con
+  // al menos dos posiciones distintas.
+  // El 182 era el código verificado en tráfico real, pero está en la franja alta que se mueve con
+  // cada parche, así que no se privilegia ninguno: el que pasa la criba se recuerda (como hace
+  // Combate con los suyos) para no repetirla en cada paquete. Se guarda UNO solo, y otro que
+  // pase la criba lo sustituye: así un acierto equivocado no bloquea para siempre al bueno,
+  // que es justo el fallo que tuvo el aprendiz de Combate.
+  const PARTYCODE_KEY = 'albion-overlay-partycode-v2';
+  let partyCode = (() => { const v = +localStorage.getItem(PARTYCODE_KEY); return v > 0 ? v : null; })();
+  try { localStorage.removeItem('albion-overlay-partycode-v1'); localStorage.removeItem('albion-overlay-myip-v1'); } catch (_) {}
+  const PING_MIN_SPAN = 4000;
+  const PING_MIN_HITS = 4;
+  const PING_MAX_PARAMS = 4;
+  const pingSeen = new Map();
+  let myName = '';
+  const worldPos = (v) => Array.isArray(v) && v.length === 2
+    && typeof v[0] === 'number' && typeof v[1] === 'number' && isFinite(v[0]) && isFinite(v[1])
+    && Math.abs(v[0]) < 5000 && Math.abs(v[1]) < 5000 && (v[0] !== 0 || v[1] !== 0);
+  function pingShape(p) {
+    let n = 0;
+    for (const k in p) { if (k !== '252' && k !== '253' && ++n > PING_MAX_PARAMS) return null; }
+    let pos = null, nm = null;
+    for (const k in p) {
+      const v = p[k];
+      if (pos === null && worldPos(v)) pos = v;
+      else if (nm === null && looksLikeName(v)) nm = v;
+    }
+    return (pos && nm) ? { pos, nm } : null;
+  }
+  function partyPing(code, p) {
+    if (typeof code !== 'number') return null;
+    const sh = pingShape(p); if (!sh) return null;
+    const nm = sh.nm;
+    if (partyCode === code) return nm === myName ? null : nm;
+    const key = code + ':' + nm, now = Date.now();
+    let c = pingSeen.get(key);
+    if (!c) { if (pingSeen.size > 400) pingSeen.clear(); c = { first: now, hits: 0, pos: sh.pos, moved: false }; pingSeen.set(key, c); }
+    c.hits++;
+    if (sh.pos[0] !== c.pos[0] || sh.pos[1] !== c.pos[1]) { c.moved = true; c.pos = sh.pos; }
+    if (c.hits < PING_MIN_HITS || !c.moved || now - c.first < PING_MIN_SPAN) return null;
+    partyCode = code;
+    try { localStorage.setItem(PARTYCODE_KEY, String(code)); } catch (_) {}
+    return nm === myName ? null : nm;
+  }
+
   const HIDE_KEY = 'albion-overlay-hidden-v1';
   let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem(HIDE_KEY)) || []); } catch (_) { return new Set(); } })();
   const saveHidden = () => localStorage.setItem(HIDE_KEY, JSON.stringify([...hidden]));
@@ -239,6 +295,28 @@
   // (T4=700 IP, T4.2=900 IP = T6=900 IP), así que sumarlos no es una aproximación.
   const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160',
     6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33', 9: '#ffa03c', 10: '#ffa03c', 11: '#ff6b5c', 12: '#ff6b5c' };
+  const itemLabel = (it) => (it && it.name) ? cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || it.name) : '';
+  // Capa y montura no se pintaban aunque llegan en el mismo equipo que el arma: la capa dice de
+  // qué ciudad o facción viene (y es lo que sostiene una pelea larga) y la montura dice si puede
+  // escapar de ti —o alcanzarte—. El estado montado/a pie va en el color del chip de la montura,
+  // así que el icono suelto de la fila de arriba sobra.
+  function kitHtml(p) {
+    const eq = p.equip || [];
+    const bits = [];
+    const cape = itemInfo(eq[5]);
+    if (cape) {
+      const t = cape.tier ? ' <b>' + cape.tier + (cape.ench ? '.' + cape.ench : '') + '</b>' : '';
+      bits.push(`<span class="kchip" title="Cape">🧣 ${esc(itemLabel(cape))}${t}</span>`);
+    }
+    const mount = itemInfo(eq[6]);
+    if (mount) {
+      const t = mount.tier ? ' <b>' + mount.tier + (mount.ench ? '.' + mount.ench : '') + '</b>' : '';
+      bits.push(`<span class="kchip${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted right now' : 'Carries this mount, on foot'}">🐎 ${esc(itemLabel(mount))}${t}</span>`);
+    } else if (p.mounted) {
+      bits.push('<span class="kchip on" title="Mounted right now">🐎 Mounted</span>');
+    }
+    return bits.length ? `<div class="pkit">${bits.join('')}</div>` : '';
+  }
   function weaponOf(eq) {
     const it = eq && itemInfo(eq[0]); if (!it || !it.name) return null;
     let role = 'dps', cat = 'Weapon';
@@ -311,44 +389,39 @@
   }
 
   // ---- balance de fuerzas: los tuyos contra los que tienes al lado ----
-  // Tu propio personaje NO viaja por la red (nadie emite tu NewCharacter), así que tu IP se
-  // escribe a mano una vez y se guarda. Sin ella el recuento sale sesgado en tu contra: falta
-  // justo el jugador que más te importa.
-  const MYIP_KEY = 'albion-overlay-myip-v1';
-  let myIp = +localStorage.getItem(MYIP_KEY) || 0;
+  // Tu propia IP se escribía a mano (no viaja por la red) y se sumaba a tu bando. Se quitó a
+  // petición del usuario, y con ella se va la comparación de IP TOTAL: sin tu IP, un total
+  // siempre te dejaría en desventaja (yendo solo, tu bando sumaría 0). Lo que SÍ se sabe sin
+  // ella es la IP MEDIA de cada bando, que es lo que se compara ahora.
   const balEl = document.getElementById('pl-bal');
   const balMain = document.getElementById('pl-bal-main');
   const balSub = document.getElementById('pl-bal-sub');
-  const myIpInput = document.getElementById('myip-input');
-  if (myIpInput) {
-    if (myIp) myIpInput.value = String(myIp);
-    myIpInput.addEventListener('input', () => {
-      myIp = Math.max(0, Math.min(2000, +myIpInput.value || 0));
-      localStorage.setItem(MYIP_KEY, String(myIp));
-      render();
-    });
-  }
   const fmtIP = (n) => Math.round(n).toLocaleString();
+  const avgOf = (arr) => { const v = arr.map((p) => avgIP(p.equip) || 0).filter((n) => n > 0); return v.length ? v.reduce((s, n) => s + n, 0) / v.length : 0; };
   function drawBalance(foes) {
     if (!balEl) return;
     // sin el índice de items cargado toda IP sería 0 y el veredicto sería mentira
     if (!indexMap || !foes.length || window.__ovZone === 'safe') { balEl.style.display = 'none'; return; }
     balEl.style.display = '';
     balEl.title = 'Your party, guild and hidden allies against everyone else in range';
-    const ipOf = (p) => avgIP(p.equip) || 0;
     const mates = [...players.values()].filter(isFriend);
-    const mine = mates.reduce((s, p) => s + ipOf(p), 0) + myIp;
-    const theirs = foes.reduce((s, p) => s + ipOf(p), 0);
-    const diff = mine - theirs;
-    const even = Math.abs(diff) < Math.max(150, theirs * 0.05);
-    balMain.className = 'pl-bal-main ' + (even ? 'even' : diff > 0 ? 'win' : 'lose');
-    balMain.textContent = even ? '⚖ Even fight'
-      : (diff > 0 ? '▲ Ahead by ' : '▼ Behind by ') + fmtIP(Math.abs(diff)) + ' IP';
-    const side = myIp ? mates.length + 1 : mates.length;
+    const mineAvg = avgOf(mates), theirAvg = avgOf(foes);
+    if (mates.length && mineAvg && theirAvg) {
+      const diff = mineAvg - theirAvg;
+      const even = Math.abs(diff) < 75;
+      balMain.className = 'pl-bal-main ' + (even ? 'even' : diff > 0 ? 'win' : 'lose');
+      balMain.textContent = even ? '⚖ Same gear on both sides'
+        : (diff > 0 ? '▲ Better gear by ' : '▼ Worse gear by ') + fmtIP(Math.abs(diff)) + ' IP';
+    } else {
+      balMain.className = 'pl-bal-main even';
+      balMain.textContent = '⚔ ' + foes.length + ' in range' + (theirAvg ? ' · ' + fmtIP(theirAvg) + ' IP avg' : '');
+    }
     // con iconos en vez de "los tuyos"/"cercanos": la línea se arma sobre la marcha y las
-    // palabras sueltas se traducirían a trozos
-    balSub.textContent = `👥 ${side} · ${fmtIP(mine)} IP   vs   ⚔ ${foes.length} · ${fmtIP(theirs)} IP`
-      + (myIp ? '' : '   (not counting you)');
+    // palabras sueltas se traducirían a trozos. Sin aliados en rango no hay dos bandos que
+    // comparar y la línea sobra: lo que hay que saber ya está arriba.
+    balSub.textContent = mates.length
+      ? `👥 ${mates.length} · ${mineAvg ? fmtIP(mineAvg) + ' IP avg' : '—'}   vs   ⚔ ${foes.length} · ${theirAvg ? fmtIP(theirAvg) + ' IP avg' : '—'}`
+      : '';
   }
 
   function render() {
@@ -383,7 +456,7 @@
       ? `<span class="hchip hguild" title="Your guild/alliance, hidden as allies: ${esc([myGuild, myAlliance].filter(Boolean).join(' / '))}">🛡 ${esc(myTag)}${mineN ? ' ×' + mineN : ''}<button data-clearguild="1" title="Forget the detected guild">✕</button></span>`
       : '';
     const hideBar = (hidden.size || partyN || myTag)
-      ? `<div class="hidden-bar">${guildChip}${partyN ? `<span class="hchip hparty" title="Party detected automatically: ${esc([...partyNames.keys()].join(', '))}">👥 party ×${partyN}<button data-clearparty="1" title="Forget the detected party">✕</button></span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
+      ? `<div class="hidden-bar">${guildChip}${partyN ? `<span class="hchip hparty" title="Party detected automatically: ${esc([...partyNames.keys()].join(', '))}${partyCode ? ' (event ' + partyCode + ')' : ''}">👥 party ×${partyN}<button data-clearparty="1" title="Forget the detected party">✕</button></span>` : ''}${chips}${hidden.size ? `<button id="unhideAll">show all</button>` : ''}</div>`
       : '';
     if (!arr.length) {
       const empty = passiveN
@@ -427,13 +500,17 @@
       const flag = p.faction === 255 ? '<span class="pflag" title="PvP flagged (hostile faction)">⚔</span>' : '';
       const risk = THREAT[th] ? `<span class="chip ${THREAT[th][1]}">${THREAT[th][0]}</span>` : '';
       const squad = (p.guild && guildCount[p.guild] >= 2) ? ` <span class="psquad" title="${guildCount[p.guild]} from this guild in range">×${guildCount[p.guild]}</span>` : '';
+      // El gremio iba delante del nombre y en gris claro: se leía como parte del nombre. Ahora
+      // manda el nombre y detrás van gremio y alianza, que es como los nombra el juego.
+      const guildTag = p.guild
+        ? `<span class="pguild" title="Guild">${esc(p.guild)}${squad}</span>`
+        : '<span class="pnog" title="No guild">no guild</span>';
+      const alliTag = p.alliance ? `<span class="palli" title="Alliance">[${esc(p.alliance)}]</span>` : '';
       return `<div class="pcard th-${th}${p.id === selectedId ? ' selected' : ''}${p.left ? ' leaving' : ''}" data-id="${p.id}">
-        <div class="prow">${tierTag}${wTag}${risk}
-          ${flag}<span class="mount${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted' : 'On foot'}">🐎</span>
+        <div class="prow">${tierTag}${wTag}${risk}${flag}
           <button class="phide" data-hide="${esc(p.name || '')}" title="Hide (mark as ally)">✕</button></div>
-        <div class="prow2"><span class="pguild">${p.guild ? esc(p.guild) + squad : ''}</span>
-          <span class="pname">${esc(p.name || '???')}</span></div>
-        ${hpHtml(p)}${actHtml(p)}
+        <div class="prow2"><span class="pname">${esc(p.name || '???')}</span>${guildTag}${alliTag}</div>
+        ${kitHtml(p)}${hpHtml(p)}${actHtml(p)}
         <div class="pmeta"><span class="ip">${ip ? 'IP ~' + ip : ''}</span>${gv > 0 ? `<span class="gval" title="Estimated market value of the gear">≈${fmtK(gv)}</span>` : ''}<span>${age}s</span></div>
       </div>`;
     }).join('');
@@ -511,6 +588,7 @@
     // cambio de mapa/zona (por operación): lo necesitan la clasificación de zona y el capturador de mercado
     // tu gremio/alianza llegan SOLO aquí (ver MYGUILD_KEY): se lee antes del cambio de mapa
     if (m.code === 'response' && op === 2) {
+      if (looksLikeName(p['2'])) myName = p['2'];
       const g = typeof p['58'] === 'string' ? p['58'] : null;
       const a = typeof p['79'] === 'string' ? p['79'] : null;
       if ((g !== null && g !== myGuild) || (a !== null && a !== myAlliance)) {
@@ -568,16 +646,15 @@
       // alguien se marca en PvP a tu lado: antes esto no avisaba de nada, solo repintaba
       case 363: { const q = players.get(id); if (q) { const was = q.faction; q.faction = p['1'] ?? q.faction; q.last = Date.now(); if (was !== 255 && q.faction === 255 && !isFriend(q) && threatOf(q) === 'peligro') alertEnemy(q); } break; }
       case 3: { const q = players.get(id); if (q) q.last = Date.now(); break; }   // solo dice que sigue ahí: la posición va ofuscada
-      // ---- party (para ocultar a los tuyos): posición de un compañero, con su nombre ----
-      case 182: {
-        const nm = p['2'];
-        if (!looksLikeName(nm)) { touched = false; break; }
+      // ---- party (para ocultar a los tuyos): el ping de posición de un compañero, por forma ----
+      default: {
+        const nm = partyPing(code, p);
+        if (!nm) { touched = false; break; }
         touched = !partyNames.has(nm);   // repintar solo cuando entra alguien nuevo, no en cada paso que dan
         partyNames.set(nm, Date.now());
         if (touched) savePartyShared();
         break;
       }
-      default: touched = false;
     }
     if (touched) scheduleRender();
   }
@@ -620,13 +697,16 @@
   });
 
   window.__players = { players, isAlly, isMine, isFriend, partyNames, render,
-    me: () => ({ guild: myGuild, alliance: myAlliance }),
+    me: () => ({ guild: myGuild, alliance: myAlliance, name: myName }),
+    party: () => ({ code: partyCode, names: [...partyNames.keys()],
+      candidates: [...pingSeen].map(([k, c]) => `${k} ×${c.hits}${c.moved ? ' moved' : ''} ${Date.now() - c.first}ms`) }),
+    forgetPartyCode: () => { partyCode = null; pingSeen.clear(); try { localStorage.removeItem(PARTYCODE_KEY); } catch (_) {} },
     state: () => ({ map: currentMapId, zone: window.__ovZone }) };
   // El panel de Combate necesita los mismos nombres de item; se comparten en vez de cargar
   // otras 11k entradas en memoria para lo mismo.
   window.__items = {
     info: itemInfo,
-    label: (id) => { const it = itemInfo(id); if (!it || !it.name) return null; return cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || it.name); },
+    label: (id) => itemLabel(itemInfo(id)) || null,
   };
 
   render();
