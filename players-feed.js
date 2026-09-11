@@ -295,7 +295,12 @@
   // (T4=700 IP, T4.2=900 IP = T6=900 IP), así que sumarlos no es una aproximación.
   const TIER_COLOR = { 0: '#9aa0a6', 1: '#9aa0a6', 2: '#9aa0a6', 3: '#c9d1d9', 4: '#8fd4e8', 5: '#46d160',
     6: '#4aa3ff', 7: '#b96bff', 8: '#ffcc33', 9: '#ffa03c', 10: '#ffa03c', 11: '#ff6b5c', 12: '#ff6b5c' };
-  const itemLabel = (it) => (it && it.name) ? cleanTier(esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || it.name) : '';
+  // El nombre TAL CUAL lo escribe el juego. Para el arma se recorta el rango ("del experto")
+  // porque ahí el tier va en su propio badge y el nombre compite con el rol; para la montura no,
+  // porque el rango es parte del nombre con el que la reconoces en el juego ("Caballo de montar
+  // del experto", "Mamut de transporte del anciano").
+  const itemName = (it) => (it && it.name) ? (esMap[it.name] || esMap[it.name.replace(/@\d+$/, '')] || it.name) : '';
+  const itemLabel = (it) => cleanTier(itemName(it));
   // Capa y montura no se pintaban aunque llegan en el mismo equipo que el arma: la capa dice de
   // qué ciudad o facción viene (y es lo que sostiene una pelea larga) y la montura dice si puede
   // escapar de ti —o alcanzarte—. El estado montado/a pie va en el color del chip de la montura,
@@ -310,8 +315,11 @@
     }
     const mount = itemInfo(eq[6]);
     if (mount) {
-      const t = mount.tier ? ' <b>' + mount.tier + (mount.ench ? '.' + mount.ench : '') + '</b>' : '';
-      bits.push(`<span class="kchip${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted right now' : 'Carries this mount, on foot'}">🐎 ${esc(itemLabel(mount))}${t}</span>`);
+      // el badge de tier solo cuando el nombre no lo dice ya: las que llevan rango ("del
+      // experto") repetirían el número, y las de nombre propio (Huargo, Alce) lo necesitan
+      const full = itemName(mount);
+      const t = (mount.tier && full === cleanTier(full)) ? ' <b>' + mount.tier + (mount.ench ? '.' + mount.ench : '') + '</b>' : '';
+      bits.push(`<span class="kchip${p.mounted ? ' on' : ''}" title="${p.mounted ? 'Mounted right now' : 'Carries this mount, on foot'}">🐎 ${esc(full)}${t}</span>`);
     } else if (p.mounted) {
       bits.push('<span class="kchip on" title="Mounted right now">🐎 Mounted</span>');
     }
