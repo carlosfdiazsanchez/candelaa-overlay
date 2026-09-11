@@ -530,6 +530,22 @@
   "Abilities": "Habilidades",
   "⟲ Reset": "⟲ Reiniciar",
   "Clear the current fight": "Vacía la pelea actual",
+  "Loot": "Botín",
+  "Fame/h": "Fama/h",
+  "Team loot": "Botín del grupo",
+  "Pieces": "Piezas",
+  "⟲ Clear loot": "⟲ Borrar botín",
+  "Clear looting and fame. Nothing else clears them.": "Borra el botín y la fama. No se borran por ninguna otra vía.",
+  "Your own fame only: the server does not send anyone else's": "Solo tu propia fama: el servidor no manda la de los demás",
+  "Estimated with the cheapest city sell price, quality ignored": "Estimado con el precio de venta más barato de las ciudades, sin tener en cuenta la calidad",
+  "Nothing looted yet.": "Aún no se ha saqueado nada.",
+  "Whatever anyone takes off a body shows up here, and it stays until you clear it.": "Lo que cualquiera levante de un cuerpo aparece aquí, y se queda hasta que lo borres.",
+  "Your group": "Tu grupo",
+  "Everyone else": "Los demás",
+  "(yours)": "(tuyo)",
+  "Bodies looted": "Cuerpos saqueados",
+  "no price yet": "sin precio aún",
+  "Start a new fight automatically after a minute with no damage. Off by default: nothing clears itself.": "Empezar una pelea nueva sola tras un minuto sin daño. Apagado por defecto: nada se borra solo.",
   "Start a new fight automatically after a minute with no damage": "Empieza una pelea nueva sola tras un minuto sin daño",
   "No combat recorded yet.": "Aún no hay nada de combate.",
   "Hit something (or take a hit) and it shows up here.": "Pega a algo (o que te peguen) y aparecerá aquí.",
@@ -1152,7 +1168,7 @@
   "Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.": "Qué mercados usan el Escáner y las pestañas Vender y Nivel (Precios enseña siempre las ciudades reales y el Black Market). Los Rests (Arthur's, Merlyn's, Morgana's) y los contrabandistas están en zonas negras: los precios son reales, pero llevar la mercancía allí tiene riesgo."
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "hit", "Now", "Cape", "Guild", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
+  const NO_SUB = new Set(["All", "hit", "Now", "Cape", "Guild", "Loot", "Pieces", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
     // biomas y refugio: son opciones de un select, pero como trozo pisarian nombres de zona
     "Forest", "Swamp", "Mountain", "Highland", "Steppe", "Hideout"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);

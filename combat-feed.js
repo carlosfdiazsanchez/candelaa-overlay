@@ -18,12 +18,12 @@
   if (!body) return;
 
   const TAB_KEY = 'albion-overlay-combat-tab-v1';
-  const AUTO_KEY = 'albion-overlay-combat-auto-v1';
+  const AUTO_KEY = 'albion-overlay-combat-auto-v2';
   const LEARN_KEY = 'albion-overlay-evcodes-v1';
   const AUTO_GAP = 60000;      // sin daño durante un minuto = la pelea anterior se ha acabado
   const LOG_MAX = 60;
   let tab = localStorage.getItem(TAB_KEY) || 'dmg';
-  let auto = localStorage.getItem(AUTO_KEY) !== '0';
+  let auto = localStorage.getItem(AUTO_KEY) === '1';
 
   const chars = new Map();     // objectId -> { name, guild, spells }
   // Las métricas NO se pueden clavar en el objectId a secas: el servidor los REUTILIZA en cada
@@ -125,6 +125,106 @@
     stats.forEach((s) => { if (s.id === id && !s.name) s.name = name; });
   }
 
+  // ---- botín y fama: NO se borran solos ----
+  // El medidor de daño corta la sesión cuando pasa un minuto sin golpes; el botín no puede
+  // funcionar así. Lo que se quiere saber al volver de gankear es quién levantó qué en toda la
+  // salida, para cotejarlo con lo que aparece en el cofre, así que esto sobrevive a las peleas,
+  // a los cambios de zona y a cerrar el overlay: solo lo borra el botón de esta pestaña.
+  const LOOT_KEY = 'albion-overlay-loot-v2';
+  const FAME_KEY = 'albion-overlay-fame-v1';
+  const LPRICE_KEY = 'albion-overlay-lootprices-v1';
+  const PRICE_TTL = 86400000;
+  const loot = new Map();      // saqueador -> { items: {uniquename|#id: unidades}, first, last, kills:{víctima:n} }
+  let fame = { total: 0, active: 0, last: 0, n: 0, code: null };
+  const prices = (() => { try { return JSON.parse(localStorage.getItem(LPRICE_KEY)) || {}; } catch (_) { return {}; } })();
+
+  const loadLoot = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LOOT_KEY)) || [];
+      raw.forEach((e) => { if (e && e.name) loot.set(e.name, { items: e.items || {}, first: e.first || 0, last: e.last || 0, kills: e.kills || {} }); });
+    } catch (_) {}
+  };
+  const saveLoot = () => {
+    try { localStorage.setItem(LOOT_KEY, JSON.stringify([...loot].map(([name, v]) => ({ name, ...v })))); } catch (_) {}
+  };
+  const saveFame = () => { try { localStorage.setItem(FAME_KEY, JSON.stringify(fame)); } catch (_) {} };
+  try { const f = JSON.parse(localStorage.getItem(FAME_KEY)); if (f && typeof f.total === 'number') fame = Object.assign(fame, f); } catch (_) {}
+  loadLoot();
+
+  const lootOf = (name) => { let l = loot.get(name); if (!l) { l = { items: {}, first: Date.now(), last: 0, kills: {} }; loot.set(name, l); } return l; };
+  function addLoot(who, itemId, qty, victim) {
+    const it = (() => { try { return window.__items && window.__items.info(itemId); } catch (_) { return null; } })();
+    const key = (it && it.name) ? it.name : '#' + itemId;
+    const l = lootOf(who);
+    l.items[key] = (l.items[key] || 0) + (qty || 1);
+    l.last = Date.now();
+    if (victim) l.kills[victim] = (l.kills[victim] || 0) + (qty || 1);
+    saveLoot();
+    schedulePriceFetch();
+  }
+  // La fama viaja en diezmilésimas, igual que la plata del saqueo (documentado en CLAUDE.md tras
+  // verlo en tráfico real: 630000000 en el paquete son 63K de plata).
+  // El ritmo se mide sobre el tiempo ACTIVO, no sobre el reloj: si se persiste entre sesiones,
+  // dividir por las horas transcurridas desde el primer punto daría una tasa de risa. Un hueco
+  // de más de cinco minutos no cuenta como tiempo jugado.
+  const FAME_GAP = 300000;
+  function addFame(v, code) {
+    const now = Date.now();
+    if (fame.last && now - fame.last < FAME_GAP) fame.active += now - fame.last;
+    fame.last = now; fame.total += v; fame.n++; fame.code = code;
+    saveFame();
+    scheduleRender();
+  }
+  const famePerHour = () => {
+    const h = Math.max(fame.active, 60000) / 3600000;
+    return fame.total > 0 ? fame.total / h : 0;
+  };
+  function resetLoot() { loot.clear(); fame = { total: 0, active: 0, last: 0, n: 0, code: fame.code }; saveLoot(); saveFame(); render(); }
+
+  // ---- precios del botín ----
+  // Mismo camino que usa Jugadores para tasar el equipo: el mínimo de venta en las ciudades.
+  // Sin calidad (el evento de saqueo no la trae), así que es una estimación y se dice.
+  const PRICE_CITIES = ['Caerleon', 'Lymhurst', 'Bridgewatch', 'Martlock', 'Thetford', 'FortSterling'];
+  let priceT = null;
+  function neededPrices() {
+    const now = Date.now(), s = new Set();
+    loot.forEach((l) => Object.keys(l.items).forEach((k) => {
+      if (k.charAt(0) === '#') return;
+      const e = prices[k];
+      if (!e || now - e.t > PRICE_TTL) s.add(k);
+    }));
+    return [...s];
+  }
+  async function fetchPrices() {
+    priceT = null;
+    const names = neededPrices(); if (!names.length) return;
+    const now = Date.now();
+    names.forEach((n) => { prices[n] = { p: (prices[n] || {}).p || 0, t: now }; });
+    try {
+      const rows = await window.overlay.scanPrices(names, PRICE_CITIES, 0);
+      (rows || []).forEach((r) => {
+        const v = r.sell_price_min || 0;
+        if (v > 0 && (!prices[r.item_id] || !prices[r.item_id].p || v < prices[r.item_id].p)) prices[r.item_id] = { p: v, t: now };
+      });
+      try { localStorage.setItem(LPRICE_KEY, JSON.stringify(prices)); } catch (_) {}
+      scheduleRender();
+    } catch (_) {}
+  }
+  function schedulePriceFetch() { if (!priceT) priceT = setTimeout(fetchPrices, 2000); }
+  const priceOf = (key) => ((prices[key] || {}).p || 0);
+  const lootValue = (l) => Object.entries(l.items).reduce((a, [k, q]) => a + priceOf(k) * q, 0);
+  const lootUnits = (l) => Object.values(l.items).reduce((a, q) => a + q, 0);
+  // De los tuyos: el grupo detectado, los aliados que hayas ocultado a mano y tú.
+  // Jugadores guarda tu nombre entre sesiones (solo viaja al cambiar de zona), así que se
+  // pregunta ahí cuando esta pestaña todavía no lo ha visto: si no, tras reiniciar el overlay
+  // tu propia fila se iba a "los demás" y el total del grupo salía corto.
+  const myName = () => me.name || (() => { try { return (window.__players.me() || {}).name || null; } catch (_) { return null; } })();
+  const isMate = (name) => {
+    const mine = myName();
+    if (mine && name === mine) return true;
+    try { return !!(window.__players && window.__players.isAlly(name)); } catch (_) { return false; }
+  };
+
   const SHAPES = [
     {
       key: 'died', codes: range(160, 175),
@@ -151,6 +251,7 @@
       run: (p) => {
         const nm = itemLabel(p['4']);
         pushLog('loot', `🎒 <b>${esc(p['2'])}</b> looted ${p['5']}× ${esc(nm || '#' + p['4'])} ← <b>${esc(p['1'])}</b>`);
+        addLoot(p['2'], p['4'], p['5'], p['1']);
         return true;
       },
     },
@@ -180,6 +281,20 @@
       },
     },
   ];
+  // La fama la manda el servidor SOLO de tu personaje (nadie te cuenta la de los demás), y esa
+  // es justo la guarda que hace fiable identificar el evento sin saber su número: el param 0
+  // tiene que ser TU objectId. El código antiguo era el 73 (messages.json de albion-online-addons,
+  // generado de tráfico real) y en esta versión del juego los de su entorno están desplazados
+  // (NewCharacter 25 -> 29, Regen 81 -> 91), así que se busca en la franja y se aprende.
+  // Las tres condiciones juntas —tu id, entero, múltiplo de 100 y al menos un punto de fama—
+  // dejan fuera el ruido; si aun así aprendiera un código equivocado, la cifra se vería absurda
+  // y el botón de reiniciar más __combat.forget() lo deshacen.
+  SHAPES.push({
+    key: 'fame', codes: range(65, 89),
+    test: (p) => isNum(p['0']) && me.id != null && p['0'] === me.id
+      && isNum(p['2']) && Number.isInteger(p['2']) && p['2'] >= 10000 && p['2'] < 5e9 && p['2'] % 100 === 0,
+    run: (p, code) => { addFame(p['2'] / 10000, code); return true; },
+  });
   const SHAPE_CODES = new Set(SHAPES.flatMap((s) => s.codes));
   function tryShapes(code, p) {
     if (!SHAPE_CODES.has(code)) return false;
@@ -187,7 +302,7 @@
     for (const s of SHAPES) {
       if (only && s.key !== only) continue;              // este código ya está identificado
       if (!s.codes.includes(code) || !s.test(p)) continue;
-      if (!s.run(p)) return false;
+      if (!s.run(p, code)) return false;
       if (!only) { learned[code] = s.key; saveLearned(); }
       return true;
     }
@@ -273,6 +388,54 @@
     }).join('');
   }
 
+  // Pestaña Botín: quién ha levantado qué de los muertos, cuánto vale y cuánto sale entre todos
+  // los tuyos. El total del grupo es la cifra contra la que se compara lo que aparezca luego en
+  // el cofre; las filas dicen de quién salió cada parte.
+  function renderLoot() {
+    const rows = [...loot.entries()].map(([name, l]) => ({ name, l, mate: isMate(name), val: lootValue(l), units: lootUnits(l) }))
+      .sort((a, b) => b.val - a.val || b.units - a.units);
+    const mates = rows.filter((r) => r.mate);
+    const others = rows.filter((r) => !r.mate);
+    const teamVal = mates.reduce((a, r) => a + r.val, 0);
+    const teamUnits = mates.reduce((a, r) => a + r.units, 0);
+    const fph = famePerHour();
+    const head = `<div class="cb-loot-head">
+      <div class="cb-lh-cell"><i>Fame/h</i><b title="Your own fame only: the server does not send anyone else's [ev ${fame.code || '?'} n=${fame.n}]">${fph ? fmtK(fph) : '—'}</b></div>
+      <div class="cb-lh-cell"><i>Team loot</i><b class="v" title="Estimated with the cheapest city sell price, quality ignored">${teamVal ? fmtK(teamVal) : '—'}</b></div>
+      <div class="cb-lh-cell"><i>Pieces</i><b>${teamUnits || 0}</b></div>
+      <button id="cb-loot-reset" title="Clear looting and fame. Nothing else clears them.">⟲ Clear loot</button>
+    </div>`;
+    if (!rows.length) {
+      return head + '<div class="cb-empty">Nothing looted yet.<br>Whatever anyone takes off a body shows up here, and it stays until you clear it.</div>';
+    }
+    const block = (list, label) => (list.length ? `<div class="cb-loot-sec">${label}</div>` + list.map((r) => {
+      const items = Object.entries(r.l.items).sort((a, b) => priceOf(b[0]) * b[1] - priceOf(a[0]) * a[1]);
+      const chips = items.map(([k, q]) => {
+        const nm = prettyItem(k);
+        const v = priceOf(k) * q;
+        return `<span class="cb-loot-item" title="${esc(k)}${v ? ' · ' + fmtK(v) : ' · no price yet'}">${q}× ${esc(nm)}${v ? ` <u>${fmtK(v)}</u>` : ''}</span>`;
+      }).join('');
+      const from = Object.keys(r.l.kills || {});
+      return `<div class="cb-row${r.mate ? ' mine' : ''}">
+        <div class="cb-r1"><span class="cb-name">${esc(r.name)}${r.mate ? ' <i>(yours)</i>' : ''}</span>
+          <span class="cb-loot-val">${r.val ? fmtK(r.val) : '—'}</span><span class="cb-dps">📦 ${r.units}</span></div>
+        <div class="cb-loot-items">${chips}</div>
+        ${from.length ? `<div class="cb-r2"><span title="Bodies looted">← ${esc(from.slice(0, 4).join(', '))}${from.length > 4 ? '…' : ''}</span></div>` : ''}
+      </div>`;
+    }).join('') : '');
+    return head + block(mates, 'Your group') + block(others, 'Everyone else');
+  }
+  // El botín se guarda por uniquename (resuelto al llegar), no por el índice numérico: ese
+  // índice cambia con cada parche y lo saqueado ayer apuntaría a otro item. Para pintarlo se
+  // pide el nombre a Jugadores, que ya tiene el diccionario cargado, y el tier se escribe.
+  const prettyItem = (u) => {
+    if (u.charAt(0) === '#') return u;
+    const t = u.match(/^T(\d)/), e = u.match(/@(\d)/);
+    let nm = u;
+    try { nm = (window.__items && window.__items.byName && window.__items.byName(u)) || u; } catch (_) {}
+    return nm + (t ? ' T' + t[1] + (e ? '.' + e[1] : '') : '');
+  };
+
   function renderLog() {
     if (!log.length) return '<div class="cb-empty">Nothing has happened around you yet.<br>Deaths, loot and gathering show up here.</div>';
     return '<div class="cb-log">' + log.map((e) => {
@@ -313,7 +476,8 @@
   const visible = () => panelEl && panelEl.style.display !== 'none' && !panelEl.classList.contains('collapsed');
   function render() {
     if (!visible()) return;
-    body.innerHTML = tab === 'log' ? renderLog() : tab === 'spells' ? renderSpells() : renderDamage();
+    body.innerHTML = tab === 'log' ? renderLog() : tab === 'spells' ? renderSpells()
+      : tab === 'loot' ? renderLoot() : renderDamage();
     const t = secs();
     if (timeEl) timeEl.textContent = t ? (t < 60 ? t + 's' : Math.floor(t / 60) + 'm' + String(t % 60).padStart(2, '0')) : '—';
     const rs = rows();
@@ -335,6 +499,9 @@
       tab = b.dataset.t; localStorage.setItem(TAB_KEY, tab); paintTabs(); render();
     });
   }
+  body.addEventListener('click', (e) => {
+    if (e.target.closest('#cb-loot-reset')) resetLoot();
+  });
   const resetBtn = document.getElementById('cb-reset');
   if (resetBtn) resetBtn.addEventListener('click', resetSession);
   const autoEl = document.getElementById('cb-auto');
@@ -419,6 +586,7 @@
     codes: () => Object.entries(seenCodes).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     unknown: () => Object.entries(seenCodes).filter(([c]) => !learned[c]).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     forget: () => { Object.keys(learned).forEach((k) => delete learned[k]); saveLearned(); },
+    loot, fame: () => fame, prices, resetLoot,
   };
 
   render();

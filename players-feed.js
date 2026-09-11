@@ -66,7 +66,6 @@
   const PING_MIN_HITS = 4;
   const PING_MAX_PARAMS = 4;
   const pingSeen = new Map();
-  let myName = '';
   const worldPos = (v) => Array.isArray(v) && v.length === 2
     && typeof v[0] === 'number' && typeof v[1] === 'number' && isFinite(v[0]) && isFinite(v[1])
     && Math.abs(v[0]) < 5000 && Math.abs(v[1]) < 5000 && (v[0] !== 0 || v[1] !== 0);
@@ -108,9 +107,9 @@
   // Se guardan porque el JoinMap solo llega al cambiar de zona: si el overlay se abre a mitad
   // de sesión, sin persistir no habría gremio hasta que el usuario se moviera de mapa.
   const MYGUILD_KEY = 'albion-overlay-myguild-v1';
-  let myGuild = '', myAlliance = '';
-  try { const v = JSON.parse(localStorage.getItem(MYGUILD_KEY)) || {}; myGuild = v.g || ''; myAlliance = v.a || ''; } catch (_) {}
-  const saveMine = () => { try { localStorage.setItem(MYGUILD_KEY, JSON.stringify({ g: myGuild, a: myAlliance })); } catch (_) {} };
+  let myGuild = '', myAlliance = '', myName = '';
+  try { const v = JSON.parse(localStorage.getItem(MYGUILD_KEY)) || {}; myGuild = v.g || ''; myAlliance = v.a || ''; myName = v.n || ''; } catch (_) {}
+  const saveMine = () => { try { localStorage.setItem(MYGUILD_KEY, JSON.stringify({ g: myGuild, a: myAlliance, n: myName })); } catch (_) {} };
   // Los de tu gremio o tu alianza no te pueden atacar, así que salían como hostiles y disparaban
   // la alerta por nada: cuentan como los tuyos igual que el grupo y los ocultados a mano.
   const isMine = (p) => !!p && !!((myGuild && p.guild === myGuild) || (myAlliance && p.alliance === myAlliance));
@@ -601,7 +600,7 @@
     // cambio de mapa/zona (por operación): lo necesitan la clasificación de zona y el capturador de mercado
     // tu gremio/alianza llegan SOLO aquí (ver MYGUILD_KEY): se lee antes del cambio de mapa
     if (m.code === 'response' && op === 2) {
-      if (looksLikeName(p['2'])) myName = p['2'];
+      if (looksLikeName(p['2']) && p['2'] !== myName) { myName = p['2']; saveMine(); }
       const g = typeof p['58'] === 'string' ? p['58'] : null;
       const a = typeof p['79'] === 'string' ? p['79'] : null;
       if ((g !== null && g !== myGuild) || (a !== null && a !== myAlliance)) {
@@ -720,6 +719,7 @@
   window.__items = {
     info: itemInfo,
     label: (id) => itemLabel(itemInfo(id)) || null,
+    byName: (u) => (u ? cleanTier(esMap[u] || esMap[u.replace(/@\d+$/, '')] || u) : null),
   };
 
   render();
