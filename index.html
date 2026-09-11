@@ -22,6 +22,25 @@
   /* fondo TRANSPARENTE: aquí se ve el juego real por detrás */
   body{font-family:var(--ui);color:var(--text);background:transparent;overflow:hidden;-webkit-user-select:none;user-select:none;}
 
+  /* Scrollbar del overlay: UNA definición para todo, en vez de repetirla por contenedor (estaba
+     en cinco y faltaba en el resto, que salían con la barra nativa de Chromium: canal blanco y
+     pulgar gris ancho, que sobre un panel oscuro canta muchísimo).
+     Pulgar redondeado traslúcido separado del borde con un borde transparente, canal y esquina
+     invisibles y sin flechas. Comparado en Electron real (nativo / 4px / 5px / con canal) antes
+     de elegir: en el navegador de pruebas NO se puede juzgar, ahí las barras son superpuestas y
+     miden 0.
+     OJO: no poner `scrollbar-width` ni `scrollbar-color` en ningún ancestro. Son el mecanismo
+     estándar y Chromium les da prioridad: en cuanto aparecen, IGNORA todo lo de aquí abajo (era
+     justo lo que pasaba en la lista de jugadores, que tenía las dos cosas). */
+  *::-webkit-scrollbar{width:11px;height:11px;}
+  *::-webkit-scrollbar-track{background:transparent;}
+  *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:99px;
+    border:3px solid transparent;background-clip:padding-box;min-height:32px;}
+  *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.30);background-clip:padding-box;}
+  *::-webkit-scrollbar-thumb:active{background:rgba(90,169,196,.6);background-clip:padding-box;}
+  *::-webkit-scrollbar-corner{background:transparent;}
+  *::-webkit-scrollbar-button{display:none;}
+
   .panel{position:absolute;z-index:5;width:320px;background:var(--panel);border:1px solid var(--border);
     border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
   .panel__head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);}
@@ -111,8 +130,7 @@
   #p-item .ires-t{font-family:var(--mono);font-size:11px;font-weight:700;border-radius:5px;padding:1px 5px;background:#0e141c;color:var(--dim);border:1px solid #2a3646;cursor:pointer;}
   #p-item .ires-t:hover{color:#cdeaf2;border-color:rgba(90,169,196,.65);}
   #p-item .ires-t.on{background:rgba(90,169,196,.18);color:#cdeaf2;border-color:rgba(90,169,196,.45);}
-  #p-item .tab-scroll{max-height:calc(100vh - 330px);overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
-  #p-item .tab-scroll::-webkit-scrollbar{width:8px;} #p-item .tab-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  #p-item .tab-scroll{max-height:calc(100vh - 330px);overflow-y:auto;overflow-x:hidden;padding-right:4px;}
   #p-item .filter-row select{font-size:13px;padding:5px 26px 5px 9px;}
   #p-item .tabs{align-items:center;}
   #p-item .tabs .tabs-right{margin-left:auto;margin-bottom:5px;gap:6px;}
@@ -208,7 +226,7 @@
   #p-item #tab-config #station-rate{width:96px;}
   /* volumen por mercado: era un párrafo corrido de 870px; ahora son chips que envuelven */
   /* absorbe/dia: una sola fila. Si no cabe, se desplaza en horizontal antes que partirse */
-  #craft-out .cr-vol{display:flex;flex-wrap:nowrap;gap:5px 6px;align-items:center;line-height:1.5;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px;}
+  #craft-out .cr-vol{display:flex;flex-wrap:nowrap;gap:5px 6px;align-items:center;line-height:1.5;overflow-x:auto;padding-bottom:2px;}
   #craft-out .cr-vol>span{background:var(--elev);border:1px solid var(--border);border-radius:5px;padding:2px 5px;white-space:nowrap;}
   #craft-out .cr-vol>span.cr-vol-best{border-color:rgba(59,165,93,.45);background:rgba(59,165,93,.12);}
   .flip-grid{display:grid;grid-template-columns:auto minmax(90px,1fr) auto minmax(90px,1fr) auto minmax(90px,1fr);gap:6px 10px;align-items:center;}
@@ -376,17 +394,7 @@
   .cb-bar-track>u{position:absolute;left:0;bottom:0;height:2px;background:#5fc88a;}
   .cb-r2{display:flex;gap:9px;flex-wrap:wrap;font-size:11px;color:var(--faint);font-family:var(--mono);}
   .cb-heal{color:#86e0a3;} .cb-taken{color:#9fd2e0;} .cb-kill{color:#ff9a9c;} .cb-death{color:#ff7b7d;}
-  .cb-log{display:flex;flex-direction:column;gap:5px;}
-  .cb-log-row{display:flex;align-items:baseline;gap:6px;font-size:11.5px;color:var(--dim);line-height:1.35;}
-  .cb-log-row b{color:#eef2f7;font-weight:700;} .cb-log-row i{color:var(--faint);font-style:normal;}
-  .cb-log-row.died{color:#ff9a9c;} .cb-log-row.loot{color:#ffcf6b;} .cb-log-row.harvest{color:#a8dfa9;}
-  .cb-age{margin-left:auto;color:var(--faint);font-family:var(--mono);font-size:10px;flex:0 0 auto;}
-  .cb-sp{background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:7px 9px;}
-  .cb-sp-list{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;} .cb-sp-list.dim{opacity:.5;}
-  .cb-sp-chip{font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--dim);}
-  .cb-sp-chip b{color:#eef2f7;} .cb-sp-chip.off{text-decoration:line-through;}
-  .cb-sp-chip.int{opacity:.62;font-style:italic;}
-  .cb-sp-none{font-size:11px;color:var(--faint);}
+
   .cb-loot-head{display:flex;align-items:center;gap:14px;background:var(--elev);border:1px solid var(--border);border-radius:6px;padding:7px 9px;}
   .cb-lh-cell{display:flex;flex-direction:column;gap:1px;}
   .cb-lh-cell i{font-style:normal;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);}
@@ -517,7 +525,6 @@
   .tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
   [hidden]{display:none !important;}
   .market-results{max-height:170px;overflow-y:auto;margin-bottom:8px;}
-  .market-results::-webkit-scrollbar{width:8px;} .market-results::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
   .mres{padding:4px 8px;border-radius:5px;cursor:pointer;font-size:12.5px;display:flex;align-items:center;gap:8px;}
   .mres:hover{background:var(--elev-2);}
   .ires-icon{width:34px;height:34px;flex:0 0 auto;object-fit:contain;}
@@ -602,9 +609,6 @@
   .scan-scroll td .chip{margin-left:5px;padding:1px 5px;font-size:10px;}
   .scan-scroll td.scan-price{white-space:nowrap;}
   .scan-scroll thead th,.mkt-scroll thead th{position:sticky;top:0;background:var(--panel-solid);z-index:1;}
-  .scan-scroll::-webkit-scrollbar,.mkt-scroll::-webkit-scrollbar{width:8px;}
-  .scan-scroll::-webkit-scrollbar-thumb,.mkt-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
-  .scan-scroll,.mkt-scroll{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
   .enchtag{font-family:var(--mono);font-size:10px;color:var(--accent);}
   .scan-item{display:flex;align-items:center;gap:8px;}
   .scan-ico{width:36px;height:36px;flex:0 0 auto;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.05);}
@@ -658,12 +662,6 @@
   #bar .brand{cursor:grab;} #bar .brand:active{cursor:grabbing;}
   .dragging{opacity:.96;}
 
-  /* scrollbar con la estética del overlay */
-  .plist::-webkit-scrollbar{width:8px;}
-  .plist::-webkit-scrollbar-track{background:transparent;margin:2px;}
-  .plist::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
-  .plist::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box;}
-  .plist{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
 
   /* radar de recursos */
   #p-radar{width:390px;}
@@ -683,7 +681,7 @@
   .rz-count:empty{display:none;}
   .rz-count{background:rgba(90,169,196,.25);border-radius:8px;padding:0 6px;font-size:10px;color:#cdeaf2;}
   .rz-portals-head{color:var(--faint);font-size:10.5px;margin:9px 0 5px;}
-  .rz-portals{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
+  .rz-portals{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow-y:auto;}
   .rz-foot{color:var(--faint);font-size:10.5px;}
   .rz-hint{color:var(--dim);font-size:11px;line-height:1.45;background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:8px;}
   .rz-hint kbd{font-family:var(--mono);font-size:10.5px;background:rgba(255,255,255,.08);border:1px solid var(--border-strong);border-radius:4px;padding:0 5px;color:var(--text);}
@@ -721,9 +719,7 @@
   .rad-row:hover{border-color:var(--border-strong);}
   .rad-row.selected{border-color:rgba(90,169,196,.7);background:rgba(90,169,196,.14);box-shadow:0 0 0 1px rgba(90,169,196,.4);}
   #radar-canvas{display:block;width:100%;aspect-ratio:1/1;border-radius:8px;background:radial-gradient(circle at 50% 50%,rgba(30,34,42,.6),rgba(14,16,20,.7));}
-  .rad-list{margin-top:8px;display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;}
-  .rad-list::-webkit-scrollbar{width:8px;}
-  .rad-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  .rad-list{margin-top:8px;display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow-y:auto;overflow-x:hidden;}
   .rad-row{display:flex;align-items:center;gap:7px;background:var(--elev);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;}
   .rad-row .ri{flex:0 0 auto;font-size:13px;width:16px;text-align:center;}
   .rad-row .rl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
@@ -822,9 +818,7 @@
   <div class="panel__body">
     <div class="cb-tabs" id="cb-tabs">
       <button data-t="dmg" aria-pressed="true">Damage</button>
-      <button data-t="log">Events</button>
       <button data-t="loot">Loot</button>
-      <button data-t="spells">Abilities</button>
     </div>
     <div class="cb-ctl">
       <button id="cb-reset" title="Clear the current fight">⟲ Reset</button>

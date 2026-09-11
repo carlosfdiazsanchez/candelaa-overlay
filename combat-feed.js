@@ -1,6 +1,9 @@
-// Panel de Combate: medidor de daño/curación, registro de sucesos (muertes, saqueos,
-// recolección) y uso de habilidades. Tercera conexión al WS del motor de datos, igual que hace
-// el Buscador: cada panel lee lo suyo y no se enredan entre ellos.
+// Panel de Combate: medidor de daño/curación y botín por persona. Tercera conexión al WS del
+// motor de datos, igual que hace el Buscador: cada panel lee lo suyo y no se enredan entre ellos.
+// Las pestañas de Sucesos y Habilidades se quitaron (v0.2.88) porque el usuario no las usaba, y
+// con ellas todo lo que solo las alimentaba: el registro, la recolección y el rastreo de
+// hechizos (CastStart, el array de habilidades del spawn y el diccionario de spells). El
+// generador tools/build-spells.py y el IPC spells-index siguen ahí, ya sin consumidor.
 //
 // Códigos: los BAJOS (<150) llevan años sin moverse y se usan directamente —
 //   6 HealthUpdate (0 víctima · 2 cambio de vida · 6 causante · 7 habilidad)
@@ -21,11 +24,12 @@
   const AUTO_KEY = 'albion-overlay-combat-auto-v2';
   const LEARN_KEY = 'albion-overlay-evcodes-v1';
   const AUTO_GAP = 60000;      // sin daño durante un minuto = la pelea anterior se ha acabado
-  const LOG_MAX = 60;
-  let tab = localStorage.getItem(TAB_KEY) || 'dmg';
+  // las pestañas de Sucesos y Habilidades ya no existen: una preferencia guardada de entonces
+  // dejaría el panel en blanco
+  let tab = localStorage.getItem(TAB_KEY) === 'loot' ? 'loot' : 'dmg';
   let auto = localStorage.getItem(AUTO_KEY) === '1';
 
-  const chars = new Map();     // objectId -> { name, guild, spells }
+  const chars = new Map();     // objectId -> { name, guild }
   // Las métricas NO se pueden clavar en el objectId a secas: el servidor los REUTILIZA en cada
   // zona, así que al cruzar un portal el daño de un desconocido se sumaba al de quien tenía ese
   // id en la zona anterior — y encima heredaba su nombre. La clave lleva delante el número de
@@ -36,7 +40,6 @@
   // pegado a nadie: antes se buscaba su objectId en la lista de la zona y, si no estaba, la
   // muerte se perdía. Se guardan por nombre y se cruzan al pintar.
   const nameKD = new Map();    // nombre -> { kills, deaths }
-  const log = [];
   let me = { id: null, name: null };
   let sessionStart = 0, lastDamage = 0;
   const seenCodes = {};
@@ -50,26 +53,6 @@
   const looksLikeName = (n) => typeof n === 'string' && NAME_RE.test(n);
   const trimD = (v) => v.toFixed(1).replace('.', ',').replace(',0', '');
   const fmtK = (n) => { const a = Math.abs(n || 0); if (a >= 1e6) return trimD(n / 1e6) + 'M'; if (a >= 1e3) return trimD(n / 1e3) + 'K'; return String(Math.round(n || 0)); };
-  const itemLabel = (id) => { try { return window.__items && window.__items.label(id); } catch (_) { return null; } };
-  const RAW_RES = /^T\d_(ORE|WOOD|FIBER|HIDE|ROCK|FISH|SEAWEED)/;
-  function isRawResource(id) {
-    try { const it = window.__items && window.__items.info(id); return !!(it && it.name && RAW_RES.test(it.name)); }
-    catch (_) { return false; }
-  }
-  // El evento de daño manda el hechizo como ÍNDICE del dump de spells (verificado en vivo:
-  // 3222 = FREEZINGWIND mientras el rival tiraba bastón de hielo). El diccionario lo genera
-  // tools/build-spells.py y lo sirve el proceso principal.
-  let spellsDB = null;
-  try { window.overlay.spellsIndex(window.__lang).then((a) => { if (Array.isArray(a)) { spellsDB = a; scheduleRender(); } }); } catch (_) {}
-  // El diccionario marca con ~ lo que el juego NO traduce: son efectos internos (banderas de
-  // PvP, comida, monturas, pulsos de mob) que también viajan como casteos. Visto en PvP real,
-  // sin distinguirlos la pestaña listaba "Flag blue x47" en media zona.
-  const spellName = (idx) => {
-    if (idx === -1) return { n: 'auto attack', real: true };
-    const raw = spellsDB && spellsDB[idx];
-    if (!raw) return { n: '#' + idx, real: false };
-    return raw.charAt(0) === '~' ? { n: raw.slice(1), real: false } : { n: raw, real: true };
-  };
   const nameOf = (id) => { const c = chars.get(id); return c ? c.name : (id === me.id ? me.name : null); };
 
   // El nombre se copia en la métrica en cuanto se conoce: los objectId se reciclan al cambiar
@@ -77,16 +60,16 @@
   function statOf(id) {
     const key = mapSeq + ':' + id;
     let s = stats.get(key);
-    if (!s) { s = { id, name: null, dmg: 0, heal: 0, taken: 0, hits: 0, spells: new Map(), first: Date.now(), last: 0 }; stats.set(key, s); }
+    if (!s) { s = { id, name: null, dmg: 0, heal: 0, taken: 0, hits: 0, first: Date.now(), last: 0 }; stats.set(key, s); }
     if (!s.name) s.name = nameOf(id);
     return s;
   }
   const kdOf = (name) => { let k = nameKD.get(name); if (!k) { k = { kills: 0, deaths: 0 }; nameKD.set(name, k); } return k; };
-  function resetSession() { stats.clear(); nameKD.clear(); log.length = 0; sessionStart = 0; lastDamage = 0; scheduleRender(); }
+  function resetSession() { stats.clear(); nameKD.clear(); sessionStart = 0; lastDamage = 0; scheduleRender(); }
 
   // ---- daño / curación ----
   function applyHealth(p) {
-    const victim = p['0'], delta = isNum(p['2']) ? p['2'] : 0, causer = p['6'], spell = p['7'];
+    const victim = p['0'], delta = isNum(p['2']) ? p['2'] : 0, causer = p['6'];
     if (!isNum(victim) || !delta) return false;
     const now = Date.now();
     // el corte de sesión se decide ANTES de anotar, si no el primer golpe de la pelea nueva
@@ -96,10 +79,7 @@
     lastDamage = now;
     if (delta < 0) {
       const v = Math.round(-delta);
-      if (isNum(causer)) {
-        const s = statOf(causer); s.dmg += v; s.hits++; s.last = now;
-        if (isNum(spell)) { const e = spellEntry(s, spell); e.hits++; e.dmg += v; }
-      }
+      if (isNum(causer)) { const s = statOf(causer); s.dmg += v; s.hits++; s.last = now; }
       const vs = statOf(victim); vs.taken += v; vs.last = now;
     } else if (isNum(causer)) {
       statOf(causer).heal += Math.round(delta);
@@ -107,21 +87,11 @@
     return true;
   }
 
-  function pushLog(kind, html) {
-    log.unshift({ kind, html, t: Date.now() });
-    if (log.length > LOG_MAX) log.length = LOG_MAX;
-    scheduleRender();
-  }
-  function spellEntry(s, idx) {
-    let e = s.spells.get(idx);
-    if (!e) { e = { casts: 0, hits: 0, dmg: 0 }; s.spells.set(idx, e); }
-    return e;
-  }
   function learnName(id, name, guild) {
     if (!isNum(id) || !looksLikeName(name)) return;
     const c = chars.get(id);
     if (c) { c.name = c.name || name; return; }
-    chars.set(id, { name, guild: typeof guild === 'string' ? guild : '', spells: null });
+    chars.set(id, { name, guild: typeof guild === 'string' ? guild : '' });
     stats.forEach((s) => { if (s.id === id && !s.name) s.name = name; });
   }
 
@@ -230,8 +200,6 @@
       key: 'died', codes: range(160, 175),
       test: (p) => looksLikeName(p['2']) && looksLikeName(p['10']),
       run: (p) => {
-        const g = (s) => (typeof s === 'string' && s ? ` <i>[${esc(s)}]</i>` : '');
-        pushLog('died', `💀 <b>${esc(p['2'])}</b>${g(p['3'])} killed by <b>${esc(p['10'])}</b>${g(p['11'])}`);
         // Verificado en tráfico real: además de los nombres trae los objectId (1 el muerto,
         // 9 el matador). Se aprovechan para ponerle nombre a quien ya estaba en la zona antes
         // de abrir el overlay — de ese nunca llega NewCharacter y su daño salía sin dueño.
@@ -248,37 +216,7 @@
       // con el mismo jugador y el mismo importe clavado, así que es otra cosa y llamarlo "saqueó
       // 10K" sería mentir. Vuelve cuando se vea en una zona con muertes de verdad.
       test: (p) => looksLikeName(p['1']) && looksLikeName(p['2']) && isNum(p['4']) && isNum(p['5']),
-      run: (p) => {
-        const nm = itemLabel(p['4']);
-        pushLog('loot', `🎒 <b>${esc(p['2'])}</b> looted ${p['5']}× ${esc(nm || '#' + p['4'])} ← <b>${esc(p['1'])}</b>`);
-        addLoot(p['2'], p['4'], p['5'], p['1']);
-        return true;
-      },
-    },
-    {
-      key: 'harvest', codes: range(58, 64),
-      // El item TIENE que ser un recurso en bruto. Sin esa condición el código 64 (usar un
-      // portal o un edificio) colaba en tráfico real: sus params encajaban de forma y el panel
-      // se inventaba "Fulano recogió 7× <lo que hubiera en ese índice de item>".
-      test: (p) => isNum(p['0']) && isNum(p['3']) && isNum(p['4']) && isNum(p['5']) && nameOf(p['0']) && isRawResource(p['4']),
-      run: (p) => {
-        const nm = itemLabel(p['4']); if (!nm) return false;
-        const qty = (p['5'] || 0) + (p['6'] || 0) + (p['7'] || 0);
-        const who = nameOf(p['0']);
-        const prev = log[0];
-        // recolectar dispara un evento por golpe: se agrupa con la línea anterior en vez de
-        // llenar el registro con veinte líneas iguales
-        if (prev && prev.kind === 'harvest' && prev.who === who && prev.item === nm && Date.now() - prev.t < 60000) {
-          prev.qty += qty; prev.t = Date.now();
-          prev.html = `🌾 <b>${esc(who)}</b> gathered ${prev.qty}× ${esc(nm)}`;
-          scheduleRender();
-          return true;
-        }
-        log.unshift({ kind: 'harvest', who, item: nm, qty, t: Date.now(), html: `🌾 <b>${esc(who)}</b> gathered ${qty}× ${esc(nm)}` });
-        if (log.length > LOG_MAX) log.length = LOG_MAX;
-        scheduleRender();
-        return true;
-      },
+      run: (p) => { addLoot(p['2'], p['4'], p['5'], p['1']); return true; },
     },
   ];
   // La fama la manda el servidor SOLO de tu personaje (nadie te cuenta la de los demás), y esa
@@ -321,7 +259,7 @@
   // Se agrupa por NOMBRE, no por objectId: el mismo jugador vuelve con otro id al cambiar de
   // zona y salía dos veces en la tabla, con su daño partido entre las dos filas.
   const blank = (name) => ({ name, dmg: 0, heal: 0, taken: 0, hits: 0, kills: 0, deaths: 0,
-    spells: new Map(), ids: [], first: 0, last: 0 });
+    ids: [], first: 0, last: 0 });
   const groupOf = (map, name) => { let g = map.get(name); if (!g) { g = blank(name); map.set(name, g); } return g; };
   function rows() {
     const byName = new Map();
@@ -342,11 +280,6 @@
       g.first = g.first ? Math.min(g.first, s.first) : s.first;
       g.last = Math.max(g.last, s.last || 0);
       g.ids.push(s.id);
-      s.spells.forEach((e, idx) => {
-        const t = g.spells.get(idx) || { casts: 0, hits: 0, dmg: 0 };
-        t.casts += e.casts; t.hits += e.hits; t.dmg += e.dmg;
-        g.spells.set(idx, t);
-      });
     });
     // una muerte cuenta aunque el muerto no llegara a pegarle a nadie
     nameKD.forEach((kd, name) => {
@@ -436,48 +369,13 @@
     return nm + (t ? ' T' + t[1] + (e ? '.' + e[1] : '') : '');
   };
 
-  function renderLog() {
-    if (!log.length) return '<div class="cb-empty">Nothing has happened around you yet.<br>Deaths, loot and gathering show up here.</div>';
-    return '<div class="cb-log">' + log.map((e) => {
-      const s = Math.round((Date.now() - e.t) / 1000);
-      return `<div class="cb-log-row ${e.kind}">${e.html}<span class="cb-age">${s < 60 ? s + 's' : Math.round(s / 60) + 'm'}</span></div>`;
-    }).join('') + '</div>';
-  }
-
-  // Se cuentan los LANZAMIENTOS (CastStart) y aparte los golpes con daño, así también salen
-  // las habilidades que no hacen daño: curaciones, escapes, purgas. Los que trae equipados
-  // (array del spawn) sirven para ver lo que NO ha llegado a usar.
-  function renderSpells() {
-    const rs = rows().filter((r) => !r.agg && (r.s.spells.size || r.s.ids.some((id) => (chars.get(id) || {}).spells)));
-    if (!rs.length) return '<div class="cb-empty">No abilities seen yet.</div>';
-    return rs.map((r) => {
-      // Un efecto interno solo entra si de verdad ha hecho daño (el "Ice sculpture explode"
-      // del bastón de hielo pega 2.4k y sí importa); si no, fuera: es ruido de sistema.
-      const used = [...r.s.spells.entries()]
-        .map(([idx, e]) => ({ idx, e, sp: spellName(idx) }))
-        .filter((u) => u.sp.real || u.e.dmg > 0)
-        .sort((a, b) => b.e.dmg - a.e.dmg || b.e.casts - a.e.casts);
-      const eq = r.s.ids.map((id) => (chars.get(id) || {}).spells).find(Array.isArray) || null;
-      const unused = Array.isArray(eq) ? eq.filter((x) => x > 0 && !r.s.spells.has(x) && spellName(x).real) : [];
-      return `<div class="cb-sp">
-        <div class="cb-name">${esc(r.name)}${r.mine ? ' <i>(you)</i>' : ''}</div>
-        <div class="cb-sp-list">${used.length ? used.map(({ idx, e, sp }) => {
-          const times = e.casts || e.hits;
-          return `<span class="cb-sp-chip${sp.real ? '' : ' int'}" title="#${idx} — ${e.casts} casts, ${e.hits} hits, ${fmtK(e.dmg)} damage">${esc(sp.n)}${times ? ` <b>×${times}</b>` : ''}${e.dmg ? ' ' + fmtK(e.dmg) : ''}</span>`;
-        }).join('') : '<span class="cb-sp-none">no ability seen</span>'}</div>
-        ${unused.length ? `<div class="cb-sp-list dim" title="Equipped but never used while in range">${unused.map((x) => `<span class="cb-sp-chip off">${esc(spellName(x).n)}</span>`).join('')}</div>` : ''}
-      </div>`;
-    }).join('');
-  }
-
   // Con el panel cerrado o minimizado se sigue CONTANDO, pero no se pinta: en una ZvZ el
   // evento de vida llega a cientos por segundo y repintar lo que nadie ve sale caro.
   const panelEl = document.getElementById('p-combat');
   const visible = () => panelEl && panelEl.style.display !== 'none' && !panelEl.classList.contains('collapsed');
   function render() {
     if (!visible()) return;
-    body.innerHTML = tab === 'log' ? renderLog() : tab === 'spells' ? renderSpells()
-      : tab === 'loot' ? renderLoot() : renderDamage();
+    body.innerHTML = tab === 'loot' ? renderLoot() : renderDamage();
     const t = secs();
     if (timeEl) timeEl.textContent = t ? (t < 60 ? t + 's' : Math.floor(t / 60) + 'm' + String(t % 60).padStart(2, '0')) : '—';
     const rs = rows();
@@ -548,23 +446,9 @@
     seenCodes[code] = (seenCodes[code] || 0) + 1;
     switch (code) {
       case 29:
-        if (isNum(p['0']) && looksLikeName(p['1'])) chars.set(p['0'], { name: p['1'], guild: p['8'] || '', spells: Array.isArray(p['43']) ? p['43'] : null });
+        if (isNum(p['0']) && looksLikeName(p['1'])) chars.set(p['0'], { name: p['1'], guild: p['8'] || '' });
         break;
-      // Al cambiar de equipo llegan también los hechizos que lleva puestos (param 7, con -1 de
-      // relleno). Visto en vivo: es la vía más frecuente para saber qué NO ha llegado a usar.
-      case 90: {
-        const c = chars.get(p['0']);
-        if (c && Array.isArray(p['7'])) c.spells = p['7'];
-        break;
-      }
       case 6: if (applyHealth(p)) scheduleRender(); break;
-      // CastStart: 0 quien lanza · 5 el hechizo · 7 su objetivo. Verificado en tráfico real
-      // (5 = 3222 = FREEZINGWIND mientras el jugador tiraba bastón de hielo). Cuenta TODOS los
-      // lanzamientos, también los que no hacen daño — curaciones, escapes, buffs —, que es la
-      // mitad de lo que quieres saber de un rival.
-      case 14:
-        if (isNum(p['0']) && isNum(p['5'])) { spellEntry(statOf(p['0']), p['5']).casts++; scheduleRender(); }
-        break;
       // NewLoot: la bolsa de un muerto trae su id (2) y su nombre (3) — otra vía para ponerle
       // nombre a quien nunca emitió NewCharacter.
       case 98:
@@ -582,7 +466,7 @@
   // Diagnóstico para cuando un parche mueva los códigos: qué ha pasado por aquí y qué se ha
   // identificado ya. __combat.forget() lo hace aprender otra vez desde cero.
   window.__combat = {
-    stats, chars, log, learned, nameKD, rows, handleMessage, me: () => me,
+    stats, chars, learned, nameKD, rows, handleMessage, me: () => me,
     codes: () => Object.entries(seenCodes).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     unknown: () => Object.entries(seenCodes).filter(([c]) => !learned[c]).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     forget: () => { Object.keys(learned).forEach((k) => delete learned[k]); saveLearned(); },
