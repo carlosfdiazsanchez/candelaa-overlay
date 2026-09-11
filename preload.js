@@ -11,8 +11,6 @@ contextBridge.exposeInMainWorld('overlay', {
   spellsIndex: (lang) => ipcRenderer.invoke('spells-index', lang),
   mobsIndex: (lang) => ipcRenderer.invoke('mobs-index', lang),
   zones: () => ipcRenderer.invoke('zones'),
-  roadsIndex: () => ipcRenderer.invoke('roads-index'),
-  onRoadsOcr: (cb) => ipcRenderer.on('roads-ocr', (_e, r) => cb(r)),
   ledgerLoad: () => ipcRenderer.invoke('ledger-load'),
   ledgerSave: (data) => ipcRenderer.invoke('ledger-save', data),
   marketPrices: (itemId, quality) => ipcRenderer.invoke('market-prices', itemId, quality),

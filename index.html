@@ -666,28 +666,6 @@
   /* radar de recursos */
   #p-radar{width:390px;}
   .rad-zone{margin-bottom:9px;}
-  .rz-search{width:100%;box-sizing:border-box;margin-bottom:6px;}
-  .rz-card{background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:7px 9px;display:flex;flex-direction:column;gap:4px;}
-  .rz-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;}
-  .rz-name{font-weight:600;color:var(--text);}
-  .rz-tier{border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;background:rgba(90,169,196,.18);color:#cdeaf2;border:1px solid rgba(90,169,196,.45);}
-  .rz-tag{border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:10px;color:var(--dim);}
-  .rz-tag.ok{background:rgba(70,209,96,.14);border-color:rgba(70,209,96,.45);color:#8fe8a4;}
-  .rz-tag.no{opacity:.6;}
-  .rz-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text);}
-  .rz-row .rz-ico{flex:0 0 auto;}
-  .rz-row.dim{color:var(--faint);font-size:11px;}
-  .rad-tabs{display:flex;gap:4px;margin-bottom:9px;}
-  .rz-count:empty{display:none;}
-  .rz-count{background:rgba(90,169,196,.25);border-radius:8px;padding:0 6px;font-size:10px;color:#cdeaf2;}
-  .rz-portals-head{color:var(--faint);font-size:10.5px;margin:9px 0 5px;}
-  .rz-portals{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow-y:auto;}
-  .rz-foot{color:var(--faint);font-size:10.5px;}
-  .rz-hint{color:var(--dim);font-size:11px;line-height:1.45;background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:8px;}
-  .rz-hint kbd{font-family:var(--mono);font-size:10.5px;background:rgba(255,255,255,.08);border:1px solid var(--border-strong);border-radius:4px;padding:0 5px;color:var(--text);}
-  .rz-ocr{font-size:11px;color:var(--faint);min-height:14px;margin:-3px 0 6px;}
-  .rz-ocr.ok{color:#8fe8a4;}
-  .rz-ocr.bad{color:#e6a15a;}
   #p-radar.collapsed{width:220px;}
   .rad-filters{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:9px;}
   .rad-chip{border:1px solid var(--border);background:var(--elev);color:var(--dim);border-radius:6px;padding:4px 8px;font:inherit;font-size:11px;cursor:pointer;transition:background .12s,border-color .12s,color .12s;}
@@ -836,11 +814,7 @@
     <span class="conn" id="rad-conn" title="Data engine connection"></span>
     <button class="icon-btn collapse" title="Minimize">▁</button></div>
   <div class="panel__body">
-    <div class="rad-tabs">
-      <button class="rad-chip" id="rad-tab-radar" aria-pressed="true">Radar</button>
-      <button class="rad-chip" id="rad-tab-roads" aria-pressed="false"><span>Roads</span> <span class="rz-count" id="rz-count"></span></button>
-    </div>
-    <div id="rad-view-radar">
+    <div>
       <div class="rad-toolbar">
         <button class="rad-chip" id="rad-filters-toggle" aria-pressed="false" title="Show or hide the filters">⚙ Filters</button>
         <button id="rad-map" class="rad-dirbtn" title="Show the zone map behind the radar">🗺</button>
@@ -860,16 +834,6 @@
       </div>
       <canvas id="radar-canvas"></canvas>
       <div class="rad-list" id="radar-list"><div class="rad-empty">Connecting to the data engine…</div></div>
-    </div>
-    <div id="rad-view-roads" hidden>
-      <div class="rz-hint">🔍 Hover a portal in the game and press <kbd>Ctrl+Alt+R</kbd> — the destination is read off the screen and shown here</div>
-      <div class="rz-ocr" id="rz-ocr"></div>
-      <div class="rad-zone" id="rad-zone">
-        <input class="search rz-search" id="rz-search" placeholder="Roads map… (Qiitun-Vietis)" autocomplete="off" spellcheck="false">
-        <div class="rz-card" id="rz-card" hidden></div>
-      </div>
-      <div class="rz-portals-head" title="Portals read with Ctrl+Alt+R in this zone, plus any the server announced — Roads connections rotate, so they expire after 8 h">Portals read in this zone</div>
-      <div class="rz-portals" id="rz-portals"></div>
     </div>
   </div>
 </div>

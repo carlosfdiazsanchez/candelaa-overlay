@@ -8,7 +8,6 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const { spawn, execFile, execFileSync } = require('child_process');
-const roadsOcr = require('./roads-ocr');
 
 let win = null;
 let radarProc = null;
@@ -276,8 +275,6 @@ if (gotSingleInstanceLock) app.whenReady().then(() => {
   globalShortcut.register('Control+Alt+D', () => {
     if (win && !win.isDestroyed()) win.webContents.openDevTools({ mode: 'detach' });
   });
-  // Ctrl+Alt+R: leer el nombre del portal de Caminos bajo el cursor (OCR) y enviarlo al Buscador.
-  roadsOcr.register((r) => { if (win && !win.isDestroyed()) win.webContents.send('roads-ocr', r); });
   // Auto-update desde GitHub Releases (solo en la app empaquetada).
   if (app.isPackaged) {
     try {
@@ -329,7 +326,7 @@ ipcMain.on('install-update', () => {
 
 // también al cerrar normal: con autoInstallOnAppQuit el instalador corre al salir y se
 // encontraría los mismos ficheros bloqueados
-app.on('will-quit', () => { globalShortcut.unregisterAll(); roadsOcr.terminate(); stopChildrenSync(); });
+app.on('will-quit', () => { globalShortcut.unregisterAll(); stopChildrenSync(); });
 
 app.on('window-all-closed', () => app.quit());
 
@@ -395,8 +392,6 @@ ipcMain.handle('zones', () => {
   catch (_) { return null; }
 });
 
-// Ficha estática de cada mapa de los Caminos (id -> nombre/tier/tipo + cofres/mazmorras/nodos).
-// Se genera con tools/build-roads.py (zones.json + dataset MIT de AO-Noki).
 // Bitácora del mercado: copia duradera en userData/ledger.json (escritura atómica).
 const ledgerFile = () => path.join(app.getPath('userData'), 'ledger.json');
 ipcMain.handle('ledger-load', () => {
@@ -410,11 +405,6 @@ ipcMain.handle('ledger-save', (_e, data) => {
     return true;
   } catch (e) { console.error('[ledger] save:', e.message); return false; }
 });
-ipcMain.handle('roads-index', () => {
-  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'roads.json'), 'utf8')); }
-  catch (_) { return null; }
-});
-
 const CITIES = ['Caerleon', 'Bridgewatch', 'Lymhurst', 'Martlock', 'Thetford', 'FortSterling', 'Brecilien', 'Black Market'];
 function fetchPrices(idStr, locations) {
   return new Promise((resolve) => {

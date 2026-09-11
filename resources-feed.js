@@ -263,306 +263,6 @@
     ctx.restore();
   }
 
-  // ---- Caminos de Avalon: ficha estática del mapa (tools/build-roads.py → data/roads.json) ----
-  // Los layouts de los Caminos son fijos por plantilla: con el id de zona basta para saber
-  // tier, si admite HO (tipo TUNNEL_HIDEOUT*) y el contenido catalogado (cofres/mazmorras/nodos).
-  const rzSearchEl = document.getElementById('rz-search');
-  const rzCardEl = document.getElementById('rz-card');
-  const rzPortalsEl = document.getElementById('rz-portals');
-  const rzCountEl = document.getElementById('rz-count');
-  const radViewRadar = document.getElementById('rad-view-radar');
-  const radViewRoads = document.getElementById('rad-view-roads');
-  const radTabRadar = document.getElementById('rad-tab-radar');
-  const radTabRoads = document.getElementById('rad-tab-roads');
-
-  // Portales vistos por zona: el servidor solo anuncia entidades dentro de la burbuja (~25 m),
-  // así que la lista se acumula al pasar cerca de cada portal y se recuerda por mapa. Las
-  // conexiones de Caminos rotan sobre horas: 8h de TTL para no enseñar portales muertos.
-  const RSKEY = 'albion-overlay-roads-seen-v1';
-  const roadsSeen = (() => {
-    try {
-      const m = JSON.parse(localStorage.getItem(RSKEY)) || {};
-      const cut = Date.now() - 8 * 3600e3;
-      for (const map in m) {
-        for (const d in m[map]) if (!m[map][d] || m[map][d].t < cut) delete m[map][d];
-        if (!Object.keys(m[map]).length) delete m[map];
-      }
-      return m;
-    } catch (_) { return {}; }
-  })();
-  let roadsSeenT = null;
-  function saveRoadsSeen() {
-    if (roadsSeenT) return;
-    roadsSeenT = setTimeout(() => { roadsSeenT = null; try { localStorage.setItem(RSKEY, JSON.stringify(roadsSeen)); } catch (_) {} }, 1500);
-  }
-
-  const TABKEY = 'albion-overlay-radar-tab-v1';
-  function setTab(t) {
-    const roads = t === 'roads';
-    if (radViewRadar) radViewRadar.hidden = roads;
-    if (radViewRoads) radViewRoads.hidden = !roads;
-    if (radTabRadar) radTabRadar.setAttribute('aria-pressed', String(!roads));
-    if (radTabRoads) radTabRoads.setAttribute('aria-pressed', String(roads));
-    try { localStorage.setItem(TABKEY, t); } catch (_) {}
-    if (roads) { renderZoneCard(); renderPortals(); }
-  }
-  if (radTabRadar) radTabRadar.addEventListener('click', () => setTab('radar'));
-  if (radTabRoads) radTabRoads.addEventListener('click', () => setTab('roads'));
-  try { if (localStorage.getItem(TABKEY) === 'roads') setTab('roads'); } catch (_) {}
-
-  let roadsDB = null;
-  let roadsByName = null;
-  const tunnelExits = new Map(); // portales de Caminos con destino identificado en el payload
-  // Cofres reales del mapa: ev286 llega AL ENTRAR con TODOS los cofres del mapa (posición +
-  // código de color en [2]), no limitado a la burbuja — arregla el catálogo desfasado.
-  const roadsChests286 = new Map(); // id -> { x, y, q }
-  // Código de color [2] -> color. 101 = verde CONFIRMADO en vivo (Sases-Avuotum, 6/6).
-  // Los demás son hipótesis por orden ascendente; se registran en window.__roads.chestCodes().
-  const ROAD_CHEST_Q = { 101: 'green', 102: 'blue', 103: 'gold', 104: 'gold' };
-  const CHEST_Q_ICON = { green: '🟩', blue: '🟦', gold: '🟨' };
-  const roadsSamples = [];       // eventos crudos que nombraron un mapa de Caminos (diagnóstico)
-  const normRoad = (s) => String(s).toLowerCase().replace(/[^a-z]/g, '');
-  function loadRoadsDB(attempt) {
-    const p = (() => { try { return window.overlay.roadsIndex().catch(() => null); } catch (_) { return Promise.resolve(null); } })();
-    p.then((db) => {
-      if (db && typeof db === 'object' && Object.keys(db).length) {
-        roadsDB = db;
-        roadsByName = {};
-        for (const id in db) roadsByName[normRoad(db[id].n)] = id;
-        renderZoneCard();
-        renderPortals();
-        if (currentMapId && roadsDB[currentMapId]) setTab('roads');
-      } else if ((attempt || 0) < 5) setTimeout(() => loadRoadsDB((attempt || 0) + 1), 5000);
-    });
-  }
-  loadRoadsDB(0);
-
-  const RZ_CHEST = { GREEN: '🟩', BLUE: '🟦', GOLD: '🟨' };
-  const RZ_RES = { ORE: '⛏️', WOOD: '🪵', FIBER: '🌿', HIDE: '🐾', STONE: '🪨' };
-  const RZ_CHEST_WORD = { GREEN: 'green', BLUE: 'blue', GOLD: 'gold' };
-  const RZ_RES_WORD = { ORE: 'ore', WOOD: 'wood', FIBER: 'fiber', HIDE: 'hide', STONE: 'stone' };
-  function roadTags(e) {
-    const y = e.y || '';
-    const tags = [];
-    tags.push(y.startsWith('HIDEOUT')
-      ? ['HO ✓', 'ok', 'A hideout can be placed in this map']
-      : ['HO ✗', 'no', 'No hideouts can be placed in this map']);
-    if (y.startsWith('ROYAL')) tags.push([y === 'ROYAL_RED' ? 'Royal red' : 'Royal', '', 'Connects to the Royal continent']);
-    if (y.startsWith('BLACK')) tags.push(['Black', '', 'Connects to the black zones']);
-    if (y.includes('DEEP')) tags.push(['Deep', '', 'Deep roads — better content, further from the outside world']);
-    if (y === 'DEEP_RAID') tags.push(['Raid', '', 'Raid map (large-group content)']);
-    const q = /(HIGH|MEDIUM|LOW)$/.exec(y);
-    if (q) tags.push([{ HIGH: 'High', MEDIUM: 'Mid', LOW: 'Low' }[q[1]], '', 'Content quality of this map']);
-    return tags;
-  }
-  const rzSize = (s) => (s === 'l' ? 'large' : 'small');
-  function rzTagsHTML(e) {
-    return roadTags(e).map(([txt, cls, tip]) => `<span class="rz-tag ${cls}" title="${tip}">${txt}</span>`).join('');
-  }
-  // Líneas de cofres desde el ev286 (dato REAL del mapa, llega al entrar). Agrupadas por color;
-  // un código de color aún no confirmado se cuenta igual como "chest" para que el total no mienta.
-  function rzChestLiveRows() {
-    const byColor = {};
-    let unknown = 0;
-    roadsChests286.forEach((c) => {
-      const color = ROAD_CHEST_Q[c.q];
-      if (color) byColor[color] = (byColor[color] || 0) + 1;
-      else unknown += 1;
-    });
-    const rows = [];
-    ['green', 'blue', 'gold'].forEach((col) => {
-      if (byColor[col]) rows.push(`${CHEST_Q_ICON[col]} ${byColor[col]}× ${col} chest`);
-    });
-    if (unknown) rows.push(`🎁 ${unknown}× chest`);
-    return rows;
-  }
-  function rzBodyRows(e, isCurrent) {
-    const rows = [];
-    const liveChests = isCurrent && roadsChests286.size ? rzChestLiveRows() : null;
-    if (liveChests) liveChests.forEach((r) => rows.push(r));
-    else if (e.k) (e.c || []).forEach(([t, s, n]) => rows.push(`${RZ_CHEST[t] || ''} ${n}× ${rzSize(s)} ${RZ_CHEST_WORD[t] || String(t).toLowerCase()} chest`));
-    if (e.k) {
-      (e.d || []).forEach(([t, , n]) => rows.push(`🚪 ${n}× ${t === 'SOLO' ? 'Solo dungeon' : 'Group dungeon'}`));
-      (e.r || []).forEach(([t, s, n]) => rows.push(`${RZ_RES[t] || ''} ${n}× ${rzSize(s)} ${RZ_RES_WORD[t] || String(t).toLowerCase()} node`));
-    }
-    if (!rows.length) return e.k ? '<div class="rz-row dim">Nothing cataloged inside</div>' : '<div class="rz-row dim">Contents not cataloged</div>';
-    return rows.map((r) => `<div class="rz-row">${r}</div>`).join('');
-  }
-  function zoneCardHTML(e, isCurrent) {
-    return `<div class="rz-head"><span class="rz-name">${esc(e.n)}</span><span class="rz-tier">T${e.t || '?'}</span>${rzTagsHTML(e)}</div>` + rzBodyRows(e, isCurrent);
-  }
-  // El catálogo es dato comunitario y se desfasa cuando un parche repuebla plantillas: esta
-  // fila contrasta con lo que el radar HA VISTO de verdad en esta visita. Solo totales de
-  // cofres — en Caminos el color no viaja en el evento (verde y azul llegan idénticos).
-  const RZ_LIVE_RES = { Ore: '⛏️', Wood: '🪵', Fiber: '🌿', Hide: '🐾', Rock: '🪨' };
-  function rzLiveRow() {
-    let nDun = 0;
-    portals.forEach((pt) => {
-      const u = String(pt.name).toUpperCase();
-      if (!u.startsWith('MISTS_') && !u.includes('HELLGATE') && !u.includes('CORRUPTED')) nDun++;
-    });
-    const res = {};
-    harvestables.forEach((h) => { res[h.type] = (res[h.type] || 0) + 1; });
-    const parts = [];
-    if (nDun) parts.push(`🚪 ${nDun}`);
-    for (const t in res) parts.push(`${RZ_LIVE_RES[t] || t} ${res[t]}`);
-    if (!parts.length) return '';
-    return `<div class="rz-row dim" title="Counted by the radar as you walk — only what you have passed near counts">Seen live: ${parts.join(' · ')}</div>`;
-  }
-  function portalCardHTML(destId, liveX, seenRec) {
-    const e = roadsDB[destId];
-    if (!e) return '';
-    let foot = '';
-    if (liveX && haveLp && liveX.posX != null) {
-      const { hX, hY } = relative(liveX.posX, liveX.posY);
-      foot = `📍 ${Math.round(distMeters(hX, hY))} m`;
-    } else if (seenRec) {
-      foot = `👁 ${Math.max(1, Math.round((Date.now() - seenRec.t) / 60000))} min`;
-    }
-    return `<div class="rz-card"><div class="rz-head">🌀 <span class="rz-name">${esc(e.n)}</span><span class="rz-tier">T${e.t || '?'}</span>${rzTagsHTML(e)}</div>`
-      + rzBodyRows(e) + (foot ? `<div class="rz-foot">${foot}</div>` : '') + '</div>';
-  }
-  function renderPortals() {
-    if (!rzPortalsEl || !roadsDB) return;
-    const seen = (currentMapId && roadsSeen[currentMapId]) || {};
-    const live = {};
-    tunnelExits.forEach((x) => { if (x.destId) live[x.destId] = x; });
-    const ids = Object.keys(Object.assign({}, seen, live));
-    if (rzCountEl) rzCountEl.textContent = ids.length ? String(ids.length) : '';
-    if (!ids.length) {
-      rzPortalsEl.innerHTML = '<div class="rz-row dim">No Roads portals seen in this zone yet — walk close to one</div>';
-      return;
-    }
-    ids.sort((a, b) => {
-      const la = live[a] ? 1 : 0, lb = live[b] ? 1 : 0;
-      if (la !== lb) return lb - la;
-      return ((seen[b] && seen[b].t) || 0) - ((seen[a] && seen[a].t) || 0);
-    });
-    rzPortalsEl.innerHTML = ids.map((d) => portalCardHTML(d, live[d], seen[d])).join('');
-  }
-  function findRoad(q) {
-    if (roadsDB[q]) return q;
-    const nq = normRoad(q);
-    if (!nq) return null;
-    if (roadsByName[nq]) return roadsByName[nq];
-    for (const n in roadsByName) if (n.startsWith(nq)) return roadsByName[n];
-    for (const n in roadsByName) if (n.includes(nq)) return roadsByName[n];
-    return null;
-  }
-  function renderZoneCard() {
-    if (!rzCardEl || !roadsDB) return;
-    const q = rzSearchEl ? rzSearchEl.value.trim() : '';
-    let id = null;
-    if (q) {
-      id = findRoad(q);
-      if (!id) { rzCardEl.hidden = false; rzCardEl.innerHTML = '<div class="rz-row dim">No Roads map matches</div>'; return; }
-    } else if (currentMapId && roadsDB[currentMapId]) {
-      id = currentMapId;
-    }
-    if (!id) { rzCardEl.hidden = true; rzCardEl.innerHTML = ''; return; }
-    rzCardEl.hidden = false;
-    const isCurrent = !q && id === currentMapId;
-    rzCardEl.innerHTML = zoneCardHTML(roadsDB[id], isCurrent) + (isCurrent ? rzLiveRow() : '');
-  }
-  if (rzSearchEl) rzSearchEl.addEventListener('input', renderZoneCard);
-  setInterval(() => {
-    if (!radViewRoads || radViewRoads.hidden) return;
-    if (tunnelExits.size) renderPortals();
-    if (!(rzSearchEl && rzSearchEl.value.trim())) renderZoneCard();
-  }, 3000);
-
-  // ev286 (detectado por FORMA, no por número — los códigos altos bailan con los parches):
-  // llega al ENTRAR con la lista de cofres del mapa entero. [1]=ids, [3]=coords (2 por id),
-  // [2]=código de color. No limitado a la burbuja: es la verdad que arregla el catálogo.
-  function parseRoads286(p) {
-    const ids = p['1'], coords = p['3'], q = p['2'];
-    if (!Array.isArray(ids) || !ids.length || !Array.isArray(coords) || !Array.isArray(q)) return false;
-    if (coords.length !== ids.length * 2 || q.length !== ids.length) return false;
-    if (ids.length > 60) return false;
-    for (let i = 0; i < ids.length; i++) {
-      const x = coords[i * 2], y = coords[i * 2 + 1];
-      if (!Number.isInteger(ids[i]) || ids[i] < 0) return false;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 3000 || Math.abs(y) > 3000) return false;
-      // color de cofre: 101-104 confirmados; banda amplia para no romper con un parche, pero
-      // estrecha para que ningún otro evento con arrays entre por error y borre la lista.
-      if (!Number.isInteger(q[i]) || q[i] < 64 || q[i] > 160) return false;
-    }
-    roadsChests286.clear();
-    for (let i = 0; i < ids.length; i++) roadsChests286.set(ids[i], { x: coords[i * 2], y: coords[i * 2 + 1], q: num(q[i], 0) });
-    renderZoneCard();
-    return true;
-  }
-
-  // Trampa de identificación del NewTunnelExit: el código de evento baila con los parches y su
-  // payload no está documentado, pero el DESTINO tiene que viajar (el juego pinta el nombre del
-  // mapa al acercarse al portal). Cualquier evento no manejado cuyo payload contenga un id o un
-  // nombre de mapa de Caminos se registra (window.__roads.samples) y, si además trae posición,
-  // se pinta como portal con destino. Cuando el código quede confirmado en vivo, se fija aquí.
-  function maybeTunnelExit(p, code) {
-    if (!roadsDB) return;
-    let destId = null;
-    for (const k in p) {
-      const v = p[k];
-      if (typeof v !== 'string' || v.length < 4 || v.length > 40) continue;
-      if (roadsDB[v]) { destId = v; break; }
-      const byName = roadsByName[normRoad(v)];
-      if (byName) { destId = byName; break; }
-    }
-    if (!destId) return;
-    if (roadsSamples.length < 40) roadsSamples.push({ code, p: JSON.parse(JSON.stringify(p)) });
-    if (currentMapId) {
-      const zone = roadsSeen[currentMapId] = roadsSeen[currentMapId] || {};
-      zone[destId] = { t: Date.now() };
-      saveRoadsSeen();
-    }
-    const id = p['0'];
-    if (id !== undefined && id !== null && typeof id !== 'string') {
-      let pos = null;
-      for (const k in p) {
-        const v = p[k];
-        if (Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]) && Math.abs(v[0]) < 4000 && Math.abs(v[1]) < 4000) { pos = v; break; }
-      }
-      const ex = tunnelExits.get(id);
-      if (ex) { ex.last = Date.now(); if (pos) { ex.posX = pos[0]; ex.posY = pos[1]; } }
-      else tunnelExits.set(id, { id, destId, posX: pos ? pos[0] : null, posY: pos ? pos[1] : null, last: Date.now() });
-    }
-    renderPortals();
-  }
-  // Resultado del OCR (Ctrl+Alt+R en el proceso principal): el destino leído pasa a la ficha
-  // y se apunta como portal de esta zona, igual que si el paquete lo hubiera traído.
-  const rzOcrEl = document.getElementById('rz-ocr');
-  function setOcrState(cls, txt) { if (!rzOcrEl) return; rzOcrEl.className = 'rz-ocr' + (cls ? ' ' + cls : ''); rzOcrEl.textContent = txt || ''; }
-  function onRoadsOcr(r) {
-    if (!r) return;
-    if (r.state === 'busy') { setTab('roads'); setOcrState('', 'Reading the screen…'); return; }
-    if (r.state === 'done' && roadsDB && roadsDB[r.id]) {
-      if (currentMapId) {
-        const zone = roadsSeen[currentMapId] = roadsSeen[currentMapId] || {};
-        zone[r.id] = { t: Date.now() };
-        saveRoadsSeen();
-      }
-      if (rzSearchEl) rzSearchEl.value = roadsDB[r.id].n;
-      setTab('roads');
-      renderZoneCard();
-      renderPortals();
-      setOcrState('ok', 'Portal read: ' + roadsDB[r.id].n);
-      return;
-    }
-    if (r.state === 'none') { setOcrState('bad', 'No Roads map name under the cursor' + (r.text ? ' — read: “' + r.text + '”' : '')); return; }
-    if (r.state === 'error') setOcrState('bad', 'Could not read the screen');
-  }
-  try { if (window.overlay && window.overlay.onRoadsOcr) window.overlay.onRoadsOcr(onRoadsOcr); } catch (_) {}
-  window.__roads = {
-    samples: roadsSamples,
-    exits: tunnelExits,
-    seen: roadsSeen,
-    chests: roadsChests286,
-    chestCodes: () => { const h = {}; roadsChests286.forEach((c) => { h[c.q] = (h[c.q] || 0) + 1; }); return h; },
-    db: () => roadsDB,
-    current: () => currentMapId,
-    show: (q) => { setTab('roads'); if (rzSearchEl) { rzSearchEl.value = q || ''; renderZoneCard(); } },
-  };
-
   const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
   function arrowFor(dx, dy) {
     let a = Math.atan2(dy, dx); // screen space
@@ -619,14 +319,9 @@
     if (!mapId || mapId === currentMapId) return;
     currentMapId = mapId;
     harvestables.clear(); mobs.clear(); mists.clear(); portals.clear(); cages.clear();
-    tunnelExits.clear();
-    roadsChests286.clear();
     selectedId = null;
     haveLp = false;
     lpX = 0; lpY = 0;
-    renderZoneCard();
-    renderPortals();
-    if (roadsDB && roadsDB[mapId]) setTab('roads');
   }
 
   function onRequest(p, op) {
@@ -642,23 +337,102 @@
     }
   }
 
+  // ---- ¿siguen valiendo los números? ----
+  // Los eventos de recursos y mobs se despachan por número porque son BAJOS (<150) y llevan
+  // años quietos, pero los altos ya se movieron dos veces (los portales pasaron de 323 a 528 y
+  // las jaulas al 533, que encima era el case de borrado) y el layout del NewMob cambió sin
+  // cambiar de número. Si un parche mueve uno de estos, el radar se queda ciego SIN SÍNTOMA:
+  // simplemente no aparecen nodos, que es indistinguible de "no hay nada cerca".
+  // Así que cada parser tiene ahora un respaldo por FORMA en el default, con un filtro que
+  // mira el payload y —donde la forma sola no distingue— exige que el id ya sea una entidad
+  // conocida. Si el número acierta, el respaldo no se usa; si se mueve, el radar sigue viendo.
+  // `bump` cuenta por qué vía entró cada cosa: window.__radar.audit() lo enseña, y eso es lo
+  // que dice si los números de hoy son los correctos SIN tener que adivinarlo.
+  const hits = {};
+  const bump = (k) => { hits[k] = (hits[k] || 0) + 1; };
+  const seenCodes = {};
+  const unknownSamples = {};
+  function noteUnknown(code, p) {
+    const k = String(code);
+    const u = unknownSamples[k] = unknownSamples[k] || { n: 0, sample: null };
+    u.n++;
+    if (!u.sample) { try { u.sample = JSON.parse(JSON.stringify(p)); } catch (_) {} }
+  }
+  const numArr = (v) => { const a = (v && v.data) || v; return Array.isArray(a) ? a : null; };
+  const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+
+  // lote de harvestables: tres arrays en paralelo (ids, tipo, tier) y uno de coordenadas con
+  // dos por nodo. Imposible de confundir con otro evento.
+  function shapeBatchHarvest(p) {
+    const a0 = numArr(p['0']), a1 = numArr(p['1']), a2 = numArr(p['2']), a3 = numArr(p['3']);
+    if (!a0 || !a1 || !a2 || !a3 || !a0.length) return false;
+    if (a1.length !== a0.length || a2.length !== a0.length || a3.length < a0.length * 2) return false;
+    if (!a0.every((v) => Number.isFinite(+v)) || !a2.every((v) => isInt(+v, 0, 8))) return false;
+    if (!isPos([a3[0], a3[1]])) return false;
+    bump('harvest-batch/shape'); batchHarvestables(p); return true;
+  }
+  // nodo suelto: posición en [8], tipo en [5], tier 0-8 en [7]
+  function shapeSingleHarvest(p) {
+    if (typeof p['0'] !== 'number' || !isPos(p['8'])) return false;
+    if (!Number.isInteger(p['5']) || !isInt(p['7'], 0, 8)) return false;
+    bump('harvest-single/shape'); singleHarvestable(p['0'], p); return true;
+  }
+  // mob nuevo: posición en [7] y vida máxima en [14] (la firma con la que se identifica)
+  function shapeMob(p) {
+    if (typeof p['0'] !== 'number' || !isPos(p['7']) || !Number.isInteger(p['1'])) return false;
+    if (!(num(p['14']) > 0)) return false;
+    bump('mob/shape'); newMob(p); return true;
+  }
+  // mob con nombre: uniquename de mob en [3] y posición en [4]
+  function shapeNamedMob(p) {
+    if (typeof p['0'] !== 'number' || !isPos(p['4'])) return false;
+    if (typeof p['3'] !== 'string' || !/_MOB_/.test(p['3'])) return false;
+    bump('mob-named/shape'); newNamedMob(p); return true;
+  }
+  // cambio de cargas: la forma (dos enteros) no distingue nada, así que se exige que el id sea
+  // un nodo que YA tenemos. Eso lo hace inequívoco.
+  function shapeHarvestChange(p) {
+    if (!harvestables.has(p['0']) || !isInt(p['1'], 0, 9)) return false;
+    bump('harvest-change/shape'); harvestableChange(p); return true;
+  }
+  // encantamiento de un mob conocido. Se exige 1-4: el 0 no aporta nada y es el entero más
+  // común en cualquier payload, así que aceptarlo sería pedir un falso positivo.
+  function shapeMobEnch(p) {
+    const mo = mobs.get(p['0']);
+    if (!mo || !isInt(p['1'], 1, 4)) return false;
+    bump('mob-ench/shape'); mo.ench = p['1']; mo.last = Date.now(); return true;
+  }
+  // movimiento de una entidad que ya tenemos (los jugadores van cifrados; mobs y candilejas no)
+  function shapeMove(p) {
+    const id = p['0'];
+    const mo = mobs.get(id), mi = mists.get(id);
+    if (!mo && !mi) return false;
+    if (!isPos([p['4'], p['5']])) return false;
+    bump('move/shape');
+    if (mo) { mo.posX = p['4']; mo.posY = p['5']; mo.last = Date.now(); }
+    if (mi) { mi.posX = p['4']; mi.posY = p['5']; mi.last = Date.now(); }
+    return true;
+  }
+
   function onEvent(p, code) {
     const id = p['0'];
+    if (typeof code === 'number') seenCodes[code] = (seenCodes[code] || 0) + 1;
     switch (code) {
-      case 1: removeEverywhere(id); break;
+      case 1: bump('leave/code'); removeEverywhere(id); break;
       case 3: { // Move: update mob / mist / cage positions
         const x = p['4'], y = p['5'];
         if (x == null) break;
+        bump('move/code');
         const mo = mobs.get(id); if (mo) { mo.posX = x; mo.posY = y; mo.last = Date.now(); }
         const mi = mists.get(id); if (mi) { mi.posX = x; mi.posY = y; mi.last = Date.now(); }
         break;
       }
-      case 39: case 38: batchHarvestables(p); break;
-      case 40: singleHarvestable(id, p); break;
-      case 46: harvestableChange(p); break;
-      case 123: newMob(p); break;
-      case 98: newNamedMob(p); break;
-      case 47: { const mo = mobs.get(p['0']); if (mo) { mo.ench = num(p['1'], mo.ench); mo.last = Date.now(); } break; }
+      case 39: case 38: bump('harvest-batch/code'); batchHarvestables(p); break;
+      case 40: bump('harvest-single/code'); singleHarvestable(id, p); break;
+      case 46: bump('harvest-change/code'); harvestableChange(p); break;
+      case 123: bump('mob/code'); newMob(p); break;
+      case 98: bump('mob-named/code'); newNamedMob(p); break;
+      case 47: { const mo = mobs.get(p['0']); if (mo) { bump('mob-ench/code'); mo.ench = num(p['1'], mo.ench); mo.last = Date.now(); } break; }
       // Los códigos ALTOS bailan con cada parche y ya no se despachan por número: se acepta
       // cualquier evento cuyo PAYLOAD tenga la forma del portal o de la jaula. Medido en vivo
       // 2026-09-10: los portales llegan en 528 (antes 323 -> 325) y las jaulas en 533, que
@@ -666,9 +440,16 @@
       // El borrado por código se quita: para eso están el Leave (evt 1), el cambio de mapa y
       // el barrido de caducados, que no dependen de ningún número.
       default:
-        if (newPortal(p)) break;
-        if (newCage(p)) break;
-        if (!parseRoads286(p)) maybeTunnelExit(p, code);
+        if (newPortal(p)) { bump('portal/shape'); break; }
+        if (newCage(p)) { bump('cage/shape'); break; }
+        if (shapeBatchHarvest(p)) break;
+        if (shapeSingleHarvest(p)) break;
+        if (shapeNamedMob(p)) break;
+        if (shapeMob(p)) break;
+        if (shapeHarvestChange(p)) break;
+        if (shapeMove(p)) break;
+        if (shapeMobEnch(p)) break;
+        noteUnknown(code, p);
         break;
     }
   }
@@ -676,7 +457,6 @@
   function removeEverywhere(id) {
     harvestables.delete(id); mobs.delete(id); mists.delete(id);
     portals.delete(id); cages.delete(id);
-    tunnelExits.delete(id);
   }
 
   // media aprendida de segundos-por-carga, por recurso:tier:ench, persistida entre sesiones:
@@ -1279,7 +1059,17 @@
   }
 
   // ---- debug hook (inspect from devtools: window.__radar) ----
-  window.__radar = { harvestables, mobs, mists, portals, cages, filters, sub, priceMap, collect, handleMessage, render, setMobs: (d) => { mobsDB = d; markDirty(); render(); }, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, selectedId }), livingSamples: () => livingSamples, shapes: () => shapeSamples, regenDB, nodeMem };
+  window.__radar = { harvestables, mobs, mists, portals, cages, filters, sub, priceMap, collect, handleMessage, render, setMobs: (d) => { mobsDB = d; markDirty(); render(); }, select: (id) => { selectedId = id; }, state: () => ({ lp: [lpX, lpY], haveLp, map: currentMapId, selectedId }), livingSamples: () => livingSamples, shapes: () => shapeSamples, regenDB, nodeMem,
+    // Qué ha entrado y por dónde. Si una fila `.../shape` tiene cuenta y su `.../code` está a
+    // cero, ese número se movió con un parche y hay que actualizarlo aquí.
+    audit: () => ({
+      map: currentMapId,
+      entities: { harvestables: harvestables.size, mobs: mobs.size, mists: mists.size, portals: portals.size, cages: cages.size },
+      via: Object.keys(hits).sort().reduce((o, k) => { o[k] = hits[k]; return o; }, {}),
+      topCodes: Object.entries(seenCodes).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]).slice(0, 25),
+      unknown: Object.entries(unknownSamples).map(([c, u]) => [+c, u.n]).sort((a, b) => b[1] - a[1]).slice(0, 25),
+      unknownSample: (code) => (unknownSamples[String(code)] || {}).sample || null,
+    }) };
 
   // ---- boot ----
   try { new ResizeObserver(fitCanvas).observe(canvas); } catch (_) { window.addEventListener('resize', fitCanvas); }
