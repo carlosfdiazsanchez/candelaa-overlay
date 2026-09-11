@@ -1097,12 +1097,21 @@
   // tus unidades. Asi que se calcula el realizable (libro si vendes al instante, la orden si
   // dejas orden) y se ACOTA a una banda alrededor de la media: ni contar con un pico, ni dar el
   // negocio por muerto porque hoy haya una orden hundida.
-  const SELL_BAND = 0.15;    // banda alrededor de la media con la que se planifica
-  // Y un limite a fiarse de la media: si el mercado de hoy esta MUY por debajo de ella (mas de
-  // un 40%), la media ya no describe el presente — el mercado se ha caido, o ese medio es de
-  // otro momento. Ahi manda el precio de hoy y se avisa, porque asumir la media inventaria un
-  // beneficio que no existe (medido: media 290K contra ordenes de 52K daba +542% de colchon).
+  // El precio con el que se PLANIFICA es el MEDIO historico, no el de ahora: se vende dejando
+  // orden y esperando, no malvendiendo a la mejor puja, asi que el numero realista es a cuanto
+  // se cierra de normal. El de ahora (orden o puja) y el recorrido del libro se siguen
+  // calculando y ensenando, pero como contexto: dicen si hoy es buen dia y cuanto aguanta.
+  // Unica guarda: si el mercado de hoy esta MUY por debajo del medio (mas de un 40%), el medio
+  // ya no describe el presente — el mercado se ha caido, o ese medio es de otro momento. Ahi
+  // manda el precio de hoy y se avisa, porque asumir el medio inventaria un beneficio que no
+  // existe (medido: medio 290K contra ordenes de 52K daba +542% de colchon).
   const SELL_TRUST = 0.6;
+  function planPrice(now, avg) {
+    if (!(avg > 0)) return { used: now || 0, why: 'now' };
+    if (!(now > 0)) return { used: avg, why: 'avg' };
+    if (now < avg * SELL_TRUST) return { used: now, why: 'far' };
+    return { used: avg, why: now > avg ? 'avg-below-now' : 'avg' };
+  }
   function sellRef(id, ck, qty, instant) {
     const cell = (craftPriceMap[id] || {})[ck] || {};
     const now = (instant ? cell.buy : cell.sell) || 0;
@@ -1123,16 +1132,8 @@
       queue = (bk.sell || []).filter((lv) => (lv.price || 0) <= now).reduce((a, lv) => a + (lv.amount || 0), 0);
     }
     const real = book || now;
-    let used = real, capped = '';
-    if (avg > 0 && real > 0) {
-      const hi = avg * (1 + SELL_BAND), lo = avg * (1 - SELL_BAND);
-      if (real > hi) { used = hi; capped = 'hi'; }
-      else if (real < lo) {
-        if (real >= avg * SELL_TRUST) { used = lo; capped = 'lo'; }
-        else { used = real; capped = 'far'; }
-      }
-    }
-    return { now, avg, book, fits, queue, real, used, capped, qty: Math.max(1, qty || 1), instant };
+    const plan = planPrice(real, avg);
+    return { now, avg, book, fits, queue, real, used: plan.used, capped: plan.why, qty: Math.max(1, qty || 1), instant };
   }
   // linea que explica de donde sale el precio que se esta usando
   function sellRefLine(ref) {
@@ -1142,21 +1143,25 @@
     if (ref.avg > 0) bits.push(`<span title="Average price actually realised over the panel's history window: what this item usually goes for.">average <b>${fmtInt(ref.avg)}</b></span>`);
     if (ref.book > 0) bits.push(`<span title="Weighted price of walking down the buy orders until your units are placed. This is what an instant sale really pays.">book <b>${fmtInt(ref.book)}</b> (${fmtInt(Math.min(ref.fits, ref.qty))}/${fmtInt(ref.qty)} units)</span>`);
     if (ref.queue > 0) bits.push(`<span title="Units already queued at that price or better: your order sells after them.">queue <b>${fmtInt(ref.queue)}</b></span>`);
-    if (ref.capped === 'hi') bits.push(`<span class="down" title="The price right now is a spike over the average: the panel plans with the average plus 15%, not with the spike.">capped at average +15%</span>`);
-    if (ref.capped === 'lo') bits.push(`<span class="up" title="The price right now is a bit under the average: the panel plans with the average minus 15%. Check it in game before selling that low.">floored at average −15%</span>`);
+    if (ref.capped === 'avg' || ref.capped === 'avg-below-now') bits.push(`<span class="up" title="Planning with the average: you sell by leaving an order and waiting, so what matters is what it closes at, not the bid you would take today.">planning with the average</span>`);
+    if (ref.capped === 'avg-below-now') bits.push(`<span title="Right now it pays more than the average. The plan keeps the average on purpose: today's price is one order and may be gone by the time you finish crafting.">today it pays more</span>`);
     if (ref.capped === 'far') bits.push(`<span class="down" title="Today's market is more than 40% below the average, so the average no longer describes it: the panel plans with today's price. Either the item crashed or that average is from another moment.">market far below the average</span>`);
+    if (ref.capped === 'now') bits.push(`<span class="down" title="No sale on record in the history window: there is no average to plan with, so today's price is used. Check it in game.">no average: today's price</span>`);
     return `<div class="cr-ref">${bits.join(' · ')}</div>`;
   }
 
+  // El mercado que se recomienda se elige por el precio de PLANIFICACION (el medio), no por
+  // la puja de hoy: si no, el destino cambiaba con cada orden que alguien pusiera o quitara.
+  const planUnitPrice = (id, ck, cell) => planPrice(sellUnitPrice(cell), ((craftVolMap[id] || {})[ck] || {}).avg || 0).used;
   const bestSellOf = (id, tax, sellFee) => {
     const c = craftPriceMap[id]; if (!c) return { gross: 0, net: 0, city: null, instant: false };
     const noBM = !bmBuys(String(id).split('@')[0]);
     const order = sellOrderOn();
-    const refs = Object.entries(c).filter(([ct]) => ct !== 'Black Market').map(([, v]) => sellUnitPrice(v)).filter((x) => x > 0);
+    const refs = Object.entries(c).filter(([ct]) => ct !== 'Black Market').map(([ct, v]) => planUnitPrice(id, ct, v)).filter((x) => x > 0);
     let net = -1, gross = 0, city = null;
     Object.entries(c).forEach(([ct, v]) => {
       if (ct === 'Black Market' && noBM) return;
-      const p = sellUnitPrice(v);
+      const p = planUnitPrice(id, ct, v);
       if (p <= 0 || isHiOutlier(p, refs)) return;
       const n = p * (1 - tax - (order ? sellFee : 0));
       if (n > net) { net = n; gross = p; city = ct; }
@@ -1347,18 +1352,22 @@
     }).join('');
     const bs = bestSellOf(prodEnch(currentBase, e), tax, sellFee);
     const prodPriceMap = craftPriceMap[prodEnch(currentBase, e)] || {};
-    const prodCityRows = BASE_CITIES.filter((c) => c !== 'Black Market' || bmBuys(currentBase)).map((c) => ({ c, p: sellUnitPrice(prodPriceMap[c]), instant: !sellOrderOn() }));
+    // el desplegable de "Vender en" ensena el precio de PLANIFICACION de cada mercado (el
+    // medio), que es el que decide: con la puja de hoy, la ciudad recomendada bailaba cada vez
+    // que alguien ponia o quitaba una orden
+    const prodCityRows = BASE_CITIES.filter((c) => c !== 'Black Market' || bmBuys(currentBase))
+      .map((c) => ({ c, p: planUnitPrice(prodEnch(currentBase, e), cityKey(c), prodPriceMap[c]), instant: !sellOrderOn() }));
     const chosenSell = bs.city || (prodCityRows.find((x) => x.p > 0) || {}).c || '';
     const chosenRow = prodCityRows.find((x) => x.c === chosenSell) || {};
     const prodInstant = !!chosenRow.instant;
     const prodAvg = ((craftVolMap[prodEnch(currentBase, e)] || {})[cityKey(chosenSell || '')] || {}).avg || 0;
+    const nowProd = sellUnitPrice(prodPriceMap[chosenSell]) || 0;
     const rawProd = chosenRow.p || Math.round(bs.gross) || 0;
-    // el precio con el que se planifica sale del libro de ordenes y de la media, acotado a una
-    // banda alrededor de ella (ver sellRef): antes era min(ahora, media), que con un valle de
-    // hoy hundia el negocio y con un pico no avisaba de nada
+    // se planifica con el MEDIO (ver planPrice): se vende dejando orden, no a la mejor puja de
+    // hoy. sellRef lo calcula y ademas dice lo que hay hoy y lo que aguanta el libro.
     const ref = sellRef(prodEnch(currentBase, e), cityKey(chosenSell || ''), craftQty, prodInstant);
-    const prodPrice = ref.used || (prodAvg > 0 ? Math.min(rawProd, prodAvg) : rawProd);
-    const prodChip = prodAvg > 0 ? sostChip(rawProd, prodAvg) : '';
+    const prodPrice = ref.used || planPrice(nowProd, prodAvg).used || rawProd;
+    const prodChip = prodAvg > 0 ? sostChip(nowProd, prodAvg) : '';
     const prodOpts = prodCityRows.map((x) => `<option value="${x.p}" data-instant="${x.instant ? 1 : 0}" data-city="${esc(x.c)}"${x.c === chosenSell ? ' selected' : ''}>${x.c === 'Black Market' ? '🏴 Black Market' : esc(x.c)} ${x.p ? '· ' + fmt(x.p) : '· s/p'}${x.instant && x.p ? ' ⚡' : ''}</option>`).join('');
     const vmap = craftVolMap[prodEnch(currentBase, e)] || {};
     const vsorted = Object.entries(vmap).map((x) => [x[0], x[1], histRate(x[1], HIST_WINDOW)])
@@ -2281,7 +2290,9 @@
           const ck = cityKey(ckRaw); const price = prices[ck] || 0; if (!price) return;
           const hist = histRate(vols[ck], win); const vol = hist.rate; const avg = (vols[ck] || {}).avg || 0;
           if (hist.days < minTradedDays) { thin.add(id); return; }
-          const sellPrice = avg > 0 ? Math.min(price, avg) : price;   // valora con el MEDIO sostenible, no el pico de ahora
+          // mismo criterio que Crafteo: se planifica con el MEDIO (se vende dejando orden), y
+          // solo manda el precio de hoy si el mercado se ha hundido por debajo del 60% del medio
+          const sellPrice = planPrice(price, avg).used;
           const net = sellPrice * (sellModeOf(sellMode).order ? ordNet : bmNet);
           const gain = net - netCost;
           const roi = netCost > 0 ? (gain / netCost) * 100 : Infinity;
@@ -2507,6 +2518,16 @@
     return out;   // de mayor tier (menos ench) a menor tier (más ench)
   }
   let levelCache = null;
+  const LVLQ_KEY = 'candelaa-level-quality-v1';
+  const levelQuality = () => {
+    const el = document.getElementById('level-quality');
+    return el ? (+el.value || 0) : 0;   // 0 = las cinco
+  };
+  (() => {
+    const el = document.getElementById('level-quality');
+    if (!el) return;
+    try { const v = localStorage.getItem(LVLQ_KEY); if (v) el.value = v; } catch (_) {}
+  })();
   async function loadLevel() {
     const out = document.getElementById('level-result'); if (!out) return;
     if (!currentBase) { out.innerHTML = '<div class="mempty">Search an item above to see its equivalent versions.</div>'; return; }
@@ -2519,7 +2540,9 @@
     const locs = cityFilter ? [cityFilter] : scopeCities();
     out.innerHTML = '<div class="mempty">Looking up prices…</div>';
     try {
-      const QS = [1, 2, 3, 4, 5];
+      // con una calidad elegida se pide SOLO esa: cinco llamadas a la API pasan a una
+      const qSel = levelQuality();
+      const QS = qSel ? [qSel] : [1, 2, 3, 4, 5];
       const liveCalls = [];
       ids.forEach((id) => QS.forEach((q) => liveCalls.push([id, q])));
       const [results, liveRes] = await Promise.all([
@@ -2560,7 +2583,7 @@
           if (best) m[q] = best;
         });
       });
-      levelCache = { combos, idOf, cheapest, target, cityFilter };
+      levelCache = { combos, idOf, cheapest, target, cityFilter, QS };
       renderLevel();
     } catch (_) {
       out.innerHTML = '<div class="mempty">Price lookup failed. Try again.</div>';
@@ -2569,10 +2592,10 @@
   function renderLevel() {
     const out = document.getElementById('level-result'); if (!out || !levelCache) return;
     const { combos, idOf, cheapest, target, cityFilter } = levelCache;
-    const QS = [1, 2, 3, 4, 5];
-    let globalMin = Infinity; const colMin = [Infinity, Infinity, Infinity, Infinity, Infinity];
+    const QS = levelCache.QS || [1, 2, 3, 4, 5];
+    let globalMin = Infinity; const colMin = QS.map(() => Infinity);
     combos.forEach((c) => { const m = cheapest[idOf(c)] || {}; QS.forEach((q, qi) => { const cell = m[q]; if (cell) { if (cell.price < colMin[qi]) colMin[qi] = cell.price; if (cell.price < globalMin) globalMin = cell.price; } }); });
-    if (!Number.isFinite(globalMin)) { out.innerHTML = '<div class="mempty">No prices for level ' + target + (cityFilter ? ' en ' + cityShort(cityFilter) : '') + '. Try another level/market or check in game.</div>'; return; }
+    if (!Number.isFinite(globalMin)) { out.innerHTML = '<div class="mempty">No prices for level ' + target + (QS.length === 1 ? ' at ' + LVL_QNAMES[QS[0] - 1] : '') + (cityFilter ? ' in ' + cityShort(cityFilter) : '') + '. Try another level/quality/market or check in game.</div>'; return; }
     // referencia = la versión de mayor tier (la "normal" del nivel, p.ej. T8.0): con qué comparas el ahorro
     const rowMin = (c) => { const m = cheapest[idOf(c)] || {}; const ps = QS.map((q) => (m[q] || {}).price).filter((p) => p > 0); return ps.length ? Math.min(...ps) : 0; };
     const refCombo = combos[0];
@@ -2595,10 +2618,16 @@
       }).join('');
       return `<tr><td class="lvl-combo">${c.t}.${c.e}</td>${cells}${diffCell}</tr>`;
     }).join('');
-    out.innerHTML = itemHeadHtml('level ' + target + ' · ' + (cityFilter ? cityShort(cityFilter) : 'cheapest market'))
-      + '<div class="scan-scroll"><table class="lvl-table"><thead><tr><th>T.Ench</th>' + LVL_QNAMES.map((n) => `<th>${n}</th>`).join('') + `<th title="Price difference against the highest-tier version of this level">vs ${refCombo ? refCombo.t + '.' + refCombo.e : 'base'}</th>` + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    out.innerHTML = itemHeadHtml('level ' + target + ' · ' + (QS.length === 1 ? LVL_QNAMES[QS[0] - 1] + ' · ' : '') + (cityFilter ? cityShort(cityFilter) : 'cheapest market'))
+      + '<div class="scan-scroll"><table class="lvl-table"><thead><tr><th>T.Ench</th>' + QS.map((q) => `<th>${LVL_QNAMES[q - 1]}</th>`).join('') + `<th title="Price difference against the highest-tier version of this level">vs ${refCombo ? refCombo.t + '.' + refCombo.e : 'base'}</th>` + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
-  ['level-target', 'level-city'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { if (currentBase) loadLevel(); }); });
+  ['level-target', 'level-city', 'level-quality'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      if (id === 'level-quality') { try { localStorage.setItem(LVLQ_KEY, el.value); } catch (_) {} }
+      if (currentBase) loadLevel();
+    });
+  });
 
   // ================= TOP (lo que más se mueve · base de la cartera) =================
   // editar precios / config recalcula el resultado sin regenerar la receta (no pierde foco)
