@@ -104,29 +104,52 @@
   const FAME_KEY = 'albion-overlay-fame-v1';
   const LPRICE_KEY = 'albion-overlay-lootprices-v1';
   const PRICE_TTL = 86400000;
-  const loot = new Map();      // saqueador -> { items: {uniquename|#id: unidades}, first, last, kills:{víctima:n} }
+  const loot = new Map();      // saqueador -> { items, rec, first, last, kills:{víctima:n} }
+  const fallen = new Map();    // caído de los tuyos -> { n, gear, blind, t }
   let fame = { total: 0, active: 0, last: 0, n: 0, code: null };
   const prices = (() => { try { return JSON.parse(localStorage.getItem(LPRICE_KEY)) || {}; } catch (_) { return {}; } })();
 
+  // Lo guardado antes de las bajas es un array pelado; se sigue leyendo para no tirar el botín
+  // de la salida en curso al actualizar.
   const loadLoot = () => {
     try {
-      const raw = JSON.parse(localStorage.getItem(LOOT_KEY)) || [];
-      raw.forEach((e) => { if (e && e.name) loot.set(e.name, { items: e.items || {}, first: e.first || 0, last: e.last || 0, kills: e.kills || {} }); });
+      const raw = JSON.parse(localStorage.getItem(LOOT_KEY));
+      const rows = Array.isArray(raw) ? raw : (raw && raw.loot) || [];
+      rows.forEach((e) => { if (e && e.name) loot.set(e.name, { items: e.items || {}, rec: e.rec || {}, first: e.first || 0, last: e.last || 0, kills: e.kills || {} }); });
+      ((raw && raw.fallen) || []).forEach((e) => { if (e && e.name) fallen.set(e.name, { n: e.n || 0, gear: e.gear || 0, blind: e.blind || 0, t: e.t || 0 }); });
     } catch (_) {}
   };
   const saveLoot = () => {
-    try { localStorage.setItem(LOOT_KEY, JSON.stringify([...loot].map(([name, v]) => ({ name, ...v })))); } catch (_) {}
+    try {
+      localStorage.setItem(LOOT_KEY, JSON.stringify({
+        loot: [...loot].map(([name, v]) => ({ name, ...v })),
+        fallen: [...fallen].map(([name, v]) => ({ name, ...v })),
+      }));
+    } catch (_) {}
   };
   const saveFame = () => { try { localStorage.setItem(FAME_KEY, JSON.stringify(fame)); } catch (_) {} };
   try { const f = JSON.parse(localStorage.getItem(FAME_KEY)); if (f && typeof f.total === 'number') fame = Object.assign(fame, f); } catch (_) {}
   loadLoot();
 
-  const lootOf = (name) => { let l = loot.get(name); if (!l) { l = { items: {}, first: Date.now(), last: 0, kills: {} }; loot.set(name, l); } return l; };
+  const lootOf = (name) => { let l = loot.get(name); if (!l) { l = { items: {}, rec: {}, first: Date.now(), last: 0, kills: {} }; loot.set(name, l); } return l; };
+  // Lo que sale del cuerpo de uno de los tuyos NO es botín: es recuperar parte de lo que ya era
+  // vuestro, y contarlo como ganancia infla el total de la salida justo cuando habéis perdido
+  // dinero. Se guarda aparte (rec) y la caída se apunta con lo que llevaba puesto, para poder
+  // restar lo que NO volvió: lo que destruye la muerte y lo que se lleva el enemigo.
+  function markFallen(name) {
+    const gear = (() => { try { return window.__players.gearValueOf(name); } catch (_) { return null; } })();
+    const f = fallen.get(name) || { n: 0, gear: 0, blind: 0, t: 0 };
+    f.n++; f.t = Date.now();
+    if (gear) f.gear += gear; else f.blind++;
+    fallen.set(name, f);
+    saveLoot();
+  }
   function addLoot(who, itemId, qty, victim) {
     const it = (() => { try { return window.__items && window.__items.info(itemId); } catch (_) { return null; } })();
     const key = (it && it.name) ? it.name : '#' + itemId;
     const l = lootOf(who);
-    l.items[key] = (l.items[key] || 0) + (qty || 1);
+    const bag = (victim && fallen.has(victim)) ? (l.rec || (l.rec = {})) : l.items;
+    bag[key] = (bag[key] || 0) + (qty || 1);
     l.last = Date.now();
     if (victim) l.kills[victim] = (l.kills[victim] || 0) + (qty || 1);
     saveLoot();
@@ -149,7 +172,7 @@
     const h = Math.max(fame.active, 60000) / 3600000;
     return fame.total > 0 ? fame.total / h : 0;
   };
-  function resetLoot() { loot.clear(); fame = { total: 0, active: 0, last: 0, n: 0, code: fame.code }; saveLoot(); saveFame(); render(); }
+  function resetLoot() { loot.clear(); fallen.clear(); fame = { total: 0, active: 0, last: 0, n: 0, code: fame.code }; saveLoot(); saveFame(); render(); }
 
   // ---- precios del botín ----
   // Mismo camino que usa Jugadores para tasar el equipo: el mínimo de venta en las ciudades.
@@ -205,6 +228,7 @@
         // de abrir el overlay — de ese nunca llega NewCharacter y su daño salía sin dueño.
         learnName(p['1'], p['2'], p['3']); learnName(p['9'], p['10'], p['11']);
         kdOf(p['2']).deaths++; kdOf(p['10']).kills++;
+        if (isMate(p['2'])) markFallen(p['2']);
         return true;
       },
     },
@@ -325,38 +349,63 @@
   // los tuyos. El total del grupo es la cifra contra la que se compara lo que aparezca luego en
   // el cofre; las filas dicen de quién salió cada parte.
   function renderLoot() {
-    const rows = [...loot.entries()].map(([name, l]) => ({ name, l, mate: isMate(name), val: lootValue(l), units: lootUnits(l) }))
-      .sort((a, b) => b.val - a.val || b.units - a.units);
+    const rows = [...loot.entries()].map(([name, l]) => ({
+      name, l, mate: isMate(name),
+      val: lootValue(l), units: lootUnits(l),
+      rec: lootValue({ items: l.rec || {} }), recUnits: lootUnits({ items: l.rec || {} }),
+    })).sort((a, b) => b.val - a.val || b.units - a.units);
     const mates = rows.filter((r) => r.mate);
     const others = rows.filter((r) => !r.mate);
     const teamVal = mates.reduce((a, r) => a + r.val, 0);
     const teamUnits = mates.reduce((a, r) => a + r.units, 0);
+    // Solo descuenta de la pérdida lo que recuperan LOS TUYOS: lo que el enemigo levanta de
+    // vuestros cuerpos se marca igual como recuperado en su fila, pero para vosotros sigue
+    // siendo dinero que no vuelve.
+    const backVal = mates.reduce((a, r) => a + r.rec, 0);
+    const fallenN = [...fallen.values()].reduce((a, f) => a + f.n, 0);
+    const fallenGear = [...fallen.values()].reduce((a, f) => a + f.gear, 0);
+    const blind = [...fallen.values()].reduce((a, f) => a + f.blind, 0);
+    const lost = Math.max(0, fallenGear - backVal);
+    const net = teamVal - lost;
     const fph = famePerHour();
+    const lostTip = fallenGear
+      ? `${fmtK(fallenGear)} in gear went down, ${fmtK(backVal)} came back${blind ? ` · ${blind} death(s) with no gear to price` : ''}`
+      : 'Nobody in your group has gone down yet';
     const head = `<div class="cb-loot-head">
       <div class="cb-lh-cell"><i>Fame/h</i><b title="Your own fame only: the server does not send anyone else's [ev ${fame.code || '?'} n=${fame.n}]">${fph ? fmtK(fph) : '—'}</b></div>
-      <div class="cb-lh-cell"><i>Team loot</i><b class="v" title="Estimated with the cheapest city sell price, quality ignored">${teamVal ? fmtK(teamVal) : '—'}</b></div>
+      <div class="cb-lh-cell"><i>Looted</i><b title="Off other people's bodies. Estimated with the cheapest city sell price, quality ignored">${teamVal ? fmtK(teamVal) : '—'}</b></div>
+      <div class="cb-lh-cell"><i>Lost</i><b class="bad" title="${lostTip}">${fallenN ? '−' + fmtK(lost) : '—'}</b></div>
+      <div class="cb-lh-cell"><i>Net</i><b class="v" title="Looted minus what your group left on the floor">${teamVal || lost ? fmtK(net) : '—'}</b></div>
       <div class="cb-lh-cell"><i>Pieces</i><b>${teamUnits || 0}</b></div>
-      <button id="cb-loot-reset" title="Clear looting and fame. Nothing else clears them.">⟲ Clear loot</button>
+      <button id="cb-loot-reset" title="Clear looting, deaths and fame. Nothing else clears them.">⟲ Clear loot</button>
     </div>`;
-    if (!rows.length) {
+    const fallenLine = fallenN ? `<div class="cb-loot-fallen" title="${lostTip}">💀 ${fallenN} down: ${[...fallen.entries()]
+      .sort((a, b) => b[1].gear - a[1].gear)
+      .map(([n, f]) => `${esc(n)}${f.n > 1 ? ` ×${f.n}` : ''}${f.gear ? ` <u>${fmtK(f.gear)}</u>` : ''}`)
+      .join(' · ')}${backVal ? ` — ${fmtK(backVal)} recovered` : ' — nothing recovered'}</div>` : '';
+    if (!rows.length && !fallenN) {
       return head + '<div class="cb-empty">Nothing looted yet.<br>Whatever anyone takes off a body shows up here, and it stays until you clear it.</div>';
     }
     const block = (list, label) => (list.length ? `<div class="cb-loot-sec">${label}</div>` + list.map((r) => {
-      const items = Object.entries(r.l.items).sort((a, b) => priceOf(b[0]) * b[1] - priceOf(a[0]) * a[1]);
-      const chips = items.map(([k, q]) => {
+      const chip = (k, q, back) => {
         const nm = prettyItem(k);
         const v = priceOf(k) * q;
-        return `<span class="cb-loot-item" title="${esc(k)}${v ? ' · ' + fmtK(v) : ' · no price yet'}">${q}× ${esc(nm)}${v ? ` <u>${fmtK(v)}</u>` : ''}</span>`;
-      }).join('');
+        return `<span class="cb-loot-item${back ? ' back' : ''}" title="${esc(k)}${back ? ' · recovered from your own dead, not profit' : ''}${v ? ' · ' + fmtK(v) : ' · no price yet'}">${q}× ${esc(nm)}${v ? ` <u>${fmtK(v)}</u>` : ''}</span>`;
+      };
+      const byValue = (o) => Object.entries(o).sort((a, b) => priceOf(b[0]) * b[1] - priceOf(a[0]) * a[1]);
+      const chips = byValue(r.l.items).map(([k, q]) => chip(k, q, false)).join('')
+        + byValue(r.l.rec || {}).map(([k, q]) => chip(k, q, true)).join('');
       const from = Object.keys(r.l.kills || {});
       return `<div class="cb-row${r.mate ? ' mine' : ''}">
         <div class="cb-r1"><span class="cb-name">${esc(r.name)}${r.mate ? ' <i>(yours)</i>' : ''}</span>
-          <span class="cb-loot-val">${r.val ? fmtK(r.val) : '—'}</span><span class="cb-dps">📦 ${r.units}</span></div>
+          <span class="cb-loot-val">${r.val ? fmtK(r.val) : '—'}</span>
+          ${r.rec ? `<span class="cb-loot-back" title="Recovered off your own dead: not profit">↩ ${fmtK(r.rec)}</span>` : ''}
+          <span class="cb-dps">📦 ${r.units + r.recUnits}</span></div>
         <div class="cb-loot-items">${chips}</div>
         ${from.length ? `<div class="cb-r2"><span title="Bodies looted">← ${esc(from.slice(0, 4).join(', '))}${from.length > 4 ? '…' : ''}</span></div>` : ''}
       </div>`;
     }).join('') : '');
-    return head + block(mates, 'Your group') + block(others, 'Everyone else');
+    return head + fallenLine + block(mates, 'Your group') + block(others, 'Everyone else');
   }
   // El botín se guarda por uniquename (resuelto al llegar), no por el índice numérico: ese
   // índice cambia con cada parche y lo saqueado ayer apuntaría a otro item. Para pintarlo se
@@ -425,6 +474,47 @@
   }
   function scheduleReconnect() { clearTimeout(reconnectT); reconnectT = setTimeout(connect, 3000); }
 
+  // Tu propio saqueo NO llega por el evento de botín: el único que existe es el aviso de que
+  // OTRO ha cogido algo — se llama OtherGrabbedLoot y así está en el enum de
+  // AlbionOnline-StatisticsAnalysis, que tampoco registra el propio (su InventoryPutItem está
+  // comentado y vacío). Para encontrar por dónde viaja el tuyo hay que mirar el tráfico crudo
+  // mientras saqueas un cuerpo, y eso es lo que graba esto. Apagado salvo que se arranque a mano.
+  let spy = null;
+  const spyMine = (r) => Object.values(r.p).some((x) => (me.name && x === me.name) || (me.id != null && x === me.id));
+  const spyApi = {
+    rows: [],
+    start(max) {
+      spy = { t0: Date.now(), rows: [], max: max || 4000 };
+      return 'Grabando. Saquea un cuerpo y luego ejecuta __combat.spy.stop()';
+    },
+    stop() {
+      if (!spy) return 'No estaba grabando: arranca con __combat.spy.start()';
+      const rows = spy.rows;
+      const secs = Math.round((Date.now() - spy.t0) / 1000);
+      spy = null;
+      spyApi.rows = rows;
+      const g = new Map();
+      rows.forEach((r) => {
+        const k = (r.code != null ? 'evento ' + r.code : 'operación ' + r.op);
+        const e = g.get(k) || { k, n: 0, mine: 0, sample: r.p };
+        e.n++;
+        if (spyMine(r)) { e.mine++; e.sample = r.p; }
+        g.set(k, e);
+      });
+      const out = [...g.values()].sort((a, b) => b.mine - a.mine || b.n - a.n);
+      console.log(`[combate] ${rows.length} paquetes en ${secs}s. Los que te mencionan van primero:`);
+      console.table(out.map((e) => ({ paquete: e.k, veces: e.n, 'te menciona': e.mine, muestra: JSON.stringify(e.sample).slice(0, 200) })));
+      console.log('Volcado completo para pegar: copy(JSON.stringify(__combat.spy.mine()))');
+      return out;
+    },
+    mine() { return spyApi.rows.filter(spyMine); },
+  };
+  function spyPush(code, op, p) {
+    if (!spy) return;
+    spy.rows.push({ ms: Date.now() - spy.t0, code: code == null ? null : +code, op: op == null ? null : +op, p });
+    if (spy.rows.length > spy.max) spy.rows.shift();
+  }
+
   const safeParse = (s) => { try { return JSON.parse(s); } catch (_) { return null; } };
   function handleMessage(msg) {
     if (msg.type === 'batch' && Array.isArray(msg.messages)) msg.messages.forEach(handleOne);
@@ -434,6 +524,7 @@
     const dict = typeof m.dictionary === 'string' ? safeParse(m.dictionary) : m.dictionary;
     const p = dict && dict.parameters; if (!p) return;
     const op = p['253'], code = p['252'];
+    spyPush(code, op, p);
     // El cambio de zona se atiende EN EL MOMENTO, no en un temporizador: los spawns de la zona
     // nueva llegan justo detrás, y limpiando dos segundos tarde se borraban los que ya habían
     // entrado (era exactamente lo que pasaba: la tabla se quedaba con un solo nombre).
@@ -470,7 +561,7 @@
     codes: () => Object.entries(seenCodes).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     unknown: () => Object.entries(seenCodes).filter(([c]) => !learned[c]).map(([c, n]) => [+c, n]).sort((a, b) => b[1] - a[1]),
     forget: () => { Object.keys(learned).forEach((k) => delete learned[k]); saveLearned(); },
-    loot, fame: () => fame, prices, resetLoot,
+    loot, fallen, fame: () => fame, prices, resetLoot, spy: spyApi,
   };
 
   render();

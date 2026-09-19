@@ -708,7 +708,15 @@
     render();
   });
 
-  window.__players = { players, isAlly, isMine, isFriend, partyNames, render,
+  // Combate necesita tasar lo que llevaba encima un caído de los tuyos. Hay que pedirlo EN EL
+  // MOMENTO de la muerte: al morir sale de la lista y la cifra ya no existe. Es un SUELO de la
+  // pérdida, no el total — solo ve el equipo (la montura no se saquea) y nunca la mochila. De ti
+  // mismo devuelve null: tu personaje no emite NewCharacter, así que tu equipo no viaja.
+  const gearValueOf = (name) => {
+    for (const p of players.values()) if (p.name === name) { const v = gearValue(p); return v > 0 ? v : null; }
+    return null;
+  };
+  window.__players = { players, isAlly, isMine, isFriend, partyNames, render, gearValueOf,
     me: () => ({ guild: myGuild, alliance: myAlliance, name: myName }),
     party: () => ({ code: partyCode, names: [...partyNames.keys()],
       candidates: [...pingSeen].map(([k, c]) => `${k} ×${c.hits}${c.moved ? ' moved' : ''} ${Date.now() - c.first}ms`) }),
