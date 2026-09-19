@@ -1223,7 +1223,8 @@
         : (jr.on ? ' · no price' : ' · off');
       const jname = nameById[jr.j.empty] || jr.j.empty;
       parts.push('<span title="Journals this batch fills, and what the pair is worth (full sold minus empty bought). Buy the empty ones BEFORE crafting: the fame you already earned does not go back in.">'
-        + `📕 ${n} journals${money} <span class="faint">${esc(jname)}</span></span>`);
+        + `📕 ${n} journals${money} <span class="faint copyable" data-copy="${esc(jname)}"`
+        + ` title="Click to copy «${esc(jname)}» (the exact name to search in game)">T${jr.j.tier} · ${esc(jname)}</span></span>`);
     }
     const inW = mats.reduce((a, m) => a + m.plan.buy * weightOf(m.id), 0)
       + (jr.on ? jr.count * (jr.j ? jr.j.weight : 0) : 0);
@@ -1494,7 +1495,7 @@
     const roi = netCost > 0 ? (profit / netCost) * 100 : 0;
     const pc = profit >= 0 ? 'up' : 'down';
     const suspicious = netCost > 0 && roi > SCAN_MAX_ROI;   // rentabilidad imposible => precio de venta troll/podrido
-    const warnHtml = suspicious ? `<div class="cmp-verdict down" style="margin-top:8px" title="Impossible profit: almost certainly a bad sell price. Check it in game">⚠ outlier sell price (${roiTxt(roi)})</div>` : '';
+    const warnHtml = suspicious ? `<div class="cmp-verdict down" style="margin-top:8px" title="Impossible profit: almost certainly a bad sell price. Check it in game">⚠ <span>suspicious sell price</span> (${roiTxt(roi)}) · <span>check it in game before buying anything</span></div>` : '';
     // comparación contra una oferta manual (antigua pestaña Comparar, ahora integrada)
     const offer = +(document.getElementById('cmp-offer') || {}).value || 0;
     let offerHtml = '';
@@ -1723,7 +1724,7 @@
       + '<th title="Best BUY order right now: what another player is already bidding. To be top bidder you have to beat it.">Bid</th>'
       + '<th title="Cheapest price across ALL markets and where it is. That is your ceiling: above it you are better off going there.">Ceiling (cheapest)</th>'
       + '<th title="Suggested price for a direct chat trade: above what the seller would net on the market and below what it costs you.">Offer</th></tr></thead><tbody>'
-      + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.id)}" title="Click to copy the ID">${esc(r.m.name)}</td>`
+      + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.name)}" title="Click to copy «${esc(r.m.name)}» (the exact name to search in game)">${esc(r.m.name)}</td>`
         + `<td><b>${fmtInt(r.need)}</b></td>`
         + `<td class="${r.over ? 'down' : ''}" title="Set your order at ${fmtInt(r.orderPrice)} to be top bidder${r.over ? ' — careful, that is already past what you can pay without losing (' + fmtInt(r.maxPay) + ')' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
         + `<td title="${r.maxPay > 0 ? 'Without losing money you could go up to ' + fmtInt(r.maxPay) : ''}">${r.ask ? fmtInt(r.ask) : '—'}${r.cheap.city ? ` <span class="faint">${cityShort(r.cheap.city)}</span>` : ''}</td>`
