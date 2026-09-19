@@ -11,6 +11,7 @@
   if (!search) return;
 
   let items = [], nameById = {}, nameEnById = {}, recipes = {}, focusData = {}, enchIndex = {};
+  let craftPricesReady = false;
   let currentBase = null, currentName = '', currentEnch = 0, currentQuality = 0;
   let marketData = null, marketVolMap = {}, craftPriceMap = {}, craftVolMap = {}, marketRefreshT = null, marketQuality = null;
   let craftDepth = {};   // libro de ordenes del producto: id -> ciudad -> {buy:[], sell:[]}
@@ -111,6 +112,12 @@
     const fr = document.getElementById('mkt-fresh'); if (fr && c.freshMaxH != null) fr.value = String(c.freshMaxH);
     const sc = document.getElementById('craft-station-city'); if (sc && c.stationCity != null) sc.value = c.stationCity;
     const fo = document.getElementById('craft-focus'); if (fo && typeof c.focus === 'boolean') fo.checked = c.focus;
+    // craftSetup solo existe cuando has elegido ciudad y foco con este flujo; sin el se
+    // vuelve a preguntar una vez, incluso si hay una config vieja guardada
+    if (!c.craftSetup) {
+      if (sc) sc.value = '__pick';
+      if (fo) fo.indeterminate = true;
+    }
     const fa = document.getElementById('craft-focus-avail'); if (fa && c.focusAvail != null) fa.value = String(c.focusAvail);
     const mg = document.getElementById('craft-margin'); if (mg && c.margin != null) mg.value = String(c.margin);
     const sf = document.getElementById('scan-fresh'); if (sf && c.scanFreshH != null) sf.value = String(c.scanFreshH);
@@ -125,7 +132,8 @@
     try {
       localStorage.setItem(CFG_KEY, JSON.stringify({
         premium: !!(pt && pt.checked), stationRate: sr ? +sr.value || 0 : 400, freshMaxH: fr ? +fr.value || 0 : 6,
-        stationCity: sc ? sc.value : '', focus: !!(fo && fo.checked),
+        stationCity: sc && sc.value !== '__pick' ? sc.value : '', focus: !!(fo && fo.checked),
+        craftSetup: !!(sc && sc.value !== '__pick' && fo && !fo.indeterminate),
         focusAvail: fa ? +fa.value || 0 : 10000, margin: mg ? +mg.value || 0 : 20,
         scanFreshH: (() => { const sf = document.getElementById('scan-fresh'); return sf ? +sf.value || 0 : 24; })(),
         scanMargin: (() => { const sg = document.getElementById('scan-margin'); return sg ? +sg.value || 0 : 30; })(),
@@ -966,6 +974,13 @@
     return best;
   }
 
+  function renderCraftSetup() {
+    craftOut.innerHTML = '<div class="cr-setup"><b>⚠ Pick where you craft and whether you use focus</b><br>'
+      + 'The units to buy and the profit hang on the resource return, and the return comes from those two:'
+      + ' with focus in a bonus city the same batch needs about half the materials.</div>';
+    const b = document.getElementById('cr-buy-block'); if (b) { b.innerHTML = ''; b.className = ''; }
+  }
+
   async function loadCraft() {
     const rec = recipes[currentBase];
     { const q = document.getElementById('craft-qty'); if (q) q.dataset.auto = '1'; }
@@ -975,6 +990,7 @@
         : 'This item cannot be crafted.') + '</div>';
       return;
     }
+    if (craftSetupPending()) { craftPricesReady = false; renderCraftSetup(); return; }
     applyAutoReturn();
     craftOut.innerHTML = '<div class="mempty">Loading prices…</div>';
     // materiales y productos por separado: los materiales son recursos (sin calidad),
@@ -1023,6 +1039,7 @@
     (vol || []).forEach((r) => { (craftVolMap[r.item_id] = craftVolMap[r.item_id] || {})[cityKey(r.city)] = { daily: r.daily || 0, days: r.days || 0, avg: r.avg_price || 0 }; });
     craftDepth = {};
     [...(depth || []), ...(matDepth || [])].forEach((r) => { (craftDepth[r.item_id] = craftDepth[r.item_id] || {})[cityKey(r.city)] = { buy: r.buy || [], sell: r.sell || [] }; });
+    craftPricesReady = true;
     renderCraft();
   }
   const matOrderOn = () => !!(document.getElementById('craft-mat-order') || {}).checked;
@@ -1204,7 +1221,16 @@
     out.net = out.count * (fullNet - out.empty * (matOrderOn() ? 1.025 : 1));
     return out;
   }
-  const craftCity = () => (document.getElementById('craft-station-city') || {}).value || '';
+  const CITY_PICK = '__pick';
+  // Mientras no elijas donde crafteas y si usas foco, el panel no calcula: el retorno
+  // sale de esas dos cosas y con el cambian las unidades a comprar y el margen. Dar por
+  // buena la configuracion guardada es como le costo material a la tanda de tunicas.
+  function craftSetupPending() {
+    const sc = document.getElementById('craft-station-city');
+    const fo = document.getElementById('craft-focus');
+    return (sc && sc.value === CITY_PICK) || (fo && fo.indeterminate);
+  }
+  const craftCity = () => { const v = (document.getElementById('craft-station-city') || {}).value || ''; return v === CITY_PICK ? '' : v; };
 
   // Linea de "lo que mueve la tanda": fama, diarios y peso. El peso decide la montura y
   // cuantos viajes hacen falta, que es la mitad del trabajo real de una tanda grande.
@@ -1714,18 +1740,31 @@
       totOrder += orderPrice * 1.025 * need;
       totOffer += offer * need;
       const over = maxPay > 0 && orderPrice * 1.025 > maxPay;
-      return { m, need, bid, ask, cheap, maxPay, offer, orderPrice, over };
+      const gross = Math.ceil((m.c / amt) * buyUnits);
+      return { m, need, gross, bid, ask, cheap, maxPay, offer, orderPrice, over };
     });
     const leftovers = ctx.mats.filter((m) => m.plan && m.plan.leftover >= 1);
     bEl.className = 'cr-block';
+    // Las unidades son NETAS: cuentan con que la estacion te devuelve material y lo
+    // reinviertes. Si crafteas sin foco o fuera de la ciudad del bono, ese retorno no llega
+    // y la compra se queda corta (50 tunicas planificadas al 43,5% dan 28 sin retorno).
+    const rr = returnRate(currentBase);
+    const where = rr.match && rr.bon ? cityShort(rr.bon.city) : ((document.getElementById('craft-station-city') || {}).value || '');
+    const withFocus = !!(document.getElementById('craft-focus') || {}).checked;
+    const retNote = R > 0
+      ? `<div class="cr-ret-note" title="These units assume the station gives materials back and you craft the next run with them. Craft it somewhere else, or without focus, and the return is smaller: you will run out before the last unit.">`
+        + `⚠ Counting on <b>${(R * 100).toFixed(1)}%</b> resource return${where ? ` in <b>${esc(where)}</b>` : ''}${withFocus ? ' <b>with focus</b>' : ' <b>without focus</b>'}`
+        + ` · with no return you need the figures in brackets</div>`
+      : '';
     bEl.innerHTML = '<div class="cr-b-title">🛒 Buy materials'
-      + ` <span class="faint">· for ${fmtInt(buyUnits)} units (${fmtInt(ctx.runs || 0)} crafts)${R > 0 ? ', resource return already discounted' : ''}</span></div>`
+      + ` <span class="faint">· for ${fmtInt(buyUnits)} units (${fmtInt(ctx.runs || 0)} crafts)</span></div>`
+      + retNote
       + '<table class="cr-tbl"><thead><tr><th>Material</th><th title="Units you need to buy">Units</th>'
       + '<th title="Best BUY order right now: what another player is already bidding. To be top bidder you have to beat it.">Bid</th>'
       + '<th title="Cheapest price across ALL markets and where it is. That is your ceiling: above it you are better off going there.">Ceiling (cheapest)</th>'
       + '<th title="Suggested price for a direct chat trade: above what the seller would net on the market and below what it costs you.">Offer</th></tr></thead><tbody>'
       + rows.map((r) => `<tr><td class="name copyable" data-copy="${esc(r.m.name)}" title="Click to copy «${esc(r.m.name)}» (the exact name to search in game)">${esc(r.m.name)}</td>`
-        + `<td><b>${fmtInt(r.need)}</b></td>`
+        + `<td><b>${fmtInt(r.need)}</b>${r.gross > r.need ? ` <span class="faint" title="Units you would need if the station returned nothing: no focus, or crafting outside the bonus city.">(${fmtInt(r.gross)})</span>` : ''}</td>`
         + `<td class="${r.over ? 'down' : ''}" title="Set your order at ${fmtInt(r.orderPrice)} to be top bidder${r.over ? ' — careful, that is already past what you can pay without losing (' + fmtInt(r.maxPay) + ')' : ''}">${r.bid ? fmtInt(r.bid) : '—'}</td>`
         + `<td title="${r.maxPay > 0 ? 'Without losing money you could go up to ' + fmtInt(r.maxPay) : ''}">${r.ask ? fmtInt(r.ask) : '—'}${r.cheap.city ? ` <span class="faint">${cityShort(r.cheap.city)}</span>` : ''}</td>`
         + `<td class="silver">${r.offer > 0 ? fmtInt(r.offer) : '—'}</td></tr>`).join('')
@@ -2712,9 +2751,15 @@
   ['craft-station-city', 'craft-focus'].forEach((id) => {
     const el = document.getElementById(id); if (!el) return;
     el.addEventListener('change', () => {
+      if (el.tagName === 'INPUT') el.indeterminate = false;
       const inp = document.getElementById('craft-return'); if (inp) inp.dataset.auto = '1';
       applyAutoReturn(); saveCfg();
-      if (currentBase && recipes[currentBase]) renderCraft();
+      if (!currentBase || !recipes[currentBase]) return;
+      // al completar la eleccion hay que CARGAR (loadCraft), no solo repintar: el primer
+      // render se abortó antes de pedir precios
+      if (craftSetupPending()) renderCraftSetup();
+      else if (!craftPricesReady) loadCraft();
+      else renderCraft();
     });
   });
   ['craft-focus-avail', 'craft-margin'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { saveCfg(); if (currentBase) calcResult(); }); });

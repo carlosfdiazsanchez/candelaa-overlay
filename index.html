@@ -554,6 +554,10 @@
   .craft-total b{font-size:14px;}
   .cr-block{margin-top:8px;padding:8px 9px;border-radius:6px;background:var(--elev);border:1px solid var(--border);font-size:12px;}
   .cr-b-title{font-size:11px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;}
+  .cr-ret-note{font-size:11.5px;color:#ffcf6b;background:rgba(255,207,107,.10);border:1px solid rgba(255,207,107,.28);border-radius:6px;padding:5px 8px;margin-bottom:7px;line-height:1.5;cursor:help;}
+  .cr-ret-note b{color:#ffe0a3;}
+  .cr-setup{font-size:12.5px;color:#ffcf6b;background:rgba(255,207,107,.10);border:1px solid rgba(255,207,107,.30);border-radius:8px;padding:10px 12px;line-height:1.6;}
+  .cr-setup b{color:#ffe0a3;}
   .cr-kv{display:flex;justify-content:space-between;gap:8px;padding:2px 0;line-height:1.45;}
   .cr-kv b{color:#fff;}
   .cr-tbl{width:100%;border-collapse:collapse;font-size:11.5px;}
@@ -895,6 +899,7 @@
       <div class="craft-cfg">
         <div class="cfg-row"><span class="cfg-lbl">Quantity</span><input type="number" id="craft-qty" value="1" min="1"></div>
         <div class="cfg-row"><span class="cfg-lbl">Craft in</span><select id="craft-station-city" title="City where you'll craft/refine. If it matches this item's bonus city, the return rate is worked out for you.">
+          <option value="__pick" disabled>— pick where you craft —</option>
           <option value="">— no bonus</option>
           <option>Caerleon</option><option>Lymhurst</option><option>Bridgewatch</option><option>Martlock</option><option>Thetford</option><option>FortSterling</option><option>Brecilien</option>
           <option value="island">Island (no station bonus)</option><option value="hideout">Hideout</option></select></div>

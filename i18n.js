@@ -132,8 +132,8 @@
   "Quantity": "Cantidad",
   "Craft in": "Craftear en",
   "— no bonus": "— sin bono",
-  "ll craft/refine. If it matches this item": "Ciudad donde vas a craftear/refinar. Si coincide con la del bono de este item, el retorno se calcula solo.",
-  "s two: the bonus only applies when the item you": "Cada día dos familias de items tienen +10% de bono de producción. Elige las dos de hoy: el bono se aplica solo cuando el item que miras pertenece a una de ellas.",
+  "City where you'll craft/refine. If it matches this item's bonus city, the return rate is worked out for you.": "Ciudad donde vas a craftear/refinar. Si coincide con la del bono de este item, el retorno se calcula solo.",
+  "Every day two item families get a +10% production bonus. Pick today's two: the bonus only applies when the item you're looking at belongs to one of them.": "Cada día dos familias de items tienen +10% de bono de producción. Elige las dos de hoy: el bono se aplica solo cuando el item que miras pertenece a una de ellas.",
   "Focus you plan to spend this session. With premium you regenerate 10,000/day.": "Foco que piensas gastar en la sesión. Con premium se regeneran 10.000/día.",
   "Focus each craft eats, the same number the station shows you. Estimated from game data and your levels; type the EXACT value you see at the station and your spec is calibrated for this whole item line.": "Foco que se come cada craft, el mismo número que te enseña la estación. Se estima desde los datos del juego y tus niveles; escribe el valor EXACTO que ves en la estación y tu spec queda calibrada para toda esta línea de items.",
   "Back to the estimated cost (clears this item's calibration)": "Volver al coste estimado (borra la calibración de este item)",
@@ -351,6 +351,27 @@
   "Suggested price for a direct chat trade: above what the seller would net on the market and below what it costs you.": "Precio sugerido para trade directo por chat: por encima de lo que el vendedor sacaría vendiendo al mercado y por debajo de lo que te cuesta a ti.",
   "Offer": "Ofrecer",
   "Click to copy the ID": "Clic para copiar el ID",
+  "with focus": "con foco",
+  "without focus": "sin foco",
+  "— pick where you craft —": "— elige dónde crafteas —",
+  "⚠ Pick where you craft and whether you use focus": "⚠ Elige dónde crafteas y si usas foco",
+  "The units to buy and the profit hang on the resource return, and the return comes from those two: with focus in a bonus city the same batch needs about half the materials.": "Las unidades que hay que comprar y el beneficio dependen del retorno de recursos, y el retorno sale de esas dos cosas: con foco y en una ciudad con bono, la misma tanda necesita casi la mitad de material.",
+  "These units assume the station gives materials back and you craft the next run with them. Craft it somewhere else, or without focus, and the return is smaller: you will run out before the last unit.": "Estas unidades dan por hecho que la estación te devuelve material y que crafteas con él la tanda siguiente. Si crafteas en otro sitio, o sin foco, el retorno es menor: te quedarás sin material antes de la última unidad.",
+  "Counting on ": "Cuentan con un ",
+  " resource return in ": " de retorno de recursos en ",
+  " resource return": " de retorno de recursos",
+  " with focus": " con foco",
+  " without focus": " sin foco",
+  "with no return you need the figures in brackets": "sin retorno necesitas las cifras entre paréntesis",
+  "Units you would need if the station returned nothing: no focus, or crafting outside the bonus city.": "Unidades que necesitarías si la estación no devolviera nada: sin foco, o crafteando fuera de la ciudad del bono.",
+  "Focus efficiency from your levels. A calibrated cost is in use, so this one is ignored.": "Eficiencia de foco que dan tus niveles. Hay un coste calibrado en uso, así que este se ignora.",
+  "Focus efficiency from your levels. Type the exact cost the station shows into Focus/craft to calibrate it instead.": "Eficiencia de foco que dan tus niveles. Escribe en Foco/craft el coste exacto que ves en la estación para calibrarlo.",
+  "Cheaper transmuted: buy ": "Más barato transmutado: compra ",
+  " and transmute it (1 unit in, 1 unit out). Buying it outright costs ": " y transmútalo (entra 1 unidad, sale 1). Comprarlo directamente cuesta ",
+  "The most you can pay per unit and still make your target margin (": "Lo máximo que puedes pagar por unidad sin bajar de tu margen objetivo (",
+  "%). This is the number to take into the game: prices move, so check what the market really asks and buy only below this.": "%). Este es el número que te llevas al juego: los precios se mueven, así que mira lo que pide de verdad el mercado y compra solo por debajo de esto.",
+  "Forget the detected party": "Olvidar el grupo detectado",
+  "Drops any play whose buy or sell price has not been seen in this long. A margin computed on a three-day-old price is a guess, not an opportunity.": "Descarta las jugadas cuyo precio de compra o de venta lleve más de eso sin verse. Un margen calculado sobre un precio de hace tres días es un deseo, no una oportunidad.",
   "suspicious sell price": "precio de venta sospechoso",
   "check it in game before buying anything": "verifícalo en el juego antes de comprar nada",
   "Set your order at": "Pon tu orden a",
@@ -1181,7 +1202,9 @@
   "Which markets the Scanner, Sell and Level tabs use (Prices always shows the royal cities and the Black Market). The Rests (Arthur's, Merlyn's, Morgana's) and the smugglers sit in black zones: the prices are real, but hauling goods there is risky.": "Qué mercados usan el Escáner y las pestañas Vender y Nivel (Precios enseña siempre las ciudades reales y el Black Market). Los Rests (Arthur's, Merlyn's, Morgana's) y los contrabandistas están en zonas negras: los precios son reales, pero llevar la mercancía allí tiene riesgo."
 };
   const CTX = [["#tab-market thead th", "Mercado", "Ciudad"], ["#tab-scan thead th", "Comprar", "Compra"], ["#item-quality button", "Sobresaliente", "Sobresal."], ["#scan-tier option", "Todas", "Todos"]];
-  const NO_SUB = new Set(["All", "hit", "Now", "Cape", "Guild", "Loot", "Pieces", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
+  // "sale" y "use " son palabras ESPANOLAS tambien: como trozo convertian "todo sale peor"
+  // en "todo venta peor" y "para que use el precio" en "para que usar el precio".
+  const NO_SUB = new Set(["sale", "use ", "All", "hit", "Now", "Cape", "Guild", "Loot", "Pieces", "Left", "Sold", "lost", "instant", "order", "Spent", "Profit", "When", "Bought", "Chest", "boss", "camp", "Axe", "Bid", "Blue", "Bow", "Buy", "Chests", "Craft", "Crossbow", "Dagger", "Faction", "Fiber", "Finder", "Gathering", "Gold", "champion", "elite", "group", "veteran", "Good", "Green", "Hammer", "Healer", "Hide", "Hostile", "Level", "Living", "Mace", "Market", "Mode", "None", "Normal", "Notes", "Offer", "Passive", "Purple", "Quality", "Quantity", "Resources", "Rock", "Seen", "Sell", "Sort", "Spear", "Sword", "Tank", "Units", "Use", "Value", "Weapon", "Wood", "Focus", "Refine", "Resource", "Enchant", "Cost", "Price", "Total", "Save", "Input", "Resell", "axes", "bags", "beef", "bows", "capes", "crafting", "focus", "food", "maces", "never", "now", "pork", "tools",
     // biomas y refugio: son opciones de un select, pero como trozo pisarian nombres de zona
     "Forest", "Swamp", "Mountain", "Highland", "Steppe", "Hideout"]);
   const SUBS = Object.keys(DICT).filter((k) => k.length >= 4 && !NO_SUB.has(k)).sort((a, b) => b.length - a.length);
@@ -1207,38 +1230,63 @@
     r.lastIndex = 0;
     return r;
   }
+  // Cada trozo traducido se aparca detras de un marcador del area privada Unicode y solo
+  // vuelve al texto al final. Sin esto, una clave corta pisa la traduccion que acaba de
+  // escribir una larga: "sale" -> "venta" convertia "todo sale peor" en "todo venta peor",
+  // y lo mismo le pasa a cualquier palabra espanola que sea clave inglesa.
+  const MARK_A = '\uE000', MARK_B = '\uE001';
   function translate(s) {
     if (!s) return null;
     const key = s.trim();
     if (!key) return null;
     if (DICT[key]) return s.replace(key, DICT[key]);
     let out = s, hit = false;
+    const parked = [];
     for (const k of SUBS) {
       if (out.indexOf(k) < 0) continue;
       const r = subRx(k);
       if (!r.test(out)) continue;
       r.lastIndex = 0;
-      out = out.replace(r, () => DICT[k]);
+      out = out.replace(r, () => MARK_A + String.fromCharCode(0xE100 + parked.push(DICT[k]) - 1) + MARK_B);
       hit = true;
     }
-    return hit ? out : null;
+    if (!hit) return null;
+    return out.replace(/\uE000([\uE100-\uE4FF])\uE001/g, (_, c) => parked[c.charCodeAt(0) - 0xE100]);
   }
 
+  // Un repintado del padre vuelve a pasar por nodos que ya estaban traducidos. Traducir
+  // espanol otra vez lo corrompe, asi que se recuerda lo que escribimos y se salta si sigue
+  // igual; si el texto cambia, se traduce de nuevo.
+  const doneText = new WeakMap();
+  const doneAttr = new WeakMap();
+  function already(map, el, k, v) {
+    const m = map.get(el);
+    return !!m && m.get(k) === v;
+  }
+  function remember(map, el, k, v) {
+    let m = map.get(el);
+    if (!m) { m = new Map(); map.set(el, m); }
+    m.set(k, v);
+  }
+  function trText(node) {
+    const v = node.nodeValue;
+    if (already(doneText, node, 'v', v)) return;
+    const t = translate(v);
+    if (t != null) { node.nodeValue = t; remember(doneText, node, 'v', t); }
+  }
   function trAttrs(el) {
     if (!el || !el.hasAttribute) return;
     ATTRS.forEach((a) => {
       if (!el.hasAttribute(a)) return;
-      const t = translate(el.getAttribute(a));
-      if (t != null) el.setAttribute(a, t);
+      const cur = el.getAttribute(a);
+      if (already(doneAttr, el, a, cur)) return;
+      const t = translate(cur);
+      if (t != null) { el.setAttribute(a, t); remember(doneAttr, el, a, t); }
     });
   }
 
   function walk(root) {
-    if (root.nodeType === 3) {
-      const t = translate(root.nodeValue);
-      if (t != null) root.nodeValue = t;
-      return;
-    }
+    if (root.nodeType === 3) { trText(root); return; }
     if (root.nodeType !== 1) return;
     if (SKIP_TAGS[root.tagName]) return;
     trAttrs(root);
@@ -1252,10 +1300,8 @@
     });
     let n;
     while ((n = it.nextNode())) {
-      if (n.nodeType === 3) {
-        const t = translate(n.nodeValue);
-        if (t != null) n.nodeValue = t;
-      } else trAttrs(n);
+      if (n.nodeType === 3) trText(n);
+      else trAttrs(n);
     }
   }
 
